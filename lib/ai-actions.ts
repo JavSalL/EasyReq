@@ -51,7 +51,7 @@ export async function generateBulkRequirements(projectDesc: string): Promise<AIR
   const text = response.text();
   
   // Limpiar posibles bloques de código markdown
-  const jsonMatch = text.match(/\[.*\]/s);
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
   return jsonMatch ? JSON.parse(jsonMatch[0]) : [];
 }
 
@@ -71,7 +71,7 @@ export async function generateSingleRequirement(userPrompt: string): Promise<AIR
   const response = await result.response;
   const text = response.text();
   
-  const jsonMatch = text.match(/\{.*\}/s);
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
   return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
 }
 
@@ -111,6 +111,6 @@ export async function evaluateRequirement(requirementText: string): Promise<Part
   const response = await result.response;
   const text = response.text();
   
-  const jsonMatch = text.match(/\{.*\}/s);
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
   return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 }
