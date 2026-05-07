@@ -1,0 +1,12 @@
+-- Ejecuta esto si ya habías corrido el SQL anterior
+-- Solo añade la columna que falta:
+
+ALTER TABLE secciones ADD COLUMN ai_observations TEXT;
+
+-- O usa este bloque de seguridad que no falla si ya existen:
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='secciones' AND column_name='ai_observations') THEN
+        ALTER TABLE secciones ADD COLUMN ai_observations TEXT;
+    END IF;
+END $$;

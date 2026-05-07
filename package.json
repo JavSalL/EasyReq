@@ -9,13 +9,17 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@supabase/auth-helpers-react": "^0.5.0",
     "@supabase/supabase-js": "^2.90.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.8.0",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-hot-toast": "^2.5.2",
-    "supabase": "^2.72.7"
+    "supabase": "^2.72.7",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
