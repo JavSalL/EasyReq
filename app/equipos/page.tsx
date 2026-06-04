@@ -296,7 +296,6 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
       const { error } = await supabase.from('secciones')
         .update({
           type_furps: evaluation.type_furps,
-          essence_state: evaluation.essence_state,
           ai_evaluation: evaluation.ai_evaluation,
           ai_observations: evaluation.ai_observations
         })
