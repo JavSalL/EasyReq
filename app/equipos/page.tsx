@@ -351,7 +351,6 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
         currentMaxLevel++;
         // Mapeo flexible por si la IA cambia el formato de las keys
         const f_type = req.type_furps || (req as any).typeFurps || (req as any).furps_type;
-        const e_state = req.essence_state || (req as any).essenceState || (req as any).essence;
 
         const { data, error } = await supabase.from('secciones')
           .insert([{ 
@@ -359,7 +358,7 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
             name: req.name, 
             type: f_type === 'Functionality' ? 'Funcional' : 'No Funcional',
             type_furps: f_type,
-            essence_state: e_state,
+            essence_state: 'conceived',
             ai_evaluation: req.ai_evaluation,
             approval_status: 'pending',
             level: currentMaxLevel 
