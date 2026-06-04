@@ -522,6 +522,7 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
       setFormData({
         name: req.name,
         type: req.type,
+        essence_state: req.essence_state || 'conceived',
         madeById: '',
         leaderId: currentLeader?.id.toString() || '',
         overwriteLeader: false
@@ -531,6 +532,7 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
       setFormData({
         name: '',
         type: 'Funcional',
+        essence_state: 'conceived',
         madeById: '',
         leaderId: currentLeader?.id.toString() || '',
         overwriteLeader: false
