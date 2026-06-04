@@ -20,6 +20,7 @@ type Team = {
   id: number;
   groupId: number;
   name: string;
+  description?: string;
 }
 
 type Member = {
@@ -46,6 +47,14 @@ export default function GruposPage({ searchParams }: { searchParams: Promise<{ g
   const [leaders, setLeaders] = useState<Array<LeaderHistory>>([]);
   const [memberLogs, setMemberLogs] = useState<Array<any>>([]);
   const [loading, setLoading] = useState(true);
+
+  // Team Modal State
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [isTeamDeleteModalOpen, setIsTeamDeleteModalOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
+  const [teamToDelete, setTeamToDelete] = useState<Team | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [teamFormData, setTeamFormData] = useState({ name: '', description: '' });
 
   // Member Modal State
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
@@ -110,6 +119,48 @@ export default function GruposPage({ searchParams }: { searchParams: Promise<{ g
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const openTeamModal = (team: Team) => {
+    setEditingTeam(team);
+    setTeamFormData({ name: team.name, description: team.description || '' });
+    setIsTeamModalOpen(true);
+  };
+
+  const handleSaveTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTeam) return;
+
+    const { error } = await supabase
+      .from('equipos')
+      .update({ name: teamFormData.name, description: teamFormData.description })
+      .eq('id', editingTeam.id);
+
+    if (error) toast.error("Error al actualizar");
+    else {
+      toast.success("Equipo actualizado");
+      setIsTeamModalOpen(false);
+      fetchData();
+    }
+  };
+
+  const handleDeleteTeam = async () => {
+    if (deleteConfirmText !== 'BORRAR' || !teamToDelete) return;
+
+    const { error } = await supabase
+      .from('equipos')
+      .delete()
+      .eq('id', teamToDelete.id);
+
+    if (error) {
+      toast.error("Error al eliminar equipo. Verifica que no tenga registros vinculados.");
+    } else {
+      toast.success("Equipo eliminado permanentemente");
+      setIsTeamDeleteModalOpen(false);
+      setTeamToDelete(null);
+      setDeleteConfirmText("");
+      fetchData();
+    }
+  };
 
   const getTeamLeader = (teamId: number) => {
     const leaderEntry = leaders.find(l => l.teamId === teamId);
@@ -273,10 +324,25 @@ export default function GruposPage({ searchParams }: { searchParams: Promise<{ g
                       <Users size={24} />
                     </div>
                     <div>
-                      <h2 className="text-xl font-bold text-zinc-900 dark:text-white">{team.name}</h2>
-                      <div className="flex items-center mt-1 text-sm">
-                        <Crown size={14} className="text-amber-500 mr-1" />
-                        <span className="text-zinc-500">Líder: {leader ? <span className="font-bold text-zinc-700 dark:text-zinc-300">{leader.name}</span> : 'No asignado'}</span>
+                      <div className="flex items-center space-x-3">
+                        <h2 className="text-xl font-bold text-zinc-900 dark:text-white">{team.name}</h2>
+                        <button 
+                          onClick={() => openTeamModal(team)}
+                          className="p-1.5 text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                      </div>
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center text-sm">
+                          <Crown size={14} className="text-amber-500 mr-1" />
+                          <span className="text-zinc-500">Líder: {leader ? <span className="font-bold text-zinc-700 dark:text-zinc-300">{leader.name}</span> : 'No asignado'}</span>
+                        </div>
+                        {team.description && (
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 italic line-clamp-1 max-w-md">
+                            {team.description}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -376,6 +442,113 @@ export default function GruposPage({ searchParams }: { searchParams: Promise<{ g
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* TEAM EDIT MODAL */}
+      {isTeamModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <form onSubmit={handleSaveTeam} className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-8 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-black text-zinc-900 dark:text-white">Editar Equipo</h3>
+                <p className="text-sm text-zinc-500 font-medium italic mt-1">Modifica la información básica del proyecto.</p>
+              </div>
+              <button type="button" onClick={() => setIsTeamModalOpen(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-400">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-8 space-y-6">
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-zinc-500">Nombre del Equipo</label>
+                <input 
+                  required 
+                  className="w-full px-6 py-4 rounded-2xl border-2 border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 focus:border-blue-500 outline-none transition-all font-bold" 
+                  value={teamFormData.name} 
+                  onChange={e => setTeamFormData({...teamFormData, name: e.target.value})} 
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-zinc-500">Descripción</label>
+                <textarea 
+                  className="w-full px-6 py-4 rounded-2xl border-2 border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 focus:border-blue-500 outline-none transition-all font-medium min-h-[120px]" 
+                  value={teamFormData.description} 
+                  onChange={e => setTeamFormData({...teamFormData, description: e.target.value})}
+                  placeholder="Sin descripción..."
+                />
+              </div>
+            </div>
+
+            <div className="p-8 bg-zinc-50 dark:bg-zinc-800/30 flex items-center justify-between gap-4">
+              <button 
+                type="button"
+                onClick={() => {
+                  setTeamToDelete(editingTeam);
+                  setIsTeamDeleteModalOpen(true);
+                }}
+                className="p-4 bg-red-100 dark:bg-red-900/20 text-red-600 rounded-2xl hover:bg-red-200 transition-colors"
+                title="Eliminar equipo"
+              >
+                <Trash2 size={24} />
+              </button>
+              <button type="submit" className="flex-1 px-10 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-blue-500/30 flex items-center justify-center">
+                <Save size={18} className="mr-3" /> Actualizar Equipo
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* TEAM DELETE CONFIRMATION MODAL */}
+      {isTeamDeleteModalOpen && teamToDelete && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden border-4 border-red-500/20 animate-in zoom-in-95 duration-300">
+            <div className="p-10 text-center space-y-6">
+              <div className="w-20 h-20 bg-red-100 dark:bg-red-900/20 text-red-600 rounded-[30px] flex items-center justify-center mx-auto">
+                <Trash2 size={40} />
+              </div>
+              <div>
+                <h3 className="text-2xl font-black text-zinc-900 dark:text-white uppercase tracking-tight">Eliminar Proyecto</h3>
+                <p className="text-zinc-500 text-sm mt-2">
+                  Esta acción eliminará permanentemente a <span className="font-black text-red-600">{teamToDelete.name}</span> y todos sus requerimientos y logs.
+                </p>
+              </div>
+
+              <div className="space-y-4 pt-4 text-left">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-1">
+                  Escribe <span className="text-red-600">BORRAR</span> para confirmar
+                </label>
+                <input
+                  type="text"
+                  placeholder="BORRAR"
+                  className="w-full px-6 py-4 rounded-2xl border-2 border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 text-red-600 focus:border-red-500 outline-none transition-all font-black text-center tracking-[0.5em]"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-0 border-t border-zinc-100 dark:border-zinc-800">
+              <button 
+                onClick={() => {
+                  setIsTeamDeleteModalOpen(false);
+                  setDeleteConfirmText("");
+                }}
+                className="py-6 font-black uppercase text-xs tracking-widest text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleDeleteTeam}
+                disabled={deleteConfirmText !== 'BORRAR'}
+                className="py-6 font-black uppercase text-xs tracking-widest text-white bg-red-600 hover:bg-red-700 disabled:opacity-30 disabled:grayscale transition-all"
+              >
+                Eliminar Ahora
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

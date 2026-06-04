@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, ShieldCheck, HelpCircle, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Users, ShieldCheck, HelpCircle, ChevronRight, BookOpen } from 'lucide-react';
 
 const Sidebar = () => {
   const pathname = usePathname();
@@ -11,6 +11,7 @@ const Sidebar = () => {
   const menuItems = [
     { name: 'Grupos', href: '/', icon: LayoutDashboard },
     { name: 'Equipos', href: '/equipos-global', icon: Users },
+    { name: 'Patrones IA', href: '/patrones', icon: BookOpen },
     { name: 'Ayuda', href: '#', icon: HelpCircle },
   ];
 
