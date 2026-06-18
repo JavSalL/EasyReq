@@ -26,6 +26,7 @@ export interface AIRequirement {
  * Genera requerimientos en masa basados en la descripción de un proyecto.
  */
 export async function generateBulkRequirements(projectDesc: string, pattern?: string, count?: number): Promise<AIRequirement[]> {
+  console.log(pattern)
   const prompt = `
     Actúa como un experto en ingeniería de requisitos. Basado en la siguiente descripción del proyecto:
     "${projectDesc}"
@@ -37,7 +38,7 @@ export async function generateBulkRequirements(projectDesc: string, pattern?: st
 
     Genera ${count ? `exactamente ${count}` : 'una lista de al menos 8'} requerimientos técnicos siguiendo el modelo FURPS (Functionality, Usability, Reliability, Performance, Supportability).
     
-    Para cada requerimiento, evalúa si cumple con estos tags de redacción (TRUE/FALSE) IMPORTANTE: NO REDACTES EL REQUERIMIENTO EN BASE A ESTOS TAGS, SÓLO EVALÚALOS:
+    Para cada requerimiento, evalúa si cumple con estos tags de redacción (TRUE/FALSE):
     - actor
     - accion
     - objeto
@@ -48,6 +49,7 @@ export async function generateBulkRequirements(projectDesc: string, pattern?: st
     1. No generes observaciones ni notas IA durante la generación masiva (déjalas vacías o nulas).
     2. Responde ÚNICAMENTE con un array JSON válido con la siguiente estructura:
     [{ "name": "...", "type_furps": "...", "ai_evaluation": { "actor": true, ... } }]
+     donde name es el texto del requerimiento, type_furps es su categoría FURPS, y ai_evaluation es un objeto con los tags de redacción evaluados como booleanos.
   `;
 
   const result = await model.generateContent(prompt);
@@ -75,6 +77,7 @@ export async function generateSingleRequirement(userPrompt: string, pattern?: st
     1. No generes observaciones ni notas IA (déjalas vacías o nulas).
     2. Responde ÚNICAMENTE con un objeto JSON válido:
     { "name": "...", "type_furps": "...", "ai_evaluation": { ... } }
+     donde name es el texto del requerimiento, type_furps es su categoría FURPS, y ai_evaluation debe ir vacío
   `;
 
   const result = await model.generateContent(prompt);

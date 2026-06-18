@@ -22,7 +22,7 @@ const Sidebar = () => {
           <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/20">
             R
           </div>
-          <span className="font-bold text-xl tracking-tight dark:text-white">ReyesSoft</span>
+          <span className="font-bold text-xl tracking-tight dark:text-white">EasyReq</span>
         </div>
 
         <nav className="space-y-2">

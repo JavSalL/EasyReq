@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ReyesSoft | Gestión de Proyectos",
+  title: "EasyReq | Gestión de Proyectos",
   description: "Plataforma de gestión de requerimientos y equipos.",
 };
 
