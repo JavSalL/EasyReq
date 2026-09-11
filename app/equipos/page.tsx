@@ -1052,34 +1052,34 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
 
       {/* MODAL: Nuevo/Editar Requerimiento */}
       {isReqModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-zinc-950/70 backdrop-blur-md animate-in fade-in duration-300">
           <form 
             onSubmit={handleSaveRequirement}
-            className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300"
+            className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300"
           >
-            <div className="p-6 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50 dark:bg-zinc-900">
+            <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between shrink-0 bg-zinc-50 dark:bg-zinc-900">
               <div>
-                <h3 className="text-xl font-bold text-zinc-900 dark:text-white">
+                <h3 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-white">
                   {editingReq ? 'Editar Requerimiento' : 'Nuevo Requerimiento'}
                 </h3>
-                <p className="text-sm text-zinc-500 mt-1">Completa los datos para el registro técnico.</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Completa los datos para el registro técnico.</p>
               </div>
               <button 
                 type="button"
                 onClick={() => setIsReqModalOpen(false)} 
-                className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-full transition-colors text-zinc-400"
+                className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-xl transition-colors text-zinc-400"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
             
-            <div className="p-8 space-y-6">
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar">
               {/* AI Helper Section */}
               {!editingReq && (
-                <div className="p-4 rounded-2xl bg-gradient-to-br from-zinc-900 to-zinc-800 border border-zinc-700 shadow-xl space-y-4">
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-zinc-900 to-zinc-800 border border-zinc-700 shadow-xl space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <BrainCircuit size={18} className="text-amber-400" />
+                      <BrainCircuit size={16} className="text-amber-400" />
                       <span className="text-xs font-black text-white uppercase tracking-widest">Asistente IA Gemini</span>
                     </div>
                     {isAILoading && <RefreshCw size={14} className="text-amber-400 animate-spin" />}
@@ -1126,25 +1126,25 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
                 </div>
               )}
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 flex items-center">
-                  <Info size={14} className="mr-2 text-blue-500" />
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 flex items-center">
+                  <Info size={14} className="mr-1.5 text-blue-500" />
                   Descripción del requerimiento
                 </label>
                 <textarea
                   required
-                  className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all min-h-[100px]"
+                  className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all min-h-[90px]"
                   placeholder="Ej: El sistema debe permitir el login con OAuth2..."
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Tipo</label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Tipo</label>
                   <select
-                    className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
                     value={formData.type}
                     onChange={(e) => setFormData({...formData, type: e.target.value})}
                   >
@@ -1154,10 +1154,10 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
                   </select>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Estado Essence</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Estado Essence</label>
                   <select
-                    className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none font-bold uppercase text-[10px]"
+                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none font-bold uppercase text-[10px]"
                     value={formData.essence_state}
                     onChange={(e) => setFormData({...formData, essence_state: e.target.value})}
                   >
@@ -1166,11 +1166,11 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">¿Quién realiza el cambio?</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">¿Quién realiza el cambio?</label>
                 <select
                   required
-                  className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
                   value={formData.madeById}
                   onChange={(e) => setFormData({...formData, madeById: e.target.value})}
                 >
@@ -1180,11 +1180,11 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
               </div>
 
               {/* Leader Overwrite Section */}
-              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-700/50 space-y-4">
+              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-700/50 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <Crown size={16} className="text-amber-500" />
-                    <span className="text-sm font-bold dark:text-white">Líder Supervisor</span>
+                    <span className="text-xs font-bold dark:text-white">Líder Supervisor</span>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input 
@@ -1194,19 +1194,19 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
                       onChange={(e) => setFormData({...formData, overwriteLeader: e.target.checked})}
                     />
                     <div className="w-9 h-5 bg-zinc-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-                    <span className="ml-2 text-[11px] font-medium text-zinc-500 uppercase tracking-tight">Sobrescribir</span>
+                    <span className="ml-2 text-[10px] font-medium text-zinc-500 uppercase tracking-tight">Sobrescribir</span>
                   </label>
                 </div>
 
                 {!formData.overwriteLeader ? (
-                  <div className="flex items-center space-x-3 text-sm text-zinc-600 dark:text-zinc-400 italic">
-                    <User size={14} />
+                  <div className="flex items-center space-x-2 text-xs text-zinc-600 dark:text-zinc-400 italic">
+                    <User size={13} />
                     <span>Se registrará al líder actual: <strong>{currentLeader?.name || 'Ninguno'}</strong></span>
                   </div>
                 ) : (
                   <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
                     <select
-                      className="w-full px-4 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
                       value={formData.leaderId}
                       onChange={(e) => setFormData({...formData, leaderId: e.target.value})}
                     >
@@ -1217,19 +1217,19 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
               </div>
             </div>
             
-            <div className="p-6 bg-zinc-50 dark:bg-zinc-800/30 flex items-center justify-end space-x-3">
+            <div className="p-4 sm:p-5 border-t border-zinc-100 dark:border-zinc-800/80 shrink-0 bg-zinc-50/80 dark:bg-zinc-900/80 flex items-center justify-end space-x-3 backdrop-blur-md">
               <button 
                 type="button"
                 onClick={() => setIsReqModalOpen(false)}
-                className="px-6 py-2.5 rounded-xl text-sm font-bold text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
               >
                 Cancelar
               </button>
               <button 
                 type="submit"
-                className="px-8 py-2.5 rounded-xl text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20 flex items-center"
+                className="px-5 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-500/20 flex items-center"
               >
-                <Save size={18} className="mr-2" />
+                <Save size={15} className="mr-1.5" />
                 {editingReq ? 'Guardar Cambios' : 'Crear Registro'}
               </button>
             </div>
@@ -1566,26 +1566,26 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
 
       {/* MODAL: Generación Masiva IA */}
       {isBulkModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-zinc-900 w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-amber-500/20">
-            <div className="p-6 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-gradient-to-r from-amber-500/10 to-transparent">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-zinc-950/70 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden border border-amber-500/20 flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between shrink-0 bg-gradient-to-r from-amber-500/10 to-transparent">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
-                  <Sparkles size={20} />
+                <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center text-white shadow-md shadow-amber-500/20">
+                  <Sparkles size={18} />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Generación con IA (Modelo FURPS)</h3>
-                  <p className="text-sm text-zinc-500">Define tu proyecto y Gemini hará el resto.</p>
+                  <h3 className="text-base font-bold text-zinc-900 dark:text-white">Generación con IA (Modelo FURPS)</h3>
+                  <p className="text-xs text-zinc-500">Define tu proyecto y Gemini hará el resto.</p>
                 </div>
               </div>
-              <button onClick={() => setIsBulkModalOpen(false)} className="p-2 text-zinc-400 hover:text-zinc-600"><X size={20} /></button>
+              <button onClick={() => setIsBulkModalOpen(false)} className="p-1.5 text-zinc-400 hover:text-zinc-600"><X size={18} /></button>
             </div>
             
-            <div className="p-8 space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-zinc-700 dark:text-zinc-300">Descripción General del Proyecto</label>
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1 custom-scrollbar">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Descripción General del Proyecto</label>
                 <textarea
-                  className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white min-h-[120px] outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white text-xs sm:text-sm min-h-[100px] outline-none focus:ring-2 focus:ring-amber-500"
                   placeholder="Ej: Plataforma de e-commerce para venta de artesanías..."
                   value={projectDescription}
                   onChange={(e) => setProjectDescription(e.target.value)}
@@ -1593,13 +1593,13 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
               </div>
 
               {/* Pattern Selection inside Modal */}
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-zinc-700 dark:text-zinc-300 flex items-center">
-                  <BookOpen size={14} className="mr-2 text-blue-500" />
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300 flex items-center">
+                  <BookOpen size={14} className="mr-1.5 text-blue-500" />
                   Patrón de Redacción
                 </label>
                 <select 
-                  className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-blue-500"
                   value={selectedPatternId}
                   onChange={(e) => setSelectedPatternId(e.target.value)}
                 >
@@ -1609,7 +1609,7 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
                 </select>
                 {selectedPatternId === 'custom' && (
                   <textarea 
-                    className="w-full mt-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px] animate-in slide-in-from-top-2"
+                    className="w-full mt-2 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 min-h-[70px]"
                     placeholder="Describe las reglas de redacción..."
                     value={customPattern}
                     onChange={(e) => setCustomPattern(e.target.value)}
@@ -1617,29 +1617,29 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-bold text-zinc-700 dark:text-zinc-300">N° Requerimientos</label>
+                    <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300">N° Requerimientos</label>
                     <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-tighter italic">Opcional</span>
                   </div>
                   <input 
                     type="number"
                     min="1"
                     max="30"
-                    className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-amber-500"
                     placeholder="Auto"
                     value={reqCount}
                     onChange={(e) => setReqCount(e.target.value)}
                   />
-                  <p className="text-[10px] text-zinc-500 leading-tight italic">Si se deja vacío, la IA generará la cantidad que considere necesaria para cubrir el proyecto.</p>
+                  <p className="text-[10px] text-zinc-500 leading-tight italic">Si se deja vacío, la IA generará la cantidad necesaria.</p>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-zinc-700 dark:text-zinc-300">Responsable</label>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Responsable</label>
                     <select
-                      className="w-full px-4 py-2.5 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white outline-none"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white outline-none"
                       value={formData.madeById}
                       onChange={(e) => setFormData({...formData, madeById: e.target.value})}
                     >
@@ -1647,10 +1647,10 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
                       {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-zinc-700 dark:text-zinc-300">Líder Supervisor</label>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Líder Supervisor</label>
                     <select
-                      className="w-full px-4 py-2.5 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white outline-none"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white outline-none"
                       value={formData.leaderId}
                       onChange={(e) => setFormData({...formData, leaderId: e.target.value})}
                     >
@@ -1662,19 +1662,19 @@ export default function EquiposPage({ searchParams }: { searchParams: Promise<{ 
               </div>
             </div>
 
-            <div className="p-6 bg-zinc-50 dark:bg-zinc-800/30 flex items-center justify-end space-x-3">
+            <div className="px-6 py-4 bg-zinc-50 dark:bg-zinc-800/30 shrink-0 flex items-center justify-end space-x-3 border-t border-zinc-100 dark:border-zinc-800">
               <button 
                 onClick={() => setIsBulkModalOpen(false)}
-                className="px-6 py-2.5 rounded-xl text-sm font-bold text-zinc-500"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-500"
               >
                 Cancelar
               </button>
               <button 
                 onClick={handleBulkGenerate}
                 disabled={isAILoading || !projectDescription}
-                className="px-8 py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 shadow-lg shadow-amber-500/20 flex items-center disabled:opacity-50"
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 shadow-md shadow-amber-500/20 flex items-center disabled:opacity-50"
               >
-                {isAILoading ? <RefreshCw size={18} className="mr-2 animate-spin" /> : <Wand2 size={18} className="mr-2" />}
+                {isAILoading ? <RefreshCw size={15} className="mr-1.5 animate-spin" /> : <Wand2 size={15} className="mr-1.5" />}
                 Generar Requerimientos
               </button>
             </div>
