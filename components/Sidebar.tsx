@@ -2,36 +2,67 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { FolderGit2, Users, BookOpen, HelpCircle, User } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { FolderGit2, Users, BookOpen, HelpCircle, LogOut } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { toast } from 'react-hot-toast';
+
+interface UserState {
+  email?: string;
+  name?: string;
+  profession?: string;
+}
 
 const Sidebar = () => {
   const pathname = usePathname();
-  const [currentUser, setCurrentUser] = useState<{ email?: string; name?: string } | null>(null);
+  const router = useRouter();
+  const [currentUser, setCurrentUser] = useState<UserState | null>(null);
 
   useEffect(() => {
     async function loadUser() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
+          // Consultar perfil de usuario
           const { data: profile } = await supabase
             .from('perfil_usuario')
             .select('nombre, correo')
             .eq('id', user.id)
             .single();
 
+          // Consultar profesión asignada
+          const { data: profData } = await supabase
+            .from('usuario_profesion')
+            .select(`
+              profesiones:profesiones(nombre)
+            `)
+            .eq('id_usuario', user.id)
+            .maybeSingle();
+
+          const profesionNombre = (profData as any)?.profesiones?.nombre || null;
+
           setCurrentUser({
             email: user.email,
-            name: profile?.nombre || user.email?.split('@')[0] || 'Usuario'
+            name: profile?.nombre || user.email?.split('@')[0] || 'Usuario',
+            profession: profesionNombre || 'Sin profesión registrada'
           });
         }
       } catch (e) {
-        // En caso de que no haya conexión o sesión
+        // Manejo silencioso
       }
     }
     loadUser();
   }, []);
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      toast.success('Sesión finalizada');
+      window.location.href = '/login';
+    } catch (err: any) {
+      toast.error('Error al cerrar sesión');
+    }
+  };
 
   const menuItems = [
     { name: 'Proyectos', href: '/', icon: FolderGit2 },
@@ -75,19 +106,28 @@ const Sidebar = () => {
         </nav>
       </div>
 
-      <div className="mt-auto p-6 border-t border-zinc-100 dark:border-zinc-900">
-        <div className="bg-zinc-50 dark:bg-zinc-900 rounded-2xl p-4 flex items-center space-x-3">
-          <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs font-semibold uppercase">
-            {currentUser?.name ? currentUser.name.slice(0, 2).toUpperCase() : '?'}
+      <div className="mt-auto p-4 border-t border-zinc-100 dark:border-zinc-900">
+        <div className="bg-zinc-50 dark:bg-zinc-900 rounded-2xl p-3 flex items-center justify-between">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="w-9 h-9 shrink-0 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs font-semibold uppercase">
+              {currentUser?.name ? currentUser.name.slice(0, 2).toUpperCase() : '?'}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-semibold dark:text-white leading-tight truncate">
+                {currentUser?.name || 'Usuario'}
+              </span>
+              <span className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+                {currentUser?.profession || currentUser?.email || 'Puesto desconocido'}
+              </span>
+            </div>
           </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-sm font-semibold dark:text-white leading-tight truncate">
-              {currentUser?.name || 'Usuario'}
-            </span>
-            <span className="text-[11px] text-zinc-500 dark:text-zinc-500 truncate">
-              {currentUser?.email || 'Puesto desconocido'}
-            </span>
-          </div>
+          <button
+            onClick={handleSignOut}
+            title="Cerrar sesión"
+            className="p-1.5 shrink-0 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors cursor-pointer"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
     </aside>
@@ -95,3 +135,4 @@ const Sidebar = () => {
 };
 
 export default Sidebar;
+

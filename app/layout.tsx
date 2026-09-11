@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import SupabaseProviderLib from "@/lib/supabase-provider";
 import { Toaster } from 'react-hot-toast';
-import Sidebar from "@/components/Sidebar";
+import AppLayoutClient from "@/components/AppLayoutClient";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,14 +37,9 @@ export default function RootLayout({
     <html lang="es">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-50 dark:bg-zinc-950`}>
         <SupabaseProviderLocal>
-          <div className="flex">
-            <Sidebar />
-            <main className="flex-1 ml-[260px] min-h-screen">
-              <div className="max-w-7xl mx-auto py-8 px-8">
-                {children}
-              </div>
-            </main>
-          </div>
+          <AppLayoutClient>
+            {children}
+          </AppLayoutClient>
           <Toaster 
             position="top-right"
             toastOptions={{
@@ -60,3 +55,4 @@ export default function RootLayout({
     </html>
   );
 }
+
