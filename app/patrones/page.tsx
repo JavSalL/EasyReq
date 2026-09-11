@@ -5,193 +5,302 @@ import { supabase } from '@/lib/supabase-client';
 import toast from "react-hot-toast";
 import { 
   Plus, Edit2, Trash2, Save, X, BookOpen, ChevronLeft, 
-  MessageSquare, Layout, Sparkles, BrainCircuit
+  Sparkles, Layers, Cpu, Check, Filter, Search, Copy
 } from 'lucide-react';
 import { useRouter } from "next/navigation";
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
-type Pattern = {
-  id: number;
-  name: string;
-  description: string;
-  prompt: string;
-  created_at: string;
-}
+import type { Modelo, Patron } from '@/lib/database.types';
 
 export default function PatronesPage() {
   const router = useRouter();
-  const [patrones, setPatrones] = useState<Array<Pattern>>([]);
+  const [modelos, setModelos] = useState<Array<Modelo>>([]);
+  const [patrones, setPatrones] = useState<Array<Patron>>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedModeloFilter, setSelectedModeloFilter] = useState<string>("todos");
+  const [searchTerm, setSearchTerm] = useState("");
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingPattern, setEditingPattern] = useState<Pattern | null>(null);
-  const [formData, setFormData] = useState({ name: '', description: '', prompt: '' });
+  const [editingPattern, setEditingPattern] = useState<Patron | null>(null);
+  const [formData, setFormData] = useState({ 
+    nombre: '', 
+    promt: '', 
+    id_modelo: '' 
+  });
+  const [saving, setSaving] = useState(false);
 
   // Delete State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [patternToDelete, setPatternToDelete] = useState<Pattern | null>(null);
-  const [confirmText, setConfirmText] = useState("");
+  const [patternToDelete, setPatternToDelete] = useState<Patron | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('patrones')
-      .select('*')
-      .order('created_at', { ascending: true });
-    
-    if (error) toast.error("Error al cargar patrones");
-    else setPatrones(data || []);
-    setLoading(false);
+    try {
+      // 1. Cargar Modelos
+      const { data: modelosData } = await supabase
+        .from('modelo')
+        .select('*')
+        .order('nombre');
+      setModelos(modelosData || []);
+
+      // 2. Cargar Patrones con su modelo asociado
+      const { data: patronesData, error } = await supabase
+        .from('patron')
+        .select(`
+          *,
+          modelo:modelo(id, nombre, descripcion)
+        `)
+        .order('created_at', { ascending: true });
+      
+      if (error) {
+        console.error(error);
+        toast.error("Error al cargar patrones");
+      } else {
+        setPatrones(patronesData || []);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const openModal = (pattern: Pattern | null = null) => {
+  const openModal = (pattern: Patron | null = null) => {
     if (pattern) {
       setEditingPattern(pattern);
       setFormData({ 
-        name: pattern.name, 
-        description: pattern.description || '', 
-        prompt: pattern.prompt 
+        nombre: pattern.nombre, 
+        promt: pattern.promt,
+        id_modelo: pattern.id_modelo || '' 
       });
     } else {
       setEditingPattern(null);
-      setFormData({ name: '', description: '', prompt: '' });
+      setFormData({ 
+        nombre: '', 
+        promt: '', 
+        id_modelo: modelos[0]?.id || '' 
+      });
     }
     setIsModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.prompt) {
-      toast.error("Nombre y Prompt son obligatorios");
+    if (!formData.nombre.trim() || !formData.promt.trim()) {
+      toast.error("El nombre y la sintaxis/prompt son obligatorios");
       return;
     }
 
-    if (editingPattern) {
-      const { error } = await supabase
-        .from('patrones')
-        .update(formData)
-        .eq('id', editingPattern.id);
-      
-      if (error) toast.error("Error al actualizar");
-      else {
+    setSaving(true);
+    try {
+      if (editingPattern) {
+        const { error } = await supabase
+          .from('patron')
+          .update({
+            nombre: formData.nombre.trim(),
+            promt: formData.promt.trim(),
+            id_modelo: formData.id_modelo || null
+          })
+          .eq('patron_id', editingPattern.patron_id);
+        
+        if (error) throw error;
         toast.success("Patrón actualizado");
-        setIsModalOpen(false);
-        fetchData();
+      } else {
+        const { error } = await supabase
+          .from('patron')
+          .insert([{
+            nombre: formData.nombre.trim(),
+            promt: formData.promt.trim(),
+            id_modelo: formData.id_modelo || null
+          }]);
+        
+        if (error) throw error;
+        toast.success("Patrón registrado con éxito");
       }
-    } else {
-      const { error } = await supabase
-        .from('patrones')
-        .insert([formData]);
-      
-      if (error) toast.error("Error al crear");
-      else {
-        toast.success("Patrón creado");
-        setIsModalOpen(false);
-        fetchData();
-      }
+
+      setIsModalOpen(false);
+      fetchData();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Error al guardar el patrón");
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const confirmDelete = (pattern: Patron) => {
+    setPatternToDelete(pattern);
+    setIsDeleteModalOpen(true);
   };
 
   const handleDelete = async () => {
-    if (confirmText !== 'BORRAR' || !patternToDelete) return;
+    if (!patternToDelete) return;
+    try {
+      const { error } = await supabase
+        .from('patron')
+        .delete()
+        .eq('patron_id', patternToDelete.patron_id);
 
-    const { error } = await supabase
-      .from('patrones')
-      .delete()
-      .eq('id', patternToDelete.id);
-
-    if (error) toast.error("Error al eliminar");
-    else {
+      if (error) throw error;
       toast.success("Patrón eliminado");
       setIsDeleteModalOpen(false);
-      setPatternToDelete(null);
-      setConfirmText("");
       fetchData();
+    } catch (e: any) {
+      toast.error("Error al eliminar patrón");
     }
   };
 
+  const copyPrompt = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Sintaxis copiada al portapapeles");
+  };
+
+  const filteredPatrones = patrones.filter((p) => {
+    const matchSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        p.promt.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchModelo = selectedModeloFilter === 'todos' || p.id_modelo === selectedModeloFilter;
+    return matchSearch && matchModelo;
+  });
+
   return (
-    <div className="max-w-7xl mx-auto space-y-10 animate-in fade-in duration-700 pb-20">
+    <div className="space-y-8 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-6">
+        <div>
           <button 
             onClick={() => router.push('/')}
-            className="p-3 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-2xl transition-all text-zinc-500"
+            className="inline-flex items-center text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors mb-2 group"
           >
-            <ChevronLeft size={24} />
+            <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
+            Volver a Proyectos
           </button>
-          <div>
-            <h1 className="text-4xl font-black text-zinc-900 dark:text-white tracking-tighter">Patrones de IA</h1>
-            <p className="text-zinc-500 font-medium">Define las reglas que seguirá Gemini para redactar requerimientos.</p>
-          </div>
+          <h1 className="text-3xl font-bold text-zinc-900 dark:text-white tracking-tight flex items-center gap-3">
+            <BookOpen className="text-blue-600" size={32} />
+            Modelos y Patrones de Requisitos
+          </h1>
+          <p className="text-zinc-500 dark:text-zinc-400 mt-1 text-sm">
+            Catálogo formal de sintaxis y patrones estructurados (EARS, Sistemas Embebidos, Lenguaje Natural Dr. Reyes).
+          </p>
         </div>
-        <button 
+        
+        <button
           onClick={() => openModal()}
-          className="px-8 py-4 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-3xl font-black uppercase text-xs tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center shadow-2xl"
+          className="inline-flex items-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-md shadow-blue-500/20 font-medium text-sm"
         >
-          <Plus size={18} className="mr-2" /> Nuevo Patrón
+          <Plus size={18} className="mr-2" />
+          Nuevo Patrón
         </button>
       </div>
 
-      {/* Grid */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {[1, 2, 3].map(i => <div key={i} className="h-64 bg-zinc-100 dark:bg-zinc-900 rounded-[40px] animate-pulse" />)}
+      {/* Tabs / Filtros por Modelo */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setSelectedModeloFilter('todos')}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all ${
+            selectedModeloFilter === 'todos'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+          }`}
+        >
+          Todos los Modelos ({patrones.length})
+        </button>
+        {modelos.map((m) => {
+          const count = patrones.filter(p => p.id_modelo === m.id).length;
+          return (
+            <button
+              key={m.id}
+              onClick={() => setSelectedModeloFilter(m.id)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all ${
+                selectedModeloFilter === m.id
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+              }`}
+            >
+              {m.nombre} ({count})
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Buscador */}
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+          <Search size={16} className="text-zinc-400" />
         </div>
-      ) : patrones.length === 0 ? (
-        <div className="py-40 text-center space-y-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-[60px] border-4 border-dashed border-zinc-100 dark:border-zinc-800">
-          <BookOpen size={64} className="mx-auto text-zinc-200" />
-          <p className="text-2xl font-black text-zinc-300">No hay patrones registrados</p>
+        <input
+          type="text"
+          placeholder="Buscar patrón por nombre o sintaxis..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-zinc-900 dark:text-white"
+        />
+      </div>
+
+      {/* Grid de Patrones */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-44 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl animate-pulse" />
+          ))}
+        </div>
+      ) : filteredPatrones.length === 0 ? (
+        <div className="text-center py-16 bg-white dark:bg-zinc-900 rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-800">
+          <p className="text-zinc-500 text-sm">No se encontraron patrones para este criterio.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {patrones.map((p) => (
-            <div 
-              key={p.id}
-              className="group bg-white dark:bg-zinc-900 border-2 border-zinc-100 dark:border-zinc-800 rounded-[48px] p-10 hover:border-blue-500 transition-all flex flex-col shadow-sm hover:shadow-2xl hover:shadow-blue-500/10"
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {filteredPatrones.map((pat) => (
+            <div
+              key={pat.patron_id}
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 hover:shadow-lg hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-200 flex flex-col justify-between"
             >
-              <div className="flex items-start justify-between mb-8">
-                <div className="w-16 h-16 bg-zinc-50 dark:bg-zinc-800 rounded-[24px] flex items-center justify-center text-zinc-400 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner">
-                  <BrainCircuit size={32} />
-                </div>
-                <div className="flex space-x-2">
-                  <button onClick={() => openModal(p)} className="p-3 text-zinc-300 hover:text-blue-500 hover:bg-blue-50 rounded-2xl transition-all">
-                    <Edit2 size={20} />
-                  </button>
-                  <button 
-                    onClick={() => { setPatternToDelete(p); setIsDeleteModalOpen(true); }}
-                    className="p-3 text-zinc-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                </div>
-              </div>
+              <div>
+                {/* Encabezado del Patrón */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+                        {pat.nombre}
+                      </h3>
+                    </div>
+                    {pat.modelo && (
+                      <span className="inline-block mt-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 px-2.5 py-0.5 rounded-md border border-blue-200 dark:border-blue-800/50">
+                        {pat.modelo.nombre}
+                      </span>
+                    )}
+                  </div>
 
-              <div className="flex-1 space-y-4">
-                <h3 className="text-2xl font-black text-zinc-900 dark:text-white tracking-tight leading-tight">{p.name}</h3>
-                <p className="text-zinc-500 text-sm font-medium line-clamp-3 leading-relaxed">{p.description}</p>
-              </div>
-
-              <div className="mt-8 pt-8 border-t border-zinc-50 dark:border-zinc-800">
-                <div className="flex items-center space-x-3 text-zinc-400">
-                  <MessageSquare size={16} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Prompt Activo</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => copyPrompt(pat.promt)}
+                      title="Copiar sintaxis"
+                      className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg transition-colors"
+                    >
+                      <Copy size={15} />
+                    </button>
+                    <button
+                      onClick={() => openModal(pat)}
+                      title="Editar patrón"
+                      className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-blue-600 rounded-lg transition-colors"
+                    >
+                      <Edit2 size={15} />
+                    </button>
+                    <button
+                      onClick={() => confirmDelete(pat)}
+                      title="Eliminar patrón"
+                      className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-600 rounded-lg transition-colors"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-3 p-4 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-100 dark:border-zinc-800 group-hover:border-blue-100 transition-all">
-                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 line-clamp-2 font-mono italic">
-                    {p.prompt}
-                  </p>
+
+                {/* Caja de Sintaxis / Template */}
+                <div className="bg-zinc-50 dark:bg-zinc-950/60 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 font-mono text-xs text-zinc-800 dark:text-zinc-200 leading-relaxed overflow-x-auto whitespace-pre-wrap">
+                  {pat.promt}
                 </div>
               </div>
             </div>
@@ -199,108 +308,109 @@ export default function PatronesPage() {
         </div>
       )}
 
-      {/* MODAL: CREATE/EDIT */}
+      {/* Modal Crear / Editar Patrón */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <form 
-            onSubmit={handleSave}
-            className="bg-white dark:bg-zinc-900 w-full max-w-2xl rounded-[48px] shadow-2xl overflow-hidden animate-in zoom-in-95"
-          >
-            <div className="p-10 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50 dark:bg-zinc-900/50">
-              <div>
-                <h3 className="text-3xl font-black text-zinc-900 dark:text-white tracking-tighter">
-                  {editingPattern ? 'Editar Patrón' : 'Nuevo Patrón'}
-                </h3>
-                <p className="text-sm text-zinc-500 font-medium italic mt-1">Configura la lógica de redacción técnica.</p>
-              </div>
-              <button type="button" onClick={() => setIsModalOpen(false)} className="p-4 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-3xl text-zinc-400 transition-all">
-                <X size={28} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+              <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+                {editingPattern ? 'Editar Patrón' : 'Nuevo Patrón'}
+              </h3>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              >
+                <X size={18} />
               </button>
             </div>
-            
-            <div className="p-10 space-y-8">
-              <div className="space-y-3">
-                <label className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400 ml-1">Nombre del Patrón</label>
-                <input
-                  required
-                  placeholder="Ej: Patrón Dr. Reyes (V2)"
-                  className="w-full px-8 py-5 rounded-[24px] border-2 border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white focus:border-blue-500 outline-none transition-all font-bold text-lg shadow-inner"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                />
-              </div>
 
-              <div className="space-y-3">
-                <label className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400 ml-1">Descripción Breve</label>
-                <input
-                  placeholder="Para qué sirve este patrón..."
-                  className="w-full px-8 py-4 rounded-[20px] border-2 border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white focus:border-blue-500 outline-none transition-all font-medium shadow-inner"
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400 ml-1">Prompt de Instrucción para IA</label>
-                <textarea
-                  required
-                  placeholder="Redacta el requerimiento usando la siguiente estructura..."
-                  className="w-full px-8 py-6 rounded-[32px] border-2 border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white focus:border-blue-500 outline-none transition-all font-medium min-h-[200px] shadow-inner text-sm leading-relaxed"
-                  value={formData.prompt}
-                  onChange={(e) => setFormData({...formData, prompt: e.target.value})}
-                />
-              </div>
-            </div>
-
-            <div className="p-10 bg-zinc-50 dark:bg-zinc-800/30 flex justify-end">
-              <button type="submit" className="w-full py-6 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-[24px] font-black uppercase text-xs tracking-[0.3em] shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center">
-                <Save size={18} className="mr-3" /> {editingPattern ? 'Actualizar Patrón' : 'Guardar Patrón'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* MODAL: DELETE CONFIRMATION */}
-      {isDeleteModalOpen && patternToDelete && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[48px] shadow-2xl overflow-hidden border-4 border-red-500/20 animate-in zoom-in-95">
-            <div className="p-10 text-center space-y-6">
-              <div className="w-20 h-20 bg-red-100 dark:bg-red-900/20 text-red-600 rounded-[30px] flex items-center justify-center mx-auto">
-                <Trash2 size={40} />
-              </div>
+            <form onSubmit={handleSave} className="space-y-4">
               <div>
-                <h3 className="text-2xl font-black text-zinc-900 dark:text-white uppercase tracking-tight">Eliminar Patrón</h3>
-                <p className="text-zinc-500 text-sm mt-2">
-                  Esta acción eliminará permanentemente el patrón <span className="font-black text-red-600">{patternToDelete.name}</span>.
-                </p>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
+                  Modelo Perteneciente
+                </label>
+                <select
+                  value={formData.id_modelo}
+                  onChange={(e) => setFormData({ ...formData, id_modelo: e.target.value })}
+                  className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 text-zinc-900 dark:text-white"
+                >
+                  <option value="">Selecciona un modelo...</option>
+                  {modelos.map((m) => (
+                    <option key={m.id} value={m.id}>{m.nombre}</option>
+                  ))}
+                </select>
               </div>
 
-              <div className="space-y-4 pt-4 text-left">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-1">
-                  Escribe <span className="text-red-600">BORRAR</span> para confirmar
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
+                  Nombre del Patrón
                 </label>
                 <input
                   type="text"
-                  placeholder="BORRAR"
-                  className="w-full px-6 py-4 rounded-2xl border-2 border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 text-red-600 focus:border-red-500 outline-none transition-all font-black text-center tracking-[0.5em]"
-                  value={confirmText}
-                  onChange={(e) => setConfirmText(e.target.value)}
+                  required
+                  placeholder="Ej: Event-Driven, State-Based, Ubiquitous..."
+                  value={formData.nombre}
+                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                  className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 text-zinc-900 dark:text-white"
                 />
               </div>
-            </div>
-            
-            <div className="grid grid-cols-2 border-t border-zinc-100 dark:border-zinc-800">
-              <button 
-                onClick={() => { setIsDeleteModalOpen(false); setConfirmText(""); }}
-                className="py-8 font-black uppercase text-xs tracking-widest text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all"
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
+                  Sintaxis / Estructura del Patrón
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="Ej: When <trigger>, the <system name> shall <system response>."
+                  value={formData.promt}
+                  onChange={(e) => setFormData({ ...formData, promt: e.target.value })}
+                  className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl font-mono text-xs focus:ring-2 focus:ring-blue-500 text-zinc-900 dark:text-white"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-medium transition-all shadow-md shadow-blue-500/20"
+                >
+                  <Save size={15} className="mr-1.5" />
+                  {saving ? 'Guardando...' : editingPattern ? 'Actualizar' : 'Crear Patrón'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmar Eliminar */}
+      {isDeleteModalOpen && patternToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+              ¿Eliminar patrón?
+            </h3>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              ¿Estás seguro de que deseas eliminar el patrón <strong>{patternToDelete.nombre}</strong>?
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-3.5 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl"
               >
                 Cancelar
               </button>
-              <button 
+              <button
                 onClick={handleDelete}
-                disabled={confirmText !== 'BORRAR'}
-                className="py-8 font-black uppercase text-xs tracking-widest text-white bg-red-600 hover:bg-red-700 disabled:opacity-30 disabled:grayscale transition-all"
+                className="px-3.5 py-1.5 text-xs font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-all"
               >
                 Eliminar
               </button>

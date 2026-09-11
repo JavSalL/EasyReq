@@ -1,17 +1,42 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, ShieldCheck, HelpCircle, ChevronRight, BookOpen } from 'lucide-react';
+import { FolderGit2, Users, BookOpen, HelpCircle, User } from 'lucide-react';
+import { supabase } from '@/lib/supabase-client';
 
 const Sidebar = () => {
   const pathname = usePathname();
+  const [currentUser, setCurrentUser] = useState<{ email?: string; name?: string } | null>(null);
+
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('perfil_usuario')
+            .select('nombre, correo')
+            .eq('id', user.id)
+            .single();
+
+          setCurrentUser({
+            email: user.email,
+            name: profile?.nombre || user.email?.split('@')[0] || 'Usuario'
+          });
+        }
+      } catch (e) {
+        // En caso de que no haya conexión o sesión
+      }
+    }
+    loadUser();
+  }, []);
 
   const menuItems = [
-    { name: 'Grupos', href: '/', icon: LayoutDashboard },
+    { name: 'Proyectos', href: '/', icon: FolderGit2 },
     { name: 'Equipos', href: '/equipos-global', icon: Users },
-    { name: 'Patrones IA', href: '/patrones', icon: BookOpen },
+    { name: 'Patrones & Modelos', href: '/patrones', icon: BookOpen },
     { name: 'Ayuda', href: '#', icon: HelpCircle },
   ];
 
@@ -52,12 +77,16 @@ const Sidebar = () => {
 
       <div className="mt-auto p-6 border-t border-zinc-100 dark:border-zinc-900">
         <div className="bg-zinc-50 dark:bg-zinc-900 rounded-2xl p-4 flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400 text-xs font-medium">
-            JR
+          <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs font-semibold uppercase">
+            {currentUser?.name ? currentUser.name.slice(0, 2).toUpperCase() : '?'}
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold dark:text-white leading-tight">J. Reyes</span>
-            <span className="text-[11px] text-zinc-500 dark:text-zinc-500">Administrador</span>
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-semibold dark:text-white leading-tight truncate">
+              {currentUser?.name || 'Usuario'}
+            </span>
+            <span className="text-[11px] text-zinc-500 dark:text-zinc-500 truncate">
+              {currentUser?.email || 'Puesto desconocido'}
+            </span>
           </div>
         </div>
       </div>
