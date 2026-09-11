@@ -240,8 +240,8 @@ export default function EquiposGlobalPage() {
   const openMembersModal = (team: EquipoDetallado) => {
     setEquipoParaMiembros(team);
     setMemberForm({
-      id_usuario: usuarios[0]?.id || '',
-      id_rol: roles[0]?.id || ''
+      id_usuario: '',
+      id_rol: ''
     });
     setIsMemberModalOpen(true);
   };
@@ -327,9 +327,9 @@ export default function EquiposGlobalPage() {
                 onChange={(e) => setMemberForm({ ...memberForm, id_usuario: e.target.value })}
                 className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">Selecciona un usuario...</option>
+                <option value="">Buscar usuario</option>
                 {usuarios.map(u => (
-                  <option key={u.id} value={u.id}>{u.nombre} ({u.correo})</option>
+                  <option key={u.id} value={u.id}>{u.nombre}</option>
                 ))}
               </select>
             </div>
