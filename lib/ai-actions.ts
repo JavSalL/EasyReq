@@ -6,7 +6,10 @@ const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 const genAI = new GoogleGenerativeAI(apiKey);
 
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-3.1-flash-lite", // Versión Lite con mayor límite de peticiones diarias
+  model: "gemini-3.5-flash-lite", // Versión Lite con mayor límite de peticiones diarias
+  generationConfig: {
+    responseMimeType: "application/json",
+  },
 });
 
 export interface AIRequirement {
@@ -23,10 +26,33 @@ export interface AIRequirement {
 }
 
 /**
+ * Función auxiliar para parsear respuestas JSON con fallbacks seguros.
+ */
+function safeJsonParse<T>(text: string, fallback: T): T {
+  try {
+    return JSON.parse(text.trim());
+  } catch {
+    try {
+      const cleaned = text.replace(/```(?:json)?\s*|\s*```/gi, '').trim();
+      return JSON.parse(cleaned);
+    } catch {
+      const arrayMatch = text.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        try { return JSON.parse(arrayMatch[0]); } catch {}
+      }
+      const objMatch = text.match(/\{[\s\S]*\}/);
+      if (objMatch) {
+        try { return JSON.parse(objMatch[0]); } catch {}
+      }
+      return fallback;
+    }
+  }
+}
+
+/**
  * Genera requerimientos en masa basados en la descripción de un proyecto.
  */
 export async function generateBulkRequirements(projectDesc: string, pattern?: string, count?: number): Promise<AIRequirement[]> {
-  console.log(pattern)
   const prompt = `
     Actúa como un experto en ingeniería de requisitos. Basado en la siguiente descripción del proyecto:
     "${projectDesc}"
@@ -47,18 +73,20 @@ export async function generateBulkRequirements(projectDesc: string, pattern?: st
     
     IMPORTANTE: 
     1. No generes observaciones ni notas IA durante la generación masiva (déjalas vacías o nulas).
-    2. Responde ÚNICAMENTE con un array JSON válido con la siguiente estructura:
+    2. Responde con un array JSON válido con la siguiente estructura:
     [{ "name": "...", "type_furps": "...", "ai_evaluation": { "actor": true, ... } }]
      donde name es el texto del requerimiento, type_furps es su categoría FURPS, y ai_evaluation es un objeto con los tags de redacción evaluados como booleanos.
   `;
 
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  const text = response.text();
-  
-  // Limpiar posibles bloques de código markdown
-  const jsonMatch = text.match(/\[[\s\S]*\]/);
-  return jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+  try {
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    return safeJsonParse<AIRequirement[]>(text, []);
+  } catch (err) {
+    console.error('Error al generar requerimientos en lote:', err);
+    return [];
+  }
 }
 
 /**
@@ -75,17 +103,20 @@ export async function generateSingleRequirement(userPrompt: string, pattern?: st
     
     IMPORTANTE:
     1. No generes observaciones ni notas IA (déjalas vacías o nulas).
-    2. Responde ÚNICAMENTE con un objeto JSON válido:
-    { "name": "...", "type_furps": "...", "ai_evaluation": { ... } }
-     donde name es el texto del requerimiento, type_furps es su categoría FURPS, y ai_evaluation debe ir vacío
+    2. Responde con un objeto JSON válido:
+    { "name": "...", "type_furps": "...", "ai_evaluation": { "actor": false, "accion": false, "objeto": false, "datos_entrada": false, "resultado": false } }
+     donde name es el texto del requerimiento, type_furps es su categoría FURPS, y ai_evaluation debe ir con los valores por defecto.
   `;
 
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  const text = response.text();
-  
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+  try {
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    return safeJsonParse<AIRequirement | null>(text, null);
+  } catch (err) {
+    console.error('Error al generar requerimiento individual:', err);
+    return null;
+  }
 }
 
 /**
@@ -109,7 +140,7 @@ export async function evaluateRequirement(requirementText: string, pattern?: str
     4. datos_entrada: fuente o medio/datos usados.
     5. resultado: fin esperado o efecto.
 
-    Responde ÚNICAMENTE con un objeto JSON:
+    Responde con un objeto JSON:
     { 
       "type_furps": "...", 
       "ai_evaluation": { 
@@ -123,10 +154,13 @@ export async function evaluateRequirement(requirementText: string, pattern?: str
     }
   `;
 
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  const text = response.text();
-  
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+  try {
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    return safeJsonParse<Partial<AIRequirement>>(text, {});
+  } catch (err) {
+    console.error('Error al evaluar requerimiento:', err);
+    return {};
+  }
 }
