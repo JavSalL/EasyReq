@@ -4,13 +4,14 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase-client';
 import { toast } from 'react-hot-toast';
-import { Lock, Mail, User, Briefcase, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Lock, Mail, User, Briefcase, ArrowRight, Sparkles, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
 import { Profesion } from '@/lib/database.types';
 
 export default function LoginPage() {
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [profesiones, setProfesiones] = useState<Profesion[]>([]);
 
   // Form states
@@ -18,6 +19,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [nombre, setNombre] = useState('');
   const [idProfesion, setIdProfesion] = useState('');
+
+  // Password validation rules
+  const passMinLength = password.length >= 8;
+  const passHasUpper = /[A-Z]/.test(password);
+  const passHasNumber = /[0-9]/.test(password);
+  const passHasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+  const isPasswordValid = passMinLength && passHasUpper && passHasNumber;
 
   useEffect(() => {
     // Si ya hay sesión activa, redirigir al dashboard
@@ -73,6 +81,25 @@ export default function LoginPage() {
           return;
         }
 
+        // Validación estricta de contraseña en registro
+        if (!passMinLength) {
+          toast.error('La contraseña debe tener al menos 8 caracteres');
+          setLoading(false);
+          return;
+        }
+
+        if (!passHasUpper) {
+          toast.error('La contraseña debe incluir al menos una letra mayúscula');
+          setLoading(false);
+          return;
+        }
+
+        if (!passHasNumber) {
+          toast.error('La contraseña debe incluir al menos un número');
+          setLoading(false);
+          return;
+        }
+
         // 1. Registro en Supabase Auth pasando nombre en metadata para el trigger
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: email.trim(),
@@ -115,8 +142,19 @@ export default function LoginPage() {
         window.location.href = '/';
       }
     } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || 'Ocurrió un error al procesar la solicitud');
+      let msg = err.message || 'Ocurrió un error al procesar la solicitud';
+      if (msg.includes('rate limit')) {
+        msg = 'Límite de solicitudes superado. Por favor espera unos minutos o desactiva la confirmación de correo en Supabase.';
+      } else if (msg.includes('Invalid login credentials')) {
+        msg = 'Correo electrónico o contraseña incorrectos.';
+      } else if (msg.includes('User already registered')) {
+        msg = 'Este correo ya está registrado. Por favor inicia sesión.';
+      } else if (msg.includes('is invalid')) {
+        msg = 'El formato del correo no es válido (ej. usuario@correo.com).';
+      } else if (msg.includes('Password should be at least')) {
+        msg = 'La contraseña debe tener al menos 6 caracteres.';
+      }
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -246,19 +284,112 @@ export default function LoginPage() {
                   <Lock size={18} />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
-                  minLength={6}
+                  minLength={isLogin ? 1 : 8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="block w-full pl-10 pr-4 py-2.5 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  className="block w-full pl-10 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+                  tabIndex={-1}
+                  title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
+
+              {/* Checklist visual de requisitos de contraseña (Solo en Registro) */}
               {!isLogin && (
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                  Mínimo 6 caracteres
-                </p>
+                <div className="mt-3 p-3 bg-zinc-50/80 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-700/60 rounded-xl space-y-1.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors ${
+                        passMinLength
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400'
+                      }`}
+                    >
+                      <Check size={11} strokeWidth={3} />
+                    </div>
+                    <span
+                      className={
+                        passMinLength
+                          ? 'text-emerald-700 dark:text-emerald-400 font-medium'
+                          : 'text-zinc-500 dark:text-zinc-400'
+                      }
+                    >
+                      Mínimo 8 caracteres
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors ${
+                        passHasUpper
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400'
+                      }`}
+                    >
+                      <Check size={11} strokeWidth={3} />
+                    </div>
+                    <span
+                      className={
+                        passHasUpper
+                          ? 'text-emerald-700 dark:text-emerald-400 font-medium'
+                          : 'text-zinc-500 dark:text-zinc-400'
+                      }
+                    >
+                      Al menos una letra mayúscula (A-Z)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors ${
+                        passHasNumber
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400'
+                      }`}
+                    >
+                      <Check size={11} strokeWidth={3} />
+                    </div>
+                    <span
+                      className={
+                        passHasNumber
+                          ? 'text-emerald-700 dark:text-emerald-400 font-medium'
+                          : 'text-zinc-500 dark:text-zinc-400'
+                      }
+                    >
+                      Al menos un número (0-9)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors ${
+                        passHasSpecial
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400'
+                      }`}
+                    >
+                      <Check size={11} strokeWidth={3} />
+                    </div>
+                    <span
+                      className={
+                        passHasSpecial
+                          ? 'text-emerald-700 dark:text-emerald-400 font-medium'
+                          : 'text-zinc-400 dark:text-zinc-500'
+                      }
+                    >
+                      Carácter especial <span className="text-[10px] text-zinc-400">(opcional)</span>
+                    </span>
+                  </div>
+                </div>
               )}
             </div>
 
