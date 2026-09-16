@@ -17,12 +17,12 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const isLoginPage = normalizedPath === '/login';
 
   useEffect(() => {
-    if (!loading) {
-      if (!user && !isLoginPage) {
-        router.replace('/login/');
-      } else if (user && isLoginPage) {
-        router.replace('/');
-      }
+    if (loading) return;
+
+    if (!user && !isLoginPage) {
+      router.replace('/login/');
+    } else if (user && isLoginPage) {
+      router.replace('/');
     }
   }, [user, loading, isLoginPage, router]);
 
