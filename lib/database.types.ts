@@ -1,8 +1,8 @@
 // ==========================================================
-// TIPOS TYPESCRIPT PARA EL NUEVO ESQUEMA DE SUPABASE
+// TIPOS TYPESCRIPT PARA EL ESQUEMA DE FIRESTORE
 // ==========================================================
 
-export type UUID = string;
+export type UUID = string; // ID de documento de Firestore
 
 // 1. Catálogos Base
 export interface TipoSistema {
@@ -43,7 +43,7 @@ export interface Modelo {
 
 // 2. Entidades Principales
 export interface PerfilUsuario {
-  id: UUID; // Coincide con auth.users(id)
+  id: UUID; // Coincide con el uid de Firebase Auth
   nombre: string;
   correo: string;
   created_at?: string;

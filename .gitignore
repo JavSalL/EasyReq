@@ -33,9 +33,14 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
-# vercel
+# vercel & firebase
 .vercel
+.firebase/
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# firebase service account keys (nunca deben subirse al repo)
+*serviceAccount*.json
+*firebase-adminsdk*.json

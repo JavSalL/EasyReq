@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from "react";
-import { supabase } from '@/lib/supabase-client';
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { 
@@ -9,6 +8,21 @@ import {
   X, Save, Edit2, Trash2, Crown, UserPlus, Shield, Check
 } from 'lucide-react';
 import type { Equipo, Proyecto, PerfilUsuario, Rol } from '@/lib/database.types';
+import { 
+  getEquipos, 
+  createEquipo, 
+  updateEquipo, 
+  deleteEquipo, 
+  getProyectos, 
+  getAllUsers, 
+  getRoles, 
+  getProyectoEquipos, 
+  linkEquipoToProyecto, 
+  unlinkEquipoFromProyecto, 
+  getMiembrosEquipo, 
+  addMiembroEquipo, 
+  removeMiembroEquipo 
+} from '@/lib/firestore-service';
 
 interface EquipoDetallado extends Equipo {
   proyectos?: Array<{ proyecto_id: string; nombre: string }>;
@@ -53,75 +67,50 @@ export default function EquiposGlobalPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Cargar proyectos, usuarios y roles para selectores
-      const [
-        { data: projData },
-        { data: usersData },
-        { data: rolesData },
-        { data: equiposData }
-      ] = await Promise.all([
-        supabase.from('proyecto').select('*').order('nombre'),
-        supabase.from('perfil_usuario').select('id, nombre, correo').order('nombre'),
-        supabase.from('roles').select('id, nombre_rol').order('nombre_rol'),
-        supabase.from('equipo').select('*').order('created_at', { ascending: false })
+      const [projData, usersData, rolesData, equiposData, peData, meData] = await Promise.all([
+        getProyectos(),
+        getAllUsers(),
+        getRoles(),
+        getEquipos(),
+        getProyectoEquipos(),
+        getMiembrosEquipo()
       ]);
 
-      setProyectos(projData || []);
-      setUsuarios(usersData || []);
-      setRoles(rolesData || []);
+      setProyectos(projData);
+      setUsuarios(usersData);
+      setRoles(rolesData);
 
-      if (equiposData && equiposData.length > 0) {
-        const equipoIds = equiposData.map(e => e.equipo_id);
+      const projMap = new Map(projData.map(p => [p.proyecto_id, p]));
 
-        // Consultar proyectos asignados a estos equipos
-        const { data: peData } = await supabase
-          .from('proyecto_equipos')
-          .select('id_equipo, proyecto:proyecto(proyecto_id, nombre)')
-          .in('id_equipo', equipoIds);
+      const formated: EquipoDetallado[] = equiposData.map(eq => {
+        const assignedProjIds = peData
+          .filter(pe => pe.id_equipo === eq.equipo_id)
+          .map(pe => pe.id_proyecto);
 
-        // Consultar miembros de estos equipos
-        const { data: meData } = await supabase
-          .from('miembros_equipo')
-          .select(`
-            id_equipo,
-            usuario:perfil_usuario(id, nombre, correo),
-            rol:roles(id, nombre_rol)
-          `)
-          .in('id_equipo', equipoIds);
+        const projs = assignedProjIds
+          .map(id => projMap.get(id))
+          .filter(Boolean)
+          .map(p => ({ proyecto_id: p!.proyecto_id, nombre: p!.nombre }));
 
-        // Consultar líderes actuales
-        const { data: lideresData } = await supabase
-          .from('historial_lideres')
-          .select('id_equipo, usuario:perfil_usuario(id, nombre, correo)')
-          .eq('es_actual', true)
-          .in('id_equipo', equipoIds);
+        const members = meData
+          .filter(me => me.id_equipo === eq.equipo_id && me.usuario)
+          .map(me => ({
+            usuario: me.usuario!,
+            rol: me.rol || null
+          }));
 
-        const formated: EquipoDetallado[] = equiposData.map(eq => {
-          const projs = (peData || [])
-            .filter((pe: any) => pe.id_equipo === eq.equipo_id && pe.proyecto)
-            .map((pe: any) => pe.proyecto);
+        // Identificar líder por rol
+        const liderMember = members.find(m => m.rol?.nombre_rol?.toLowerCase().includes('líder') || m.rol?.nombre_rol?.toLowerCase().includes('lider'));
 
-          const members = (meData || [])
-            .filter((me: any) => me.id_equipo === eq.equipo_id && me.usuario)
-            .map((me: any) => ({
-              usuario: me.usuario,
-              rol: me.rol
-            }));
+        return {
+          ...eq,
+          proyectos: projs,
+          miembros: members,
+          lider_actual: liderMember ? liderMember.usuario : null
+        };
+      });
 
-          const lider = (lideresData || []).find((l: any) => l.id_equipo === eq.equipo_id)?.usuario;
-
-          return {
-            ...eq,
-            proyectos: projs,
-            miembros: members,
-            lider_actual: lider || null
-          };
-        });
-
-        setEquipos(formated);
-      } else {
-        setEquipos([]);
-      }
+      setEquipos(formated);
     } catch (err) {
       console.error(err);
       toast.error('Error al cargar equipos');
@@ -167,43 +156,31 @@ export default function EquiposGlobalPage() {
       let teamId = editingEquipo?.equipo_id;
 
       if (editingEquipo) {
-        // Actualizar datos del equipo
-        const { error } = await supabase
-          .from('equipo')
-          .update({ 
-            nombre: formData.nombre.trim(), 
-            descripcion: formData.descripcion.trim() || null
-          })
-          .eq('equipo_id', editingEquipo.equipo_id);
-
-        if (error) throw error;
+        await updateEquipo(editingEquipo.equipo_id, { 
+          nombre: formData.nombre.trim(), 
+          descripcion: formData.descripcion.trim() || undefined
+        });
       } else {
-        // Crear nuevo equipo
-        const { data: newTeam, error } = await supabase
-          .from('equipo')
-          .insert([{ 
-            nombre: formData.nombre.trim(), 
-            descripcion: formData.descripcion.trim() || null
-          }])
-          .select()
-          .single();
-
-        if (error) throw error;
+        const newTeam = await createEquipo({ 
+          nombre: formData.nombre.trim(), 
+          descripcion: formData.descripcion.trim() || undefined
+        });
         teamId = newTeam.equipo_id;
       }
 
-      // Sincronizar asignaciones de proyectos (proyecto_equipos)
+      // Sincronizar asignaciones de proyectos
       if (teamId) {
-        // Eliminar anteriores
-        await supabase.from('proyecto_equipos').delete().eq('id_equipo', teamId);
-
-        // Insertar seleccionados
-        if (formData.proyectos_seleccionados.length > 0) {
-          const rows = formData.proyectos_seleccionados.map(projId => ({
-            id_equipo: teamId,
-            id_proyecto: projId
-          }));
-          await supabase.from('proyecto_equipos').insert(rows);
+        // Unlink old
+        const allPE = await getProyectoEquipos();
+        const currentPE = allPE.filter(pe => pe.id_equipo === teamId);
+        for (const pe of currentPE) {
+          if (!formData.proyectos_seleccionados.includes(pe.id_proyecto)) {
+            await unlinkEquipoFromProyecto(pe.id_proyecto, teamId);
+          }
+        }
+        // Link new
+        for (const projId of formData.proyectos_seleccionados) {
+          await linkEquipoToProyecto(projId, teamId);
         }
       }
 
@@ -222,12 +199,7 @@ export default function EquiposGlobalPage() {
   const handleDeleteTeam = async () => {
     if (!equipoToDelete) return;
     try {
-      const { error } = await supabase
-        .from('equipo')
-        .delete()
-        .eq('equipo_id', equipoToDelete.equipo_id);
-
-      if (error) throw error;
+      await deleteEquipo(equipoToDelete.equipo_id);
       toast.success("Equipo eliminado");
       setIsDeleteModalOpen(false);
       fetchData();
@@ -252,15 +224,7 @@ export default function EquiposGlobalPage() {
     if (!equipoParaMiembros || !memberForm.id_usuario) return;
 
     try {
-      const { error } = await supabase
-        .from('miembros_equipo')
-        .upsert([{
-          id_equipo: equipoParaMiembros.equipo_id,
-          id_usuario: memberForm.id_usuario,
-          id_rol: memberForm.id_rol || null
-        }]);
-
-      if (error) throw error;
+      await addMiembroEquipo(equipoParaMiembros.equipo_id, memberForm.id_usuario, memberForm.id_rol || null);
       toast.success("Miembro agregado al equipo");
       fetchData();
     } catch (e: any) {
@@ -272,13 +236,7 @@ export default function EquiposGlobalPage() {
   const handleRemoveMember = async (userId: string) => {
     if (!equipoParaMiembros) return;
     try {
-      const { error } = await supabase
-        .from('miembros_equipo')
-        .delete()
-        .eq('id_equipo', equipoParaMiembros.equipo_id)
-        .eq('id_usuario', userId);
-
-      if (error) throw error;
+      await removeMiembroEquipo(equipoParaMiembros.equipo_id, userId);
       toast.success("Miembro removido");
       fetchData();
     } catch (e: any) {
@@ -292,6 +250,9 @@ export default function EquiposGlobalPage() {
   );
 
   if (isMemberModalOpen && equipoParaMiembros) {
+    // Buscar datos actualizados del equipo
+    const currentDetailed = equipos.find(e => e.equipo_id === equipoParaMiembros.equipo_id) || equipoParaMiembros;
+
     return (
       <div className="space-y-6 animate-in fade-in duration-300">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-5">
@@ -308,38 +269,46 @@ export default function EquiposGlobalPage() {
             </button>
             <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
               <Users className="text-zinc-700 dark:text-zinc-300" size={24} />
-              Gestión de Miembros: {equipoParaMiembros.nombre}
+              Gestión de Miembros: {currentDetailed.nombre}
             </h1>
             <p className="text-zinc-500 dark:text-zinc-400 mt-1 text-xs">
-              {equipoParaMiembros.descripcion || 'Asigna usuarios registrados a este equipo con su respectivo rol.'}
+              {currentDetailed.descripcion || 'Asigna usuarios registrados a este equipo con su respectivo rol.'}
             </p>
           </div>
         </div>
 
         {/* Formulario para agregar miembro */}
         <div className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 shadow-xs">
-          <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 mb-3">Agregar Nuevo Miembro</h3>
-          <form onSubmit={handleAddMember} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-            <div className="md:col-span-3">
-              <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1">Usuario</label>
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-2">
+            <UserPlus size={16} className="text-blue-600" />
+            Asignar Nuevo Miembro
+          </h3>
+          <form onSubmit={handleAddMember} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+            <div>
+              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+                Usuario Registrado <span className="text-rose-500">*</span>
+              </label>
               <select
+                required
                 value={memberForm.id_usuario}
                 onChange={(e) => setMemberForm({ ...memberForm, id_usuario: e.target.value })}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-100/10"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-white"
               >
-                <option value="">Buscar usuario...</option>
+                <option value="">Seleccionar usuario...</option>
                 {usuarios.map(u => (
-                  <option key={u.id} value={u.id}>{u.nombre}</option>
+                  <option key={u.id} value={u.id}>{u.nombre || u.correo} ({u.correo})</option>
                 ))}
               </select>
             </div>
 
-            <div className="md:col-span-1">
-              <label className="block text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1">Rol</label>
+            <div>
+              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+                Rol en el Equipo
+              </label>
               <select
                 value={memberForm.id_rol}
                 onChange={(e) => setMemberForm({ ...memberForm, id_rol: e.target.value })}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-100/10"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-white"
               >
                 <option value="">Seleccionar rol...</option>
                 {roles.map(r => (
@@ -347,54 +316,65 @@ export default function EquiposGlobalPage() {
                 ))}
               </select>
             </div>
-            
-            <div className="md:col-span-1">
-              <button
-                type="submit"
-                className="w-full py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-900 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <UserPlus size={14} />
-                Agregar
-              </button>
-            </div>
+
+            <button
+              type="submit"
+              className="py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              <Plus size={14} />
+              Agregar Miembro
+            </button>
           </form>
         </div>
 
-        {/* Lista actual de miembros */}
-        <div className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 shadow-xs">
-          <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 mb-3">Miembros Actuales ({equipoParaMiembros.miembros?.length || 0})</h3>
-          
-          {(equipoParaMiembros.miembros || []).length === 0 ? (
-            <div className="text-center py-8 bg-zinc-50 dark:bg-zinc-800/20 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-700">
-              <p className="text-xs text-zinc-500">Este equipo aún no tiene miembros asignados.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {equipoParaMiembros.miembros!.map(m => (
-                <div key={m.usuario.id} className="flex items-start justify-between p-3.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200/80 dark:border-zinc-700/60">
-                  <div className="flex gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center font-bold text-xs">
-                      {m.usuario.nombre.charAt(0).toUpperCase()}
+        {/* Lista de Miembros Actuales */}
+        <div className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              Integrantes Actuales ({currentDetailed.miembros?.length || 0})
+            </h3>
+          </div>
+
+          <div className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
+            {!currentDetailed.miembros || currentDetailed.miembros.length === 0 ? (
+              <div className="p-8 text-center text-xs text-zinc-500">
+                Este equipo aún no tiene miembros asignados.
+              </div>
+            ) : (
+              currentDetailed.miembros.map(m => (
+                <div key={m.usuario.id} className="p-4 flex items-center justify-between hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center justify-center text-xs font-bold uppercase">
+                      {(m.usuario.nombre || m.usuario.correo).slice(0, 2)}
                     </div>
                     <div>
-                      <span className="font-semibold text-zinc-900 dark:text-zinc-100 block text-xs">{m.usuario.nombre}</span>
-                      <span className="text-[10px] text-zinc-400">{m.usuario.correo}</span>
-                      <div className="mt-1 inline-block px-2 py-0.5 bg-zinc-200/60 dark:bg-zinc-700/50 text-zinc-700 dark:text-zinc-300 font-medium rounded text-[10px]">
-                        {m.rol?.nombre_rol || 'Miembro'}
-                      </div>
+                      <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                        {m.usuario.nombre || 'Usuario'}
+                      </p>
+                      <p className="text-[11px] text-zinc-500">
+                        {m.usuario.correo}
+                      </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleRemoveMember(m.usuario.id)}
-                    title="Remover miembro"
-                    className="p-1 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+
+                  <div className="flex items-center space-x-3">
+                    {m.rol && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
+                        {m.rol.nombre_rol}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => handleRemoveMember(m.usuario.id)}
+                      className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+                      title="Remover miembro"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </div>
       </div>
     );
@@ -403,19 +383,19 @@ export default function EquiposGlobalPage() {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
             <Users className="text-zinc-700 dark:text-zinc-300" size={24} />
-            Directorio de Equipos
+            Equipos de Desarrollo
           </h1>
-          <p className="text-zinc-500 dark:text-zinc-400 mt-1 text-xs">
-            Gestión de equipos de trabajo, asignación de proyectos e integrantes con sus roles.
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            Gestión global de equipos multidisciplinarios, integrantes, asignación de roles y proyectos.
           </p>
         </div>
         <button
           onClick={() => openModal()}
-          className="inline-flex items-center px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-900 rounded-xl transition-all font-medium text-xs gap-1.5 cursor-pointer shadow-xs"
+          className="inline-flex items-center justify-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-xs font-medium text-xs gap-1.5 cursor-pointer"
         >
           <Plus size={15} />
           Nuevo Equipo
@@ -429,97 +409,95 @@ export default function EquiposGlobalPage() {
         </div>
         <input
           type="text"
-          placeholder="Buscar equipo o proyecto asignado..."
-          className="block w-full pl-8 pr-3 py-2 border border-zinc-200/80 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900/60 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-100/10 focus:border-zinc-400 transition-all text-xs"
+          placeholder="Buscar por nombre de equipo o proyecto vinculado..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full pl-8 pr-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-zinc-900 dark:text-zinc-100"
         />
       </div>
 
       {/* Grid de Equipos */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map(i => <div key={i} className="h-48 bg-zinc-100 dark:bg-zinc-900/40 rounded-2xl border border-zinc-200/60 dark:border-zinc-800/60 animate-pulse" />)}
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-44 bg-zinc-100 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 rounded-2xl animate-pulse" />
+          ))}
         </div>
       ) : filteredTeams.length === 0 ? (
         <div className="text-center py-16 bg-white dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
-          <Users size={32} className="mx-auto text-zinc-400 mb-2" />
-          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">No se encontraron equipos</h3>
-          <p className="text-xs text-zinc-500 mt-1">Crea tu primer equipo de desarrollo o ingeniería.</p>
+          <div className="w-12 h-12 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl flex items-center justify-center mx-auto mb-3">
+            <Users size={22} />
+          </div>
+          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">No hay equipos registrados</h3>
+          <p className="text-zinc-500 dark:text-zinc-400 text-xs mt-1">
+            {searchTerm ? 'No se encontraron equipos para esta búsqueda.' : 'Crea tu primer equipo para organizar miembros y proyectos.'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredTeams.map((team) => (
             <div
               key={team.equipo_id}
-              className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-150 flex flex-col justify-between"
+              className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-200 flex flex-col justify-between"
             >
               <div>
-                {/* Header card */}
                 <div className="flex items-start justify-between mb-3">
-                  <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                  <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300">
                     <Users size={18} />
                   </div>
-                  <div className="flex items-center space-x-0.5">
+                  <div className="flex items-center space-x-1">
                     <button
                       onClick={() => openModal(team)}
-                      title="Editar Equipo"
-                      className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg transition-colors cursor-pointer"
+                      title="Editar equipo"
+                      className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg cursor-pointer"
                     >
-                      <Edit2 size={14} />
+                      <Edit2 size={13} />
                     </button>
                     <button
-                      onClick={() => { setEquipoToDelete(team); setIsDeleteModalOpen(true); }}
-                      title="Eliminar Equipo"
-                      className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                      onClick={() => {
+                        setEquipoToDelete(team);
+                        setIsDeleteModalOpen(true);
+                      }}
+                      title="Eliminar equipo"
+                      className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={13} />
                     </button>
                   </div>
                 </div>
 
-                {/* Título y Descripción */}
-                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 mb-1 leading-snug">{team.nombre}</h3>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3 line-clamp-2">
-                  {team.descripcion || "Sin descripción proporcionada."}
+                <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">
+                  {team.nombre}
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 line-clamp-2">
+                  {team.descripcion || "Sin descripción."}
                 </p>
 
-                {/* Proyectos asignados */}
-                <div className="mb-3">
-                  <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
-                    Proyectos ({team.proyectos?.length || 0})
-                  </span>
-                  <div className="flex flex-wrap gap-1">
-                    {(team.proyectos || []).length === 0 ? (
-                      <span className="text-[11px] text-zinc-400 italic">Sin asignación</span>
-                    ) : (
-                      team.proyectos!.map(p => (
-                        <span key={p.proyecto_id} className="inline-flex items-center gap-1 text-[10px] font-medium bg-zinc-100 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded-md border border-zinc-200/60 dark:border-zinc-700/50">
-                          <FolderGit2 size={11} className="text-zinc-400" />
-                          {p.nombre}
-                        </span>
-                      ))
-                    )}
-                  </div>
+                {/* Proyectos Vinculados */}
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {team.proyectos && team.proyectos.length > 0 ? (
+                    team.proyectos.map(p => (
+                      <span key={p.proyecto_id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
+                        <FolderGit2 size={10} />
+                        {p.nombre}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] text-zinc-400 italic">Sin proyectos asignados</span>
+                  )}
                 </div>
-
-                {/* Líder actual si existe */}
-                {team.lider_actual && (
-                  <div className="mb-3 flex items-center gap-1.5 p-2 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-800 dark:text-amber-300">
-                    <Crown size={13} className="text-amber-500 shrink-0" />
-                    <span>Líder: <strong>{team.lider_actual.nombre}</strong></span>
-                  </div>
-                )}
               </div>
 
-              {/* Botón Gestionar Miembros */}
-              <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800/60">
+              <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-xs">
+                <span className="text-zinc-500 text-[11px]">
+                  {team.miembros?.length || 0} integrantes
+                </span>
                 <button
                   onClick={() => openMembersModal(team)}
-                  className="w-full py-2 bg-zinc-50 dark:bg-zinc-800/50 hover:bg-zinc-900 hover:text-white dark:hover:bg-zinc-100 dark:hover:text-zinc-900 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-zinc-700/60 rounded-xl transition-all duration-150 flex items-center justify-center text-xs font-semibold gap-1.5 cursor-pointer shadow-xs"
+                  className="font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
                 >
-                  <UserPlus size={15} />
-                  Miembros ({team.miembros?.length || 0})
+                  <span>Gestionar Miembros</span>
+                  <ChevronRight size={14} />
                 </button>
               </div>
             </div>
@@ -529,96 +507,106 @@ export default function EquiposGlobalPage() {
 
       {/* Modal Crear / Editar Equipo */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-zinc-950/70 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-3xl max-w-lg w-full shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
-            <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between shrink-0 bg-white/80 dark:bg-zinc-900/80">
-              <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
                 {editingEquipo ? 'Editar Equipo' : 'Nuevo Equipo'}
               </h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveTeam} className="flex flex-col flex-1 min-h-0">
-              <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1 custom-scrollbar">
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1.5">
-                    Nombre del Equipo
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: Equipo Backend Core"
-                    value={formData.nombre}
-                    onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                    className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white text-xs sm:text-sm focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+            <form onSubmit={handleSaveTeam} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                  Nombre del Equipo <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. Frontend Squad"
+                  value={formData.nombre}
+                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-zinc-900 dark:text-zinc-100"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1.5">
-                    Descripción
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="Responsabilidades del equipo..."
-                    value={formData.descripcion}
-                    onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                    className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white text-xs sm:text-sm focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                  Descripción
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Objetivos o enfoque del equipo..."
+                  value={formData.descripcion}
+                  onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-zinc-900 dark:text-zinc-100 resize-none"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-1.5">
-                    Asignar a Proyectos
-                  </label>
-                  <div className="max-h-40 overflow-y-auto space-y-1.5 border border-zinc-200 dark:border-zinc-700/60 p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/30 custom-scrollbar">
-                    {proyectos.map((p) => {
+              {/* Selector de Proyectos */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                  Asignar a Proyectos
+                </label>
+                <div className="max-h-36 overflow-y-auto space-y-1 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2 bg-zinc-50/50 dark:bg-zinc-950 custom-scrollbar">
+                  {proyectos.length === 0 ? (
+                    <p className="text-[11px] text-zinc-400">No hay proyectos disponibles</p>
+                  ) : (
+                    proyectos.map(p => {
                       const isChecked = formData.proyectos_seleccionados.includes(p.proyecto_id);
                       return (
-                        <label key={p.proyecto_id} className="flex items-center gap-2 p-1.5 text-xs cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-700/40 rounded-lg transition-colors">
+                        <label key={p.proyecto_id} className="flex items-center gap-2 p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg cursor-pointer text-xs">
                           <input
                             type="checkbox"
                             checked={isChecked}
-                            onChange={() => {
-                              if (isChecked) {
+                            onChange={(e) => {
+                              if (e.target.checked) {
                                 setFormData({
                                   ...formData,
-                                  proyectos_seleccionados: formData.proyectos_seleccionados.filter(id => id !== p.proyecto_id)
+                                  proyectos_seleccionados: [...formData.proyectos_seleccionados, p.proyecto_id]
                                 });
                               } else {
                                 setFormData({
                                   ...formData,
-                                  proyectos_seleccionados: [...formData.proyectos_seleccionados, p.proyecto_id]
+                                  proyectos_seleccionados: formData.proyectos_seleccionados.filter(id => id !== p.proyecto_id)
                                 });
                               }
                             }}
                             className="rounded text-blue-600 focus:ring-blue-500"
                           />
-                          <span className="text-zinc-800 dark:text-zinc-200 font-medium">{p.nombre}</span>
+                          <span className="text-zinc-800 dark:text-zinc-200">{p.nombre}</span>
                         </label>
                       );
-                    })}
-                  </div>
+                    })
+                  )}
                 </div>
               </div>
 
-              <div className="px-6 py-4 border-t border-zinc-100 dark:border-zinc-800/80 shrink-0 flex items-center justify-end gap-3 bg-zinc-50/80 dark:bg-zinc-900/80 backdrop-blur-md">
+              <div className="flex items-center justify-end space-x-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/60 dark:hover:bg-zinc-800 rounded-xl"
+                  className="px-4 py-2 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-400"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-blue-500/20"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-xs disabled:opacity-50"
                 >
-                  <Save size={15} className="mr-1.5" />
-                  {saving ? 'Guardando...' : editingEquipo ? 'Actualizar' : 'Crear Equipo'}
+                  {saving ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Save size={14} />
+                  )}
+                  <span>Guardar</span>
                 </button>
               </div>
             </form>
@@ -626,17 +614,17 @@ export default function EquiposGlobalPage() {
         </div>
       )}
 
-      {/* El modal de miembros fue reemplazado por la vista principal condicional arriba */}
-
       {/* Modal Confirmar Eliminar */}
       {isDeleteModalOpen && equipoToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-zinc-900 dark:text-white">¿Eliminar Equipo?</h3>
-            <p className="text-xs text-zinc-500">
-              ¿Estás seguro de que deseas eliminar el equipo <strong>{equipoToDelete.nombre}</strong>?
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+              ¿Eliminar equipo?
+            </h3>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              ¿Estás seguro de que deseas eliminar el equipo <strong>{equipoToDelete.nombre}</strong>? Esta acción removerá todas sus asignaciones.
             </p>
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 onClick={() => setIsDeleteModalOpen(false)}
                 className="px-3.5 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl"
@@ -645,7 +633,7 @@ export default function EquiposGlobalPage() {
               </button>
               <button
                 onClick={handleDeleteTeam}
-                className="px-3.5 py-1.5 text-xs font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-all"
+                className="px-3.5 py-1.5 text-xs font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-xl"
               >
                 Eliminar
               </button>

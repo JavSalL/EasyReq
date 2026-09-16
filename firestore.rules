@@ -1,0 +1,93 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Función auxiliar: verificar si el usuario está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Función auxiliar: verificar si es el propietario del perfil
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 1. Perfiles de usuario
+    match /perfil_usuario/{userId} {
+      // Cualquier usuario autenticado puede leer perfiles (necesario para listas de miembros, autores, etc.)
+      allow read: if isAuthenticated();
+      // Solo el propio usuario puede crear o editar su perfil
+      allow write: if isOwner(userId);
+    }
+
+    // 2. Catálogos base (profesiones, roles, estados, modalidades, tipos, modelos)
+    // Lectura para autenticados; escritura permitida para usuarios autenticados (permite el auto-seed inicial)
+    match /profesiones/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+    match /tipos_sistema/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+    match /roles/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+    match /estados/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+    match /modalidades/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+    match /tipos_requerimientos/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+    match /modelo/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // 3. Proyectos
+    match /proyecto/{proyectoId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 4. Equipos y vinculaciones
+    match /equipo/{equipoId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /proyecto_equipos/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /miembros_equipo/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 5. Requerimientos
+    match /requerimiento/{requerimientoId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 6. Logs de auditoría de requerimientos (Inmutables: se pueden leer y crear, pero no modificar ni borrar)
+    match /logs_requerimientos/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    // 7. Patrones de Prompting / IA
+    match /patron/{patronId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Regla por defecto: denegar cualquier otra colección no especificada
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -2,13 +2,23 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase-client';
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  signInWithPopup,
+  GoogleAuthProvider,
+} from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { getProfesiones, saveUserProfile, getUserProfile } from '@/lib/firestore-service';
+import { useAuth } from '@/lib/firebase-auth-provider';
 import { toast } from 'react-hot-toast';
 import { Lock, Mail, User, Briefcase, ArrowRight, Sparkles, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
 import { Profesion } from '@/lib/database.types';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { user: authUser, loading: authLoading } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -29,27 +39,30 @@ export default function LoginPage() {
 
   useEffect(() => {
     // Si ya hay sesión activa, redirigir al dashboard
-    async function checkSession() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        router.replace('/');
-      }
+    if (!authLoading && authUser) {
+      router.replace('/');
     }
-    checkSession();
 
     // Cargar catálogo de profesiones
     async function fetchProfesiones() {
-      const { data, error } = await supabase
-        .from('profesiones')
-        .select('id, nombre')
-        .order('nombre');
-
-      if (!error && data) {
+      const data = await getProfesiones();
+      if (data && data.length > 0) {
         setProfesiones(data);
+      } else {
+        // Fallback: antes de que exista el primer usuario autenticado, las reglas
+        // de Firestore bloquean tanto la lectura como la siembra automática del catálogo.
+        setProfesiones([
+          { id: '1', nombre: 'Ingeniero de Software' },
+          { id: '2', nombre: 'Analista de Requerimientos' },
+          { id: '3', nombre: 'Diseñador UX/UI' },
+          { id: '4', nombre: 'Especialista QA / Testing' },
+          { id: '5', nombre: 'Scrum Master / Agile Coach' },
+          { id: '6', nombre: 'DevOps Engineer' },
+        ]);
       }
     }
     fetchProfesiones();
-  }, [router]);
+  }, [authUser, authLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,12 +71,7 @@ export default function LoginPage() {
     try {
       if (isLogin) {
         // ------------------ INICIAR SESIÓN ------------------
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-
-        if (error) throw error;
+        await signInWithEmailAndPassword(auth, email.trim(), password);
 
         toast.success('¡Bienvenido de nuevo!');
         window.location.href = '/';
@@ -100,61 +108,65 @@ export default function LoginPage() {
           return;
         }
 
-        // 1. Registro en Supabase Auth pasando nombre en metadata para el trigger
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            data: {
-              nombre: nombre.trim(),
-            },
-          },
+        // 1. Registro en Firebase Auth
+        const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        await updateProfile(credential.user, { displayName: nombre.trim() });
+
+        // 2. Crear perfil en Firestore, incluyendo la profesión seleccionada
+        const profesionSeleccionada = profesiones.find((p) => p.id === idProfesion);
+        await saveUserProfile(credential.user.uid, {
+          nombre: nombre.trim(),
+          correo: email.trim(),
+          id_profesion: idProfesion,
+          profesion_nombre: profesionSeleccionada?.nombre || undefined,
         });
-
-        if (authError) throw authError;
-
-        const userId = authData.user?.id;
-
-        if (userId) {
-          // 2. Asegurar inserción/actualización en perfil_usuario
-          await supabase
-            .from('perfil_usuario')
-            .upsert({
-              id: userId,
-              nombre: nombre.trim(),
-              correo: email.trim(),
-            });
-
-          // 3. Vincular profesión seleccionada en la tabla usuario_profesion
-          const { error: profError } = await supabase
-            .from('usuario_profesion')
-            .upsert({
-              id_usuario: userId,
-              id_profesion: idProfesion,
-            });
-
-          if (profError) {
-            console.error('Error al asociar profesión:', profError);
-          }
-        }
 
         toast.success('¡Cuenta creada exitosamente!');
         window.location.href = '/';
       }
     } catch (err: any) {
-      let msg = err.message || 'Ocurrió un error al procesar la solicitud';
-      if (msg.includes('rate limit')) {
-        msg = 'Límite de solicitudes superado. Por favor espera unos minutos o desactiva la confirmación de correo en Supabase.';
-      } else if (msg.includes('Invalid login credentials')) {
+      const code = err.code || '';
+      let msg = 'Ocurrió un error al procesar la solicitud';
+      if (code === 'auth/too-many-requests') {
+        msg = 'Límite de solicitudes superado. Por favor espera unos minutos.';
+      } else if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
         msg = 'Correo electrónico o contraseña incorrectos.';
-      } else if (msg.includes('User already registered')) {
+      } else if (code === 'auth/email-already-in-use') {
         msg = 'Este correo ya está registrado. Por favor inicia sesión.';
-      } else if (msg.includes('is invalid')) {
+      } else if (code === 'auth/invalid-email') {
         msg = 'El formato del correo no es válido (ej. usuario@correo.com).';
-      } else if (msg.includes('Password should be at least')) {
+      } else if (code === 'auth/weak-password') {
         msg = 'La contraseña debe tener al menos 6 caracteres.';
+      } else if (err.message) {
+        msg = err.message;
       }
       toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      const res = await signInWithPopup(auth, provider);
+      const user = res.user;
+
+      const existing = await getUserProfile(user.uid);
+      if (!existing) {
+        await saveUserProfile(user.uid, {
+          nombre: user.displayName || 'Usuario',
+          correo: user.email || '',
+        });
+      }
+
+      toast.success('¡Sesión iniciada con Google!');
+      window.location.href = '/';
+    } catch (err: any) {
+      if (err.code !== 'auth/popup-closed-by-user') {
+        toast.error('No se pudo iniciar sesión con Google.');
+      }
     } finally {
       setLoading(false);
     }
@@ -409,6 +421,30 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          {/* Separador */}
+          <div className="relative flex items-center justify-center mt-5">
+            <div className="border-t border-zinc-200 dark:border-zinc-800 w-full" />
+            <span className="absolute bg-white dark:bg-zinc-900 px-3 text-[10px] text-zinc-400 uppercase tracking-widest font-medium">
+              O continúa con
+            </span>
+          </div>
+
+          {/* Google Login */}
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={loading}
+            className="w-full mt-5 py-2.5 px-4 bg-white dark:bg-zinc-800/60 hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-semibold text-zinc-700 dark:text-zinc-200 flex items-center justify-center gap-2.5 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+            </svg>
+            <span>Iniciar sesión con Google</span>
+          </button>
 
           {/* Footer de la tarjeta */}
           <div className="mt-6 pt-6 border-t border-zinc-100 dark:border-zinc-800 text-center">
