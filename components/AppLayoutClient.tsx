@@ -11,15 +11,18 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const isLoginPage = pathname === '/login';
+  
+  // Normalizar ruta para soportar trailing slashes de hosting estático ('/login/' -> '/login')
+  const cleanPathname = pathname ? (pathname.endsWith('/') && pathname.length > 1 ? pathname.slice(0, -1) : pathname) : '';
+  const isLoginPage = cleanPathname === '/login';
 
   useEffect(() => {
-    if (!loading) {
-      if (!user && !isLoginPage) {
-        router.replace('/login');
-      } else if (user && isLoginPage) {
-        router.replace('/');
-      }
+    if (loading) return;
+
+    if (!user && !isLoginPage) {
+      router.replace('/login');
+    } else if (user && isLoginPage) {
+      router.replace('/');
     }
   }, [user, loading, isLoginPage, router]);
 

@@ -70,7 +70,8 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
         </div>
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const cleanPath = pathname ? (pathname.endsWith('/') && pathname.length > 1 ? pathname.slice(0, -1) : pathname) : '';
+          const isActive = cleanPath === item.href;
           return (
             <Link
               key={item.name}

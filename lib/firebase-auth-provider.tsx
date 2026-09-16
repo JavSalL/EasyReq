@@ -37,13 +37,11 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
   };
 
   useEffect(() => {
-    // Sembrar catálogos iniciales si la BD de Firestore está recién creada
-    seedCatalogsIfEmpty();
-
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         await fetchProfile(currentUser);
+        seedCatalogsIfEmpty();
       } else {
         setProfile(null);
       }
