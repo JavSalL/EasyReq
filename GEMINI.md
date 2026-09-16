@@ -1,61 +1,44 @@
-# Gemini Project Context: reyes-soft
+# Gemini Project Context: EasyReq
 
 ## Project Overview
-This is a web application built with **Next.js 16** (using the App Router) and **React 19**. It serves as a management system for organizational units, structured hierarchically:
-- **Groups (Grupos):** Top-level containers.
-- **Teams (Equipos):** Belong to a specific Group.
-- **Sections (Secciones):** Belong to a specific Team, support ordering by level.
-- **Content (Contenido):** Belong to a Section.
-- **Tags:** Associated with Content.
+This is a web application built with **Next.js 16** (using the App Router) and **React 19**. It serves as a comprehensive requirements management system (EasyReq):
+- **Projects (Proyectos):** Top-level software projects with system types.
+- **Teams (Equipos):** Development teams associated with projects and members with roles.
+- **Requirements (Requerimientos):** System requirements with AI assistance (Gemini), modalities, status, and audit logs.
+- **Patterns & Models (Patrones y Modelos):** Templates and standards like EARS, IEEE 830, and Agile User Stories.
 
-The application uses **Supabase** as its backend-as-a-service for database operations and **Tailwind CSS 4** for styling.
+The application uses **Firebase** (Firebase Authentication and Cloud Firestore) as its backend-as-a-service and **Tailwind CSS 4** for styling.
 
 ### Core Technologies
 - **Framework:** Next.js 16 (App Router)
 - **Library:** React 19
-- **Backend:** Supabase (`@supabase/supabase-js`)
-- **Styling:** Tailwind CSS 4, PostCSS
+- **Backend:** Firebase (Firebase Auth, Cloud Firestore)
+- **AI Integration:** Google Gemini API (`@google/genai`)
+- **Styling:** Tailwind CSS 4, PostCSS, Lucide React
 - **Language:** TypeScript
 - **UI Feedback:** `react-hot-toast`
+- **Deployment:** Firebase Hosting (`easy-req.web.app`)
 
 ## Building and Running
 
 ### Prerequisites
 - Node.js installed.
-- Supabase environment variables configured in `.env.local`:
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- Firebase and Gemini environment variables configured in `.env.local`:
+  - `NEXT_PUBLIC_FIREBASE_API_KEY`
+  - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+  - `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+  - `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+  - `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+  - `NEXT_PUBLIC_FIREBASE_APP_ID`
+  - `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`
+  - `NEXT_PUBLIC_GEMINI_API_KEY`
 
 ### Commands
-- **Development:** `npm run dev` (Starts the development server on http://localhost:3000)
-- **Build:** `npm run build` (Creates an optimized production build)
-- **Start:** `npm start` (Starts the production server)
-- **Lint:** `npm run lint` (Runs ESLint for code quality checks)
+- **Development:** `npm run dev` (Starts development server on http://localhost:3000)
+- **Build & Export:** `npm run build` (Generates optimized static export in `out/`)
+- **Deploy:** `firebase deploy` (Deploys Firestore rules and static hosting)
 
-## Development Conventions
-
-### Architecture
-- **Client-Side Data Fetching:** Most pages use the `'use client'` directive and interact directly with Supabase via the client defined in `lib/supabase-client.tsx`.
-- **Hierarchical Navigation:** Navigation follows the data hierarchy (Home -> Groups -> Teams -> Sections/Content).
-
-### Coding Style
-- **TypeScript:** Strict typing is used for data models (e.g., `Group`, `Team`, `Section`, `Content`, `Tag`).
-- **Hooks:** Extensively uses `useEffect` and `useCallback` for data fetching and state management.
-- **Components:** UI is built using functional components and Tailwind CSS for rapid styling.
-- **Error Handling:** `react-hot-toast` is used for user-facing success and error notifications.
-
-### File Structure
-- `app/`: Contains the Next.js App Router pages and layouts.
-  - `page.tsx`: Group management.
-  - `grupos/page.tsx`: Team management for a specific group.
-  - `equipos/page.tsx`: Section and content management for a specific team.
-- `lib/`: Utility functions and shared clients (e.g., Supabase client).
-- `public/`: Static assets.
-
-## Database Schema (Inferred)
-The application interacts with the following Supabase tables:
-- `grupos`: `id`, `name`
-- `equipos`: `id`, `groupId`, `name`
-- `secciones`: `id`, `teamId`, `name`, `level`
-- `contenido`: `id`, `teamId`, `sectionId`, `name`
-- `tags`: `id`, `contentId`, `name`
+## Architecture & Conventions
+- **Client-Side Data Fetching:** App Router client components interact with Firestore via services in `lib/firestore-service.ts`.
+- **Authentication:** Managed via `lib/firebase-auth-provider.tsx` with user profiles in Firestore `perfil_usuario`.
+- **Security Rules:** Defined in `firestore.rules`.

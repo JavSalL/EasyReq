@@ -1,14 +1,20 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from "react";
-import { supabase } from '@/lib/supabase-client';
 import toast from "react-hot-toast";
 import { 
   Plus, Edit2, Trash2, Save, X, BookOpen, ChevronLeft, 
-  Sparkles, Layers, Cpu, Check, Filter, Search, Copy
+  Search, Copy
 } from 'lucide-react';
 import { useRouter } from "next/navigation";
 import type { Modelo, Patron } from '@/lib/database.types';
+import { 
+  getModelos, 
+  getPatrones, 
+  createPatron, 
+  updatePatron, 
+  deletePatron 
+} from '@/lib/firestore-service';
 
 export default function PatronesPage() {
   const router = useRouter();
@@ -35,30 +41,15 @@ export default function PatronesPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Cargar Modelos
-      const { data: modelosData } = await supabase
-        .from('modelo')
-        .select('*')
-        .order('nombre');
-      setModelos(modelosData || []);
-
-      // 2. Cargar Patrones con su modelo asociado
-      const { data: patronesData, error } = await supabase
-        .from('patron')
-        .select(`
-          *,
-          modelo:modelo(id, nombre, descripcion)
-        `)
-        .order('created_at', { ascending: true });
-      
-      if (error) {
-        console.error(error);
-        toast.error("Error al cargar patrones");
-      } else {
-        setPatrones(patronesData || []);
-      }
+      const [modelosData, patronesData] = await Promise.all([
+        getModelos(),
+        getPatrones()
+      ]);
+      setModelos(modelosData);
+      setPatrones(patronesData);
     } catch (e) {
       console.error(e);
+      toast.error("Error al cargar patrones");
     } finally {
       setLoading(false);
     }
@@ -97,27 +88,18 @@ export default function PatronesPage() {
     setSaving(true);
     try {
       if (editingPattern) {
-        const { error } = await supabase
-          .from('patron')
-          .update({
-            nombre: formData.nombre.trim(),
-            promt: formData.promt.trim(),
-            id_modelo: formData.id_modelo || null
-          })
-          .eq('patron_id', editingPattern.patron_id);
-        
-        if (error) throw error;
+        await updatePatron(editingPattern.patron_id, {
+          nombre: formData.nombre.trim(),
+          promt: formData.promt.trim(),
+          id_modelo: formData.id_modelo || null
+        });
         toast.success("Patrón actualizado");
       } else {
-        const { error } = await supabase
-          .from('patron')
-          .insert([{
-            nombre: formData.nombre.trim(),
-            promt: formData.promt.trim(),
-            id_modelo: formData.id_modelo || null
-          }]);
-        
-        if (error) throw error;
+        await createPatron({
+          nombre: formData.nombre.trim(),
+          promt: formData.promt.trim(),
+          id_modelo: formData.id_modelo || null
+        });
         toast.success("Patrón registrado con éxito");
       }
 
@@ -139,12 +121,7 @@ export default function PatronesPage() {
   const handleDelete = async () => {
     if (!patternToDelete) return;
     try {
-      const { error } = await supabase
-        .from('patron')
-        .delete()
-        .eq('patron_id', patternToDelete.patron_id);
-
-      if (error) throw error;
+      await deletePatron(patternToDelete.patron_id);
       toast.success("Patrón eliminado");
       setIsDeleteModalOpen(false);
       fetchData();
@@ -188,7 +165,7 @@ export default function PatronesPage() {
         
         <button
           onClick={() => openModal()}
-          className="inline-flex items-center px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-900 rounded-xl transition-all font-medium text-xs gap-1.5 cursor-pointer shadow-xs"
+          className="inline-flex items-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all font-medium text-xs gap-1.5 cursor-pointer shadow-xs"
         >
           <Plus size={15} />
           Nuevo Patrón
@@ -235,7 +212,7 @@ export default function PatronesPage() {
           placeholder="Buscar patrón por nombre o sintaxis..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-8 pr-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-100/10 focus:border-zinc-400 text-zinc-900 dark:text-zinc-100"
+          className="w-full pl-8 pr-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-zinc-900 dark:text-zinc-100"
         />
       </div>
 

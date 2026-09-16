@@ -1,29 +1,47 @@
 'use client';
 
 import React, { use, useEffect, useState, useCallback } from "react";
-import { supabase } from '@/lib/supabase-client';
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { 
   ChevronLeft, Plus, Edit2, Trash2, Search, CheckCircle2, 
-  AlertCircle, ArrowRight, User, Users, Clock, X, Check, Save,
-  Layers, Sparkles, BookOpen, Filter, Tag, CheckCheck, XCircle, FileText,
-  HelpCircle, Eye, History, ArrowUpRight
+  User, Users, Clock, X, Save,
+  Sparkles, CheckCheck, FileText,
+  History
 } from 'lucide-react';
-import { generateSingleRequirement, evaluateRequirement, type AIRequirement } from '@/lib/ai-actions';
+import { generateSingleRequirement } from '@/lib/ai-actions';
 import type { 
   Proyecto, Requerimiento, TipoRequerimiento, Estado, 
   Modalidad, Modelo, Patron, PerfilUsuario 
 } from '@/lib/database.types';
+import { 
+  getProyectos,
+  getTiposRequerimientos,
+  getEstados,
+  getModalidades,
+  getModelos,
+  getPatrones,
+  getAllUsers,
+  getRequerimientos,
+  createRequerimiento,
+  updateRequerimiento,
+  deleteRequerimiento,
+  addLogRequerimiento,
+  getLogsRequerimientos,
+  getEquipos,
+  getProyectoEquipos,
+  linkEquipoToProyecto,
+  unlinkEquipoFromProyecto
+} from '@/lib/firestore-service';
 
 export default function RequerimientosPage({ 
   searchParams 
 }: { 
-  searchParams: Promise<{ proyectoId?: string }> 
+  searchParams: Promise<{ proyectoId?: string; id?: string }> 
 }) {
   const params = use(searchParams);
   const router = useRouter();
-  const proyectoId = params.proyectoId || null;
+  const proyectoId = params.id || params.proyectoId || null;
 
   // States
   const [proyecto, setProyecto] = useState<Proyecto | null>(null);
@@ -79,44 +97,30 @@ export default function RequerimientosPage({
     setLoading(true);
 
     try {
-      // Proyecto
-      const { data: projData, error: projErr } = await supabase
-        .from('proyecto')
-        .select(`*, tipos_sistema(id, nombre)`)
-        .eq('proyecto_id', proyectoId)
-        .single();
+      const [allProjects, trData, estData, modData, modelData, patData, userData] = await Promise.all([
+        getProyectos(),
+        getTiposRequerimientos(),
+        getEstados(),
+        getModalidades(),
+        getModelos(),
+        getPatrones(),
+        getAllUsers()
+      ]);
 
-      if (projErr || !projData) {
+      const found = allProjects.find(p => p.proyecto_id === proyectoId);
+      if (!found) {
         toast.error('Proyecto no encontrado');
         router.push('/');
         return;
       }
-      setProyecto(projData);
+      setProyecto(found);
 
-      // Cargar catálogos en paralelo
-      const [
-        { data: trData },
-        { data: estData },
-        { data: modData },
-        { data: modelData },
-        { data: patData },
-        { data: userData }
-      ] = await Promise.all([
-        supabase.from('tipos_requerimientos').select('*').order('nombre'),
-        supabase.from('estados').select('*').order('nombre_estado'),
-        supabase.from('modalidades').select('*').order('nombre_modalidad'),
-        supabase.from('modelo').select('*').order('nombre'),
-        supabase.from('patron').select('*').order('nombre'),
-        supabase.from('perfil_usuario').select('*').order('nombre')
-      ]);
-
-      setTiposReq(trData || []);
-      setEstados(estData || []);
-      setModalidades(modData || []);
-      setModelos(modelData || []);
-      setPatrones(patData || []);
-      setUsuarios(userData || []);
-
+      setTiposReq(trData);
+      setEstados(estData);
+      setModalidades(modData);
+      setModelos(modelData);
+      setPatrones(patData);
+      setUsuarios(userData);
     } catch (e) {
       console.error(e);
       toast.error('Error al cargar datos del proyecto');
@@ -129,26 +133,8 @@ export default function RequerimientosPage({
   const fetchRequerimientos = useCallback(async () => {
     if (!proyectoId) return;
     try {
-      const { data, error } = await supabase
-        .from('requerimiento')
-        .select(`
-          *,
-          tipo_requerimiento:tipos_requerimientos(tipo_req, nombre),
-          estado:estados(id, nombre_estado),
-          modalidad:modalidades(id, nombre_modalidad),
-          modelo:modelo(id, nombre),
-          autor:perfil_usuario!requerimiento_id_autor_fkey(id, nombre, correo),
-          aprobador:perfil_usuario!requerimiento_id_aprobador_fkey(id, nombre, correo)
-        `)
-        .eq('id_proyecto', proyectoId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error(error);
-        toast.error('Error al cargar requerimientos');
-      } else {
-        setRequerimientos(data || []);
-      }
+      const data = await getRequerimientos(proyectoId);
+      setRequerimientos(data);
     } catch (err) {
       console.error(err);
     }
@@ -158,10 +144,13 @@ export default function RequerimientosPage({
   const fetchEquipos = useCallback(async () => {
     if (!proyectoId) return;
     try {
-      const { data: todos } = await supabase.from('equipo').select('*').order('nombre');
-      const { data: asignados } = await supabase.from('proyecto_equipos').select('id_equipo').eq('id_proyecto', proyectoId);
-      setEquipos(todos || []);
-      setEquiposAsignados((asignados || []).map(a => a.id_equipo));
+      const [todos, pes] = await Promise.all([
+        getEquipos(),
+        getProyectoEquipos()
+      ]);
+      setEquipos(todos);
+      const asignados = pes.filter(p => p.id_proyecto === proyectoId).map(p => p.id_equipo);
+      setEquiposAsignados(asignados);
     } catch (err) {
       console.error(err);
     }
@@ -211,7 +200,6 @@ export default function RequerimientosPage({
     setIsModalOpen(true);
   };
 
-  // Al cambiar de modelo en el modal, preseleccionar su primer patrón
   const handleModeloChange = (nuevoModeloId: string) => {
     const primerP = patrones.find(p => p.id_modelo === nuevoModeloId);
     setFormData({
@@ -221,9 +209,7 @@ export default function RequerimientosPage({
     });
   };
 
-  // Al cambiar de patrón, cargar su estructura en el textarea
   const handlePatronChange = (nuevoPatronId: string) => {
-    const pat = patrones.find(p => p.patron_id === nuevoPatronId);
     setFormData({
       ...formData,
       id_patron_seleccionado: nuevoPatronId
@@ -242,57 +228,45 @@ export default function RequerimientosPage({
     try {
       if (editingReq) {
         // Actualizar
-        const { error } = await supabase
-          .from('requerimiento')
-          .update({
-            enunciado: formData.enunciado.trim(),
-            id_tipo_requerimiento: formData.id_tipo_requerimiento || null,
-            id_estado: formData.id_estado || null,
-            id_modalidad: formData.id_modalidad || null,
-            id_modelo: formData.id_modelo || null,
-            id_autor: formData.id_autor || null,
-            id_aprobador: formData.id_aprobador || null
-          })
-          .eq('id', editingReq.id);
-
-        if (error) throw error;
+        await updateRequerimiento(editingReq.id, {
+          enunciado: formData.enunciado.trim(),
+          id_tipo_requerimiento: formData.id_tipo_requerimiento || null,
+          id_estado: formData.id_estado || null,
+          id_modalidad: formData.id_modalidad || null,
+          id_modelo: formData.id_modelo || null,
+          id_autor: formData.id_autor || null,
+          id_aprobador: formData.id_aprobador || null
+        });
 
         // Registrar log
-        await supabase.from('logs_requerimientos').insert([{
+        await addLogRequerimiento({
           id_requerimiento: editingReq.id,
           accion: 'Edición de requerimiento',
           id_autor: formData.id_autor || null,
           detalles: { cambio: 'Modificación de contenido o clasificación' }
-        }]);
+        });
 
         toast.success('Requerimiento actualizado');
       } else {
         // Crear
-        const { data: newReq, error } = await supabase
-          .from('requerimiento')
-          .insert([{
-            enunciado: formData.enunciado.trim(),
-            id_proyecto: proyectoId,
-            id_tipo_requerimiento: formData.id_tipo_requerimiento || null,
-            id_estado: formData.id_estado || null,
-            id_modalidad: formData.id_modalidad || null,
-            id_modelo: formData.id_modelo || null,
-            id_autor: formData.id_autor || null,
-            id_aprobador: formData.id_aprobador || null
-          }])
-          .select()
-          .single();
+        const newReq = await createRequerimiento({
+          enunciado: formData.enunciado.trim(),
+          id_proyecto: proyectoId!,
+          id_tipo_requerimiento: formData.id_tipo_requerimiento || null,
+          id_estado: formData.id_estado || null,
+          id_modalidad: formData.id_modalidad || null,
+          id_modelo: formData.id_modelo || null,
+          id_autor: formData.id_autor || null,
+          id_aprobador: formData.id_aprobador || null
+        });
 
-        if (error) throw error;
-
-        // Registrar log inicial
-        if (newReq) {
-          await supabase.from('logs_requerimientos').insert([{
+        if (newReq?.id) {
+          await addLogRequerimiento({
             id_requerimiento: newReq.id,
             accion: 'Creación de requerimiento',
             id_autor: formData.id_autor || null,
             detalles: { inicio: 'Creación inicial' }
-          }]);
+          });
         }
 
         toast.success('Requerimiento registrado');
@@ -347,19 +321,14 @@ export default function RequerimientosPage({
         updateData.id_aprobador = usuarios[0].id;
       }
 
-      const { error } = await supabase
-        .from('requerimiento')
-        .update(updateData)
-        .eq('id', req.id);
+      await updateRequerimiento(req.id, updateData);
 
-      if (error) throw error;
-
-      await supabase.from('logs_requerimientos').insert([{
+      await addLogRequerimiento({
         id_requerimiento: req.id,
         accion: `Cambio de estado a ${targetEstado.nombre_estado}`,
-        id_autor: req.id_autor,
+        id_autor: req.id_autor || null,
         detalles: { estado_anterior: req.estado?.nombre_estado, estado_nuevo: targetEstado.nombre_estado }
-      }]);
+      });
 
       toast.success(`Estado actualizado a ${targetEstado.nombre_estado}`);
       fetchRequerimientos();
@@ -372,12 +341,7 @@ export default function RequerimientosPage({
   const handleDeleteReq = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar este requerimiento?')) return;
     try {
-      const { error } = await supabase
-        .from('requerimiento')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await deleteRequerimiento(id);
       toast.success('Requerimiento eliminado');
       fetchRequerimientos();
     } catch (e: any) {
@@ -389,28 +353,21 @@ export default function RequerimientosPage({
   const handleViewLogs = async (req: Requerimiento) => {
     setCurrentReqForLogs(req);
     setShowLogsModal(true);
-    const { data } = await supabase
-      .from('logs_requerimientos')
-      .select(`
-        *,
-        autor:perfil_usuario!logs_requerimientos_id_autor_fkey(nombre, correo)
-      `)
-      .eq('id_requerimiento', req.id)
-      .order('fecha_hora', { ascending: false });
-
-    setSelectedReqLogs(data || []);
+    const logs = await getLogsRequerimientos(req.id);
+    setSelectedReqLogs(logs);
   };
 
   // Toggle asignar equipo al proyecto
   const toggleEquipoAsignado = async (equipoId: string) => {
+    if (!proyectoId) return;
     const isAsignado = equiposAsignados.includes(equipoId);
     try {
       if (isAsignado) {
-        await supabase.from('proyecto_equipos').delete().eq('id_proyecto', proyectoId).eq('id_equipo', equipoId);
+        await unlinkEquipoFromProyecto(proyectoId, equipoId);
         setEquiposAsignados(prev => prev.filter(id => id !== equipoId));
         toast.success('Equipo removido del proyecto');
       } else {
-        await supabase.from('proyecto_equipos').insert([{ id_proyecto: proyectoId, id_equipo: equipoId }]);
+        await linkEquipoToProyecto(proyectoId, equipoId);
         setEquiposAsignados(prev => [...prev, equipoId]);
         toast.success('Equipo asignado al proyecto');
       }
@@ -441,7 +398,7 @@ export default function RequerimientosPage({
     return (
       <div className="p-8 text-center bg-white dark:bg-zinc-900/60 rounded-2xl border border-zinc-200 dark:border-zinc-800">
         <p className="text-xs text-zinc-500">ID de proyecto no especificado.</p>
-        <button onClick={() => router.push('/')} className="mt-3 px-3 py-1.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg text-xs font-semibold">
+        <button onClick={() => router.push('/')} className="mt-3 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold">
           Volver a Proyectos
         </button>
       </div>
@@ -466,7 +423,7 @@ export default function RequerimientosPage({
               {proyecto?.nombre || 'Cargando proyecto...'}
             </h1>
             {proyecto?.tipos_sistema?.nombre && (
-              <span className="px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200/60 dark:border-zinc-700/60">
+              <span className="px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200/60 dark:border-zinc-700/50">
                 {proyecto.tipos_sistema.nombre}
               </span>
             )}
@@ -487,7 +444,7 @@ export default function RequerimientosPage({
 
           <button
             onClick={openCreateModal}
-            className="inline-flex items-center px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-900 rounded-xl transition-all font-medium text-xs gap-1.5 cursor-pointer shadow-xs"
+            className="inline-flex items-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all font-medium text-xs gap-1.5 cursor-pointer shadow-xs"
           >
             <Plus size={15} />
             Nuevo Requerimiento
@@ -507,7 +464,7 @@ export default function RequerimientosPage({
             placeholder="Buscar enunciado..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-100/10 focus:border-zinc-400 text-zinc-900 dark:text-zinc-100"
+            className="w-full pl-8 pr-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-zinc-900 dark:text-zinc-100"
           />
         </div>
 
@@ -516,7 +473,7 @@ export default function RequerimientosPage({
           <select
             value={filterEstado}
             onChange={(e) => setFilterEstado(e.target.value)}
-            className="w-full px-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-100/10 focus:border-zinc-400 text-zinc-700 dark:text-zinc-300"
+            className="w-full px-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-zinc-700 dark:text-zinc-300"
           >
             <option value="todos">Todos los Estados</option>
             {estados.map((e) => (
@@ -530,7 +487,7 @@ export default function RequerimientosPage({
           <select
             value={filterTipo}
             onChange={(e) => setFilterTipo(e.target.value)}
-            className="w-full px-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-100/10 focus:border-zinc-400 text-zinc-700 dark:text-zinc-300"
+            className="w-full px-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-zinc-700 dark:text-zinc-300"
           >
             <option value="todos">Todos los Tipos</option>
             {tiposReq.map((t) => (
@@ -544,7 +501,7 @@ export default function RequerimientosPage({
           <select
             value={filterModelo}
             onChange={(e) => setFilterModelo(e.target.value)}
-            className="w-full px-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-100/10 focus:border-zinc-400 text-zinc-700 dark:text-zinc-300"
+            className="w-full px-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-zinc-700 dark:text-zinc-300"
           >
             <option value="todos">Todos los Modelos</option>
             {modelos.map((m) => (
@@ -572,7 +529,7 @@ export default function RequerimientosPage({
           </p>
           <button
             onClick={openCreateModal}
-            className="mt-4 px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white text-white dark:text-zinc-900 rounded-xl text-xs font-semibold transition-all shadow-xs"
+            className="mt-4 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-all shadow-xs"
           >
             Redactar Requerimiento
           </button>
@@ -628,13 +585,13 @@ export default function RequerimientosPage({
                   {req.autor && (
                     <span className="flex items-center gap-1">
                       <User size={12} className="text-zinc-400" />
-                      Autor: <strong className="text-zinc-700 dark:text-zinc-300 font-medium">{req.autor.nombre}</strong>
+                      Autor: <strong className="text-zinc-700 dark:text-zinc-300 font-medium">{req.autor.nombre || req.autor.correo}</strong>
                     </span>
                   )}
                   {req.aprobador && (
                     <span className="flex items-center gap-1">
                       <CheckCheck size={12} className="text-emerald-500" />
-                      Aprobado por: <strong className="text-zinc-700 dark:text-zinc-300 font-medium">{req.aprobador.nombre}</strong>
+                      Aprobado por: <strong className="text-zinc-700 dark:text-zinc-300 font-medium">{req.aprobador.nombre || req.aprobador.correo}</strong>
                     </span>
                   )}
                   {req.created_at && (
@@ -653,7 +610,7 @@ export default function RequerimientosPage({
                   <button
                     onClick={() => handleQuickStatusChange(req, 'Aprobado')}
                     title="Aprobar Requerimiento"
-                    className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-zinc-400 hover:text-emerald-600 rounded-xl transition-colors"
+                    className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-zinc-400 hover:text-emerald-600 rounded-xl transition-colors cursor-pointer"
                   >
                     <CheckCircle2 size={18} />
                   </button>
@@ -663,7 +620,7 @@ export default function RequerimientosPage({
                 <button
                   onClick={() => handleViewLogs(req)}
                   title="Ver Historial de Cambios"
-                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-xl transition-colors"
+                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-xl transition-colors cursor-pointer"
                 >
                   <History size={18} />
                 </button>
@@ -672,7 +629,7 @@ export default function RequerimientosPage({
                 <button
                   onClick={() => openEditModal(req)}
                   title="Editar Requerimiento"
-                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-blue-600 rounded-xl transition-colors"
+                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-blue-600 rounded-xl transition-colors cursor-pointer"
                 >
                   <Edit2 size={18} />
                 </button>
@@ -681,7 +638,7 @@ export default function RequerimientosPage({
                 <button
                   onClick={() => handleDeleteReq(req.id)}
                   title="Eliminar Requerimiento"
-                  className="p-2 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-600 rounded-xl transition-colors"
+                  className="p-2 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-600 rounded-xl transition-colors cursor-pointer"
                 >
                   <Trash2 size={18} />
                 </button>
@@ -775,7 +732,7 @@ export default function RequerimientosPage({
                       type="button"
                       onClick={handleAIGenerate}
                       disabled={isAILoading}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shrink-0"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                     >
                       {isAILoading ? 'Generando...' : 'Generar'}
                     </button>
@@ -861,7 +818,7 @@ export default function RequerimientosPage({
                     >
                       <option value="">Sin autor asignado</option>
                       {usuarios.map((u) => (
-                        <option key={u.id} value={u.id}>{u.correo}</option>
+                        <option key={u.id} value={u.id}>{u.nombre || u.correo}</option>
                       ))}
                     </select>
                   </div>
@@ -877,7 +834,7 @@ export default function RequerimientosPage({
                     >
                       <option value="">Sin aprobador asignado</option>
                       {usuarios.map((u) => (
-                        <option key={u.id} value={u.id}>{u.correo}</option>
+                        <option key={u.id} value={u.id}>{u.nombre || u.correo}</option>
                       ))}
                     </select>
                   </div>
@@ -889,14 +846,14 @@ export default function RequerimientosPage({
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/60 dark:hover:bg-zinc-800 rounded-xl transition-colors"
+                  className="px-4 py-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/60 dark:hover:bg-zinc-800 rounded-xl transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-blue-500/20"
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-blue-500/20 cursor-pointer"
                 >
                   <Save size={15} className="mr-1.5" />
                   {saving ? 'Guardando...' : editingReq ? 'Actualizar' : 'Registrar Requerimiento'}
@@ -942,7 +899,7 @@ export default function RequerimientosPage({
                     </div>
                     {log.autor && (
                       <p className="text-[11px] text-zinc-500">
-                        Realizado por: <strong className="text-zinc-700 dark:text-zinc-300">{log.autor.nombre}</strong>
+                        Realizado por: <strong className="text-zinc-700 dark:text-zinc-300">{log.autor.nombre || log.autor.correo}</strong>
                       </p>
                     )}
                   </div>
@@ -953,7 +910,7 @@ export default function RequerimientosPage({
             <div className="px-6 py-3 border-t border-zinc-100 dark:border-zinc-800/80 shrink-0 text-right bg-zinc-50/80 dark:bg-zinc-900/80">
               <button
                 onClick={() => setShowLogsModal(false)}
-                className="px-4 py-2 text-xs font-semibold bg-zinc-200/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+                className="px-4 py-2 text-xs font-semibold bg-zinc-200/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors cursor-pointer"
               >
                 Cerrar
               </button>
@@ -989,7 +946,7 @@ export default function RequerimientosPage({
                       </div>
                       <button
                         onClick={() => toggleEquipoAsignado(eq.equipo_id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${isAssigned ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-900/50' : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50'}`}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${isAssigned ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-900/50' : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50'}`}
                       >
                         {isAssigned ? 'Remover' : 'Asignar'}
                       </button>
@@ -1002,7 +959,7 @@ export default function RequerimientosPage({
             <div className="px-6 py-3 border-t border-zinc-100 dark:border-zinc-800/80 shrink-0 text-right bg-zinc-50/80 dark:bg-zinc-900/80">
               <button
                 onClick={() => setShowEquiposModal(false)}
-                className="px-4 py-2 text-xs font-semibold bg-zinc-200/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+                className="px-4 py-2 text-xs font-semibold bg-zinc-200/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors cursor-pointer"
               >
                 Cerrar
               </button>

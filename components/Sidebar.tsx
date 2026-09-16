@@ -1,17 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { FolderGit2, Users, BookOpen, HelpCircle, LogOut } from 'lucide-react';
-import { supabase } from '@/lib/supabase-client';
+import { useAuth } from '@/lib/firebase-auth-provider';
 import { toast } from 'react-hot-toast';
-
-interface UserState {
-  email?: string;
-  name?: string;
-  profession?: string;
-}
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -20,46 +14,11 @@ interface SidebarProps {
 
 const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
   const pathname = usePathname();
-  const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<UserState | null>(null);
-
-  useEffect(() => {
-    async function loadUser() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profile } = await supabase
-            .from('perfil_usuario')
-            .select('nombre, correo')
-            .eq('id', user.id)
-            .single();
-
-          const { data: profData } = await supabase
-            .from('usuario_profesion')
-            .select(`
-              profesiones:profesiones(nombre)
-            `)
-            .eq('id_usuario', user.id)
-            .maybeSingle();
-
-          const profesionNombre = (profData as any)?.profesiones?.nombre || null;
-
-          setCurrentUser({
-            email: user.email,
-            name: profile?.nombre || user.email?.split('@')[0] || 'Usuario',
-            profession: profesionNombre || 'Sin profesión registrada'
-          });
-        }
-      } catch (e) {
-        // Manejo silencioso
-      }
-    }
-    loadUser();
-  }, []);
+  const { user, profile, logout } = useAuth();
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut();
+      await logout();
       toast.success('Sesión finalizada');
       window.location.href = '/login';
     } catch (err: any) {
@@ -74,6 +33,10 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     { name: 'Ayuda', href: '#', icon: HelpCircle },
   ];
 
+  const displayName = profile?.nombre || user?.displayName || user?.email?.split('@')[0] || 'Usuario';
+  const displaySubtitle = (profile as any)?.profesion_nombre || profile?.correo || user?.email || 'Miembro';
+  const initials = displayName.slice(0, 2).toUpperCase();
+
   const sidebarContent = (
     <aside className={`
       fixed top-0 bottom-0 left-0 z-50 w-64 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-xl border-r border-zinc-200/80 dark:border-zinc-800/80 flex flex-col transition-transform duration-300 ease-in-out
@@ -82,12 +45,12 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
       {/* Sidebar Header */}
       <div className="p-4 border-b border-zinc-200/60 dark:border-zinc-800/60 flex items-center justify-between">
         <div className="flex items-center space-x-2.5">
-          <div className="w-7 h-7 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg flex items-center justify-center font-bold text-xs tracking-wider shadow-sm">
+          <div className="w-7 h-7 bg-blue-600 text-white rounded-lg flex items-center justify-center font-bold text-xs tracking-wider shadow-sm">
             ER
           </div>
           <div className="flex flex-col">
             <span className="font-semibold text-sm tracking-tight text-zinc-900 dark:text-zinc-100 leading-none">EasyReq</span>
-            <span className="text-[10px] text-zinc-500 font-mono mt-0.5">reyes-soft</span>
+            <span className="text-[10px] text-zinc-500 font-mono mt-0.5">Gestión v2</span>
           </div>
         </div>
         {onClose && (
@@ -133,15 +96,15 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
       <div className="p-3 border-t border-zinc-200/60 dark:border-zinc-800/60">
         <div className="bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-xl p-2.5 flex items-center justify-between">
           <div className="flex items-center space-x-2.5 min-w-0">
-            <div className="w-7 h-7 shrink-0 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center text-[11px] font-bold uppercase">
-              {currentUser?.name ? currentUser.name.slice(0, 2).toUpperCase() : '?'}
+            <div className="w-7 h-7 shrink-0 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 flex items-center justify-center text-[11px] font-bold uppercase">
+              {initials}
             </div>
             <div className="flex flex-col min-w-0">
               <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100 leading-tight truncate">
-                {currentUser?.name || 'Usuario'}
+                {displayName}
               </span>
               <span className="text-[10px] text-zinc-500 truncate">
-                {currentUser?.profession || currentUser?.email || 'Miembro'}
+                {displaySubtitle}
               </span>
             </div>
           </div>
@@ -161,4 +124,3 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
 };
 
 export default Sidebar;
-

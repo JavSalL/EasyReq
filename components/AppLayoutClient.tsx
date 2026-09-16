@@ -3,48 +3,25 @@
 import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Menu } from 'lucide-react';
-import { supabase } from '@/lib/supabase-client';
+import { FirebaseAuthProvider, useAuth } from '@/lib/firebase-auth-provider';
 import Sidebar from './Sidebar';
 
-export default function AppLayoutClient({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function LayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const { user, loading } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isLoginPage = pathname === '/login';
 
   useEffect(() => {
-    // Comprobar sesión de usuario
-    async function verifyAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session && !isLoginPage) {
+    if (!loading) {
+      if (!user && !isLoginPage) {
         router.replace('/login');
-      } else if (session && isLoginPage) {
+      } else if (user && isLoginPage) {
         router.replace('/');
       }
-      setLoading(false);
     }
-
-    verifyAuth();
-
-    // Escuchar cambios en la autenticación
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session && !isLoginPage) {
-        router.replace('/login');
-      } else if (session && isLoginPage) {
-        router.replace('/');
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [pathname, isLoginPage, router]);
+  }, [user, loading, isLoginPage, router]);
 
   // Cerrar menú móvil al cambiar de ruta
   useEffect(() => {
@@ -110,5 +87,17 @@ export default function AppLayoutClient({
         </div>
       </main>
     </div>
+  );
+}
+
+export default function AppLayoutClient({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <FirebaseAuthProvider>
+      <LayoutContent>{children}</LayoutContent>
+    </FirebaseAuthProvider>
   );
 }
