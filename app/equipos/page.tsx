@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 export default function LegacyRedirect() {
   const router = useRouter();
   useEffect(() => {
-    router.replace('/equipos-global');
+    router.replace('/equipos-global/');
   }, [router]);
 
   return (

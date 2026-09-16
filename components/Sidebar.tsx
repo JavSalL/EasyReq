@@ -20,7 +20,7 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     try {
       await logout();
       toast.success('Sesión finalizada');
-      window.location.href = '/login';
+      window.location.href = '/login/';
     } catch (err: any) {
       toast.error('Error al cerrar sesión');
     }
@@ -28,8 +28,8 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
 
   const menuItems = [
     { name: 'Proyectos', href: '/', icon: FolderGit2 },
-    { name: 'Equipos', href: '/equipos-global', icon: Users },
-    { name: 'Patrones & Modelos', href: '/patrones', icon: BookOpen },
+    { name: 'Equipos', href: '/equipos-global/', icon: Users },
+    { name: 'Patrones & Modelos', href: '/patrones/', icon: BookOpen },
     { name: 'Ayuda', href: '#', icon: HelpCircle },
   ];
 

@@ -299,7 +299,7 @@ export default function Home() {
 
                 {/* Actions Button */}
                 <button
-                  onClick={() => router.push(`/requerimientos?id=${proj.proyecto_id}`)}
+                  onClick={() => router.push(`/requerimientos/?id=${proj.proyecto_id}`)}
                   className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer"
                 >
                   <span>Requerimientos</span>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { use, useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { 
@@ -34,14 +34,17 @@ import {
   unlinkEquipoFromProyecto
 } from '@/lib/firestore-service';
 
-export default function RequerimientosPage({ 
-  searchParams 
-}: { 
-  searchParams: Promise<{ proyectoId?: string; id?: string }> 
-}) {
-  const params = use(searchParams);
+export default function RequerimientosPage() {
   const router = useRouter();
-  const proyectoId = params.id || params.proyectoId || null;
+  // Lectura directa de window.location.search: con `output: 'export'` (sitio estático
+  // en Firebase Hosting) no hay servidor que resuelva `searchParams` por request, así
+  // que se lee la URL real del navegador en el cliente en vez de usar el hook de Next.
+  const [proyectoId, setProyectoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    setProyectoId(sp.get('id') || sp.get('proyectoId') || null);
+  }, []);
 
   // States
   const [proyecto, setProyecto] = useState<Proyecto | null>(null);

@@ -11,12 +11,15 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const isLoginPage = pathname === '/login';
+  // Con trailingSlash:true (exportación estática para Firebase Hosting) la ruta real
+  // es "/login/", así que se normaliza quitando la barra final antes de comparar.
+  const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname;
+  const isLoginPage = normalizedPath === '/login';
 
   useEffect(() => {
     if (!loading) {
       if (!user && !isLoginPage) {
-        router.replace('/login');
+        router.replace('/login/');
       } else if (user && isLoginPage) {
         router.replace('/');
       }
