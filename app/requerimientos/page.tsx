@@ -7,7 +7,7 @@ import {
   ChevronLeft, Plus, Edit2, Trash2, Search, CheckCircle2, 
   User, Users, Clock, X, Save,
   Sparkles, CheckCheck, FileText,
-  History
+  History, Lock
 } from 'lucide-react';
 import { generateSingleRequirement } from '@/lib/ai-actions';
 import type { 
@@ -31,11 +31,15 @@ import {
   getEquipos,
   getProyectoEquipos,
   linkEquipoToProyecto,
-  unlinkEquipoFromProyecto
+  unlinkEquipoFromProyecto,
+  isUsuarioRelacionadoAProyecto
 } from '@/lib/firestore-service';
+import { useAuth } from '@/lib/firebase-auth-provider';
 
 export default function RequerimientosPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const uid = user?.uid ?? null;
   // Lectura directa de window.location.search: con `output: 'export'` (sitio estático
   // en Firebase Hosting) no hay servidor que resuelva `searchParams` por request, así
   // que se lee la URL real del navegador en el cliente en vez de usar el hook de Next.
@@ -89,6 +93,28 @@ export default function RequerimientosPage() {
   const [equipos, setEquipos] = useState<Array<any>>([]);
   const [equiposAsignados, setEquiposAsignados] = useState<string[]>([]);
   const [showEquiposModal, setShowEquiposModal] = useState(false);
+
+  // Control de acceso: lectura total; crear/editar requerimientos y
+  // vincular equipos solo si el usuario está relacionado al proyecto
+  // (miembro de un equipo vinculado).
+  const [puedeEditar, setPuedeEditar] = useState(false);
+
+  useEffect(() => {
+    let activo = true;
+    const cargarPermiso = async () => {
+      try {
+        const ok = uid && proyectoId
+          ? await isUsuarioRelacionadoAProyecto(uid, proyectoId)
+          : false;
+        if (activo) setPuedeEditar(ok);
+      } catch (err) {
+        console.error('Error al verificar permiso sobre el proyecto:', err);
+        if (activo) setPuedeEditar(false);
+      }
+    };
+    cargarPermiso();
+    return () => { activo = false; };
+  }, [uid, proyectoId]);
 
   // AI Generation State
   const [isAILoading, setIsAILoading] = useState(false);
@@ -169,6 +195,10 @@ export default function RequerimientosPage() {
 
   // Apertura de modal nuevo
   const openCreateModal = () => {
+    if (!puedeEditar) {
+      toast.error('Solo miembros de un equipo vinculado pueden crear requerimientos');
+      return;
+    }
     setEditingReq(null);
     const primerModelo = modelos[0]?.id || '';
     const primerPatron = patrones.find(p => p.id_modelo === primerModelo);
@@ -188,6 +218,10 @@ export default function RequerimientosPage() {
 
   // Apertura de modal editar
   const openEditModal = (req: Requerimiento) => {
+    if (!puedeEditar) {
+      toast.error('Solo miembros de un equipo vinculado pueden editar requerimientos');
+      return;
+    }
     setEditingReq(req);
     setFormData({
       enunciado: req.enunciado,
@@ -221,6 +255,10 @@ export default function RequerimientosPage() {
   // Guardar Requerimiento (Crear o Editar)
   const handleSaveReq = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!puedeEditar) {
+      toast.error('No tienes permiso para modificar requerimientos de este proyecto');
+      return;
+    }
     if (!formData.enunciado.trim()) {
       toast.error('El enunciado del requerimiento es obligatorio');
       return;
@@ -314,6 +352,10 @@ export default function RequerimientosPage() {
 
   // Cambio rápido de estado (Aprobar, Rechazar, etc.)
   const handleQuickStatusChange = async (req: Requerimiento, nuevoEstadoNombre: string) => {
+    if (!puedeEditar) {
+      toast.error('Solo miembros de un equipo vinculado pueden cambiar el estado');
+      return;
+    }
     const targetEstado = estados.find(e => e.nombre_estado.toLowerCase() === nuevoEstadoNombre.toLowerCase());
     if (!targetEstado) return;
 
@@ -341,6 +383,10 @@ export default function RequerimientosPage() {
 
   // Eliminar Requerimiento
   const handleDeleteReq = async (id: string) => {
+    if (!puedeEditar) {
+      toast.error('Solo miembros de un equipo vinculado pueden eliminar requerimientos');
+      return;
+    }
     if (!confirm('¿Estás seguro de eliminar este requerimiento?')) return;
     try {
       await deleteRequerimiento(id);
@@ -362,6 +408,10 @@ export default function RequerimientosPage() {
   // Toggle asignar equipo al proyecto
   const toggleEquipoAsignado = async (equipoId: string) => {
     if (!proyectoId) return;
+    if (!puedeEditar) {
+      toast.error('Solo miembros de un equipo vinculado pueden vincular equipos');
+      return;
+    }
     const isAsignado = equiposAsignados.includes(equipoId);
     try {
       if (isAsignado) {
@@ -444,15 +494,25 @@ export default function RequerimientosPage() {
             Equipos ({equiposAsignados.length})
           </button>
 
-          <button
-            onClick={openCreateModal}
-            className="inline-flex items-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all font-medium text-xs gap-1.5 cursor-pointer shadow-xs"
-          >
-            <Plus size={15} />
-            Nuevo Requerimiento
-          </button>
+          {puedeEditar && (
+            <button
+              onClick={openCreateModal}
+              className="inline-flex items-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all font-medium text-xs gap-1.5 cursor-pointer shadow-xs"
+            >
+              <Plus size={15} />
+              Nuevo Requerimiento
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Aviso de solo lectura para no relacionados */}
+      {!puedeEditar && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-3.5 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+          <Lock size={15} className="shrink-0" />
+          <span>Tienes acceso de lectura a este proyecto. Solo miembros de un equipo vinculado pueden crear o editar requerimientos y vincular equipos.</span>
+        </div>
+      )}
 
       {/* Barra de Búsqueda y Filtros */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
@@ -531,7 +591,9 @@ export default function RequerimientosPage() {
           </p>
           <button
             onClick={openCreateModal}
-            className="mt-4 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-all shadow-xs"
+            disabled={!puedeEditar}
+            title={puedeEditar ? 'Redactar un requerimiento' : 'Solo miembros de un equipo vinculado pueden redactar'}
+            className="mt-4 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Redactar Requerimiento
           </button>
@@ -605,7 +667,8 @@ export default function RequerimientosPage() {
                 </div>
               </div>
 
-              {/* Botones de Acción */}
+              {/* Botones de Acción (solo relacionados al proyecto) */}
+              {puedeEditar && (
               <div className="flex items-center gap-2 border-t md:border-t-0 pt-3 md:pt-0 border-zinc-100 dark:border-zinc-800">
                 {/* Aprobación rápida */}
                 {req.estado?.nombre_estado?.toLowerCase() !== 'aprobado' && (
@@ -645,6 +708,19 @@ export default function RequerimientosPage() {
                   <Trash2 size={18} />
                 </button>
               </div>
+              )}
+              {!puedeEditar && (
+              <div className="flex items-center gap-2 border-t md:border-t-0 pt-3 md:pt-0 border-zinc-100 dark:border-zinc-800">
+                {/* Ver Historial (lectura) */}
+                <button
+                  onClick={() => handleViewLogs(req)}
+                  title="Ver Historial de Cambios"
+                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-xl transition-colors cursor-pointer"
+                >
+                  <History size={18} />
+                </button>
+              </div>
+              )}
             </div>
           ))}
         </div>
@@ -948,7 +1024,9 @@ export default function RequerimientosPage() {
                       </div>
                       <button
                         onClick={() => toggleEquipoAsignado(eq.equipo_id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${isAssigned ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-900/50' : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50'}`}
+                        disabled={!puedeEditar}
+                        title={puedeEditar ? (isAssigned ? 'Remover equipo del proyecto' : 'Asignar equipo al proyecto') : 'Solo miembros de un equipo vinculado pueden modificar asignaciones'}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${isAssigned ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-900/50' : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50'}`}
                       >
                         {isAssigned ? 'Remover' : 'Asignar'}
                       </button>

@@ -63,6 +63,10 @@ export interface Proyecto {
   descripcion?: string;
   id_tipo_sistema: UUID | null;
   tipos_sistema?: TipoSistema | null;
+  // UID de Firebase Auth del usuario que creó el proyecto. Opcional (null
+  // en documentos legacy creados antes de este campo): esos se tratan como
+  // hoy, solo miembros de equipos vinculados pueden editarlos.
+  id_creador?: UUID | null;
   created_at?: string;
 }
 

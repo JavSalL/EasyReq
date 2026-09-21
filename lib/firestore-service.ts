@@ -28,7 +28,8 @@ import {
   Modelo, 
   ProyectoEquipo, 
   MiembroEquipo, 
-  LogRequerimiento 
+  LogRequerimiento,
+  UUID
 } from './database.types';
 
 // ==========================================
@@ -302,6 +303,9 @@ export async function getProyectos(): Promise<Proyecto[]> {
         descripcion: data.descripcion || '',
         id_tipo_sistema: data.id_tipo_sistema || null,
         tipos_sistema: data.id_tipo_sistema ? tiposMap.get(data.id_tipo_sistema) || null : null,
+        // Documentos legacy pueden no tener `id_creador`: se normaliza a null
+        // y se tratan como hoy (solo miembros vinculados editan).
+        id_creador: (data.id_creador as string | null | undefined) ?? null,
         created_at: data.created_at || new Date().toISOString()
       });
     }
@@ -325,6 +329,8 @@ export async function getProyectoById(id: string): Promise<Proyecto | null> {
       descripcion: data.descripcion || '',
       id_tipo_sistema: data.id_tipo_sistema || null,
       tipos_sistema: tipo,
+      // Documentos legacy sin `id_creador` se normalizan a null.
+      id_creador: (data.id_creador as string | null | undefined) ?? null,
       created_at: data.created_at || new Date().toISOString()
     };
   } catch (e) {
@@ -333,17 +339,24 @@ export async function getProyectoById(id: string): Promise<Proyecto | null> {
   }
 }
 
-export async function createProyecto(data: { nombre: string; descripcion?: string; id_tipo_sistema?: string | null }): Promise<Proyecto> {
+export async function createProyecto(data: { nombre: string; descripcion?: string; id_tipo_sistema?: string | null; id_creador?: UUID | null }): Promise<Proyecto> {
+  const created_at = new Date().toISOString();
   const docRef = await addDoc(collection(db, 'proyecto'), {
-    ...data,
-    created_at: new Date().toISOString()
+    nombre: data.nombre,
+    descripcion: data.descripcion || '',
+    id_tipo_sistema: data.id_tipo_sistema || null,
+    // UID del creador (política: cualquier autenticado puede crear; el
+    // creador siempre puede editar/eliminar). Null si no se provee.
+    id_creador: data.id_creador ?? null,
+    created_at
   });
   return {
     proyecto_id: docRef.id,
     nombre: data.nombre,
     descripcion: data.descripcion || '',
     id_tipo_sistema: data.id_tipo_sistema || null,
-    created_at: new Date().toISOString()
+    id_creador: data.id_creador ?? null,
+    created_at
   };
 }
 
@@ -479,6 +492,99 @@ export async function addMiembroEquipo(id_equipo: string, id_usuario: string, id
 export async function removeMiembroEquipo(id_equipo: string, id_usuario: string): Promise<void> {
   const docId = `${id_equipo}_${id_usuario}`;
   await deleteDoc(doc(db, 'miembros_equipo', docId));
+}
+
+// ==========================================
+// CONTROL DE ACCESO (proyectos)
+// Política: cualquier usuario autenticado puede CREAR proyectos y todo
+// proyecto es VISIBLE para todos los autenticados. Solo relacionados
+// pueden EDITAR/ELIMINAR: el creador (`proyecto.id_creador == uid`) más
+// los miembros de equipos vinculados vía `proyecto_equipos` +
+// `miembros_equipo`. Enforcement en cliente+servicio (ver firestore.rules:
+// TODO backend para enforcement real en servidor).
+// Proyectos legacy sin `id_creador` se tratan como hoy: solo miembros
+// vinculados editan. No hay migración destructiva.
+// Un usuario es "líder" de un equipo si su `roles.nombre_rol`
+// contiene "líder"/"lider" (insensible a acentos y mayúsculas).
+// ==========================================
+
+/** Normaliza un nombre de rol y detecta si corresponde a líder de equipo. */
+export function esRolLider(nombreRol: string | null | undefined): boolean {
+  const normalizado = (nombreRol ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return normalizado.includes('lider');
+}
+
+/**
+ * IDs de proyectos relacionados al usuario: proyectos que creó
+ * (`proyecto.id_creador == userId`) más aquellos donde es miembro de un
+ * equipo vinculado vía `proyecto_equipos`. Sin N+1: 3 lecturas en
+ * paralelo (vínculos + membresías con joins + creados propios).
+ */
+export async function getProyectosRelacionados(userId: string): Promise<UUID[]> {
+  if (!userId) return [];
+  const [vinculos, membresias, creadosSnap] = await Promise.all([
+    getProyectoEquipos(),
+    getMiembrosEquipo(),
+    getDocs(query(collection(db, 'proyecto'), where('id_creador', '==', userId)))
+  ]);
+  const equiposDelUsuario = new Set(
+    membresias
+      .filter((m: MiembroEquipo) => m.id_usuario === userId)
+      .map((m: MiembroEquipo) => m.id_equipo)
+  );
+  const proyectos = new Set<UUID>();
+  for (const d of creadosSnap.docs) {
+    proyectos.add(d.id);
+  }
+  for (const pe of vinculos) {
+    if (pe.id_proyecto && equiposDelUsuario.has(pe.id_equipo)) {
+      proyectos.add(pe.id_proyecto);
+    }
+  }
+  return [...proyectos];
+}
+
+/**
+ * Indica si el usuario puede editar/eliminar el proyecto: true si es su
+ * creador (`id_creador == userId`) o miembro de un equipo vinculado.
+ */
+export async function isUsuarioRelacionadoAProyecto(
+  userId: string,
+  proyectoId: string
+): Promise<boolean> {
+  if (!userId || !proyectoId) return false;
+  // Chequeo barato primero: creador del proyecto (1 lectura directa).
+  try {
+    const snap = await getDoc(doc(db, 'proyecto', proyectoId));
+    if (snap.exists() && snap.data().id_creador === userId) return true;
+  } catch (e) {
+    console.error('Error verificando creador del proyecto:', e);
+  }
+  const relacionados = await getProyectosRelacionados(userId);
+  return relacionados.includes(proyectoId);
+}
+
+/** Indica si el usuario tiene rol de líder en el equipo dado. */
+export async function isLiderDeEquipo(
+  userId: string,
+  equipoId: string
+): Promise<boolean> {
+  if (!userId || !equipoId) return false;
+  const miembros = await getMiembrosEquipo(equipoId);
+  const propio = miembros.find((m: MiembroEquipo) => m.id_usuario === userId);
+  return esRolLider(propio?.rol?.nombre_rol);
+}
+
+/** IDs de equipos donde el usuario tiene rol de líder. Una lectura con joins. */
+export async function getEquiposLideradosPor(userId: string): Promise<UUID[]> {
+  if (!userId) return [];
+  const membresias = await getMiembrosEquipo();
+  return membresias
+    .filter((m: MiembroEquipo) => m.id_usuario === userId && esRolLider(m.rol?.nombre_rol))
+    .map((m: MiembroEquipo) => m.id_equipo);
 }
 
 // ==========================================

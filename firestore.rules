@@ -53,11 +53,30 @@ service cloud.firestore {
     }
 
     // 3. Proyectos
+    // TODO(control-acceso): la lectura queda abierta a autenticados (política:
+    // todo proyecto es visible para todo usuario autenticado, y cualquier
+    // autenticado puede crear). La escritura debería limitarse a usuarios
+    // relacionados al proyecto: creador (`resource.data.id_creador ==
+    // request.auth.uid`) o miembro de un equipo vinculado vía
+    // `proyecto_equipos` + `miembros_equipo`, pero la parte de membresía no
+    // se puede resolver en `allow`: requeriría leer N documentos de
+    // `miembros_equipo`/`proyecto_equipos` con IDs no predecibles desde el
+    // path, lo que excede lo expresable en rules sin Cloud Functions /
+    // backend con custom claims. El enforcement vive hoy en cliente+servicio
+    // (helpers getProyectosRelacionados/isUsuarioRelacionadoAProyecto y gating
+    // en app/). No endurecer aquí sin backend: se rompería el flujo actual
+    // (incluidos proyectos legacy sin `id_creador`).
     match /proyecto/{proyectoId} {
       allow read, write: if isAuthenticated();
     }
 
     // 4. Equipos y vinculaciones
+    // TODO(control-acceso): mismo caso que proyectos. La gestión de miembros
+    // y la edición del equipo están reservadas a líderes
+    // (roles.nombre_rol ~ líder), enforced en cliente+servicio
+    // (isLiderDeEquipo/getEquiposLideradosPor + gating en
+    // app/equipos-global/). Mover a Cloud Functions con verificación de
+    // membresía+rol antes de restringir en rules.
     match /equipo/{equipoId} {
       allow read, write: if isAuthenticated();
     }
@@ -69,6 +88,9 @@ service cloud.firestore {
     }
 
     // 5. Requerimientos
+    // TODO(control-acceso): crear/editar/eliminar y vincular equipos solo
+    // para relacionados al proyecto (ver TODO de proyectos). Lectura abierta
+    // a autenticados; enforcement en cliente+servicio (app/requerimientos/).
     match /requerimiento/{requerimientoId} {
       allow read, write: if isAuthenticated();
     }

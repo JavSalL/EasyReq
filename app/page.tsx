@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { 
   Plus, Edit2, Trash2, FolderGit2, ChevronRight, Search, 
-  Layers, Users, X, Save, CheckCircle2, Cpu, Smartphone, Globe, Laptop, Server
+  Layers, Users, X, Save, CheckCircle2, Cpu, Smartphone, Globe, Laptop, Server, Lock
 } from 'lucide-react';
 import type { Proyecto, TipoSistema } from '@/lib/database.types';
 import { 
@@ -15,8 +15,10 @@ import {
   updateProyecto, 
   deleteProyecto,
   getRequerimientos,
-  getProyectoEquipos
+  getProyectoEquipos,
+  getProyectosRelacionados
 } from '@/lib/firestore-service';
+import { useAuth } from '@/lib/firebase-auth-provider';
 
 interface ProyectoConStats extends Proyecto {
   tipos_sistema?: TipoSistema | null;
@@ -26,10 +28,42 @@ interface ProyectoConStats extends Proyecto {
 
 export default function Home() {
   const router = useRouter();
+  const { user } = useAuth();
+  const uid = user?.uid ?? null;
   const [projects, setProjects] = useState<Array<ProyectoConStats>>([]);
   const [tiposSistema, setTiposSistema] = useState<Array<TipoSistema>>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Control de acceso: todo proyecto es visible para autenticados;
+  // cualquier autenticado puede crear; editar/eliminar solo relacionados
+  // (creador con `id_creador==uid` o miembro de equipo vinculado).
+  const [proyectosPermitidos, setProyectosPermitidos] = useState<Array<string>>([]);
+  const [loadingPermisos, setLoadingPermisos] = useState(true);
+
+  useEffect(() => {
+    let activo = true;
+    const cargarPermisos = async () => {
+      setLoadingPermisos(true);
+      try {
+        const ids = uid ? await getProyectosRelacionados(uid) : [];
+        if (activo) setProyectosPermitidos(ids);
+      } catch (err) {
+        console.error('Error al cargar permisos de proyectos:', err);
+        if (activo) setProyectosPermitidos([]);
+      } finally {
+        if (activo) setLoadingPermisos(false);
+      }
+    };
+    cargarPermisos();
+    return () => { activo = false; };
+  }, [uid]);
+
+  const puedeEditarProyecto = (proyectoId: string) =>
+    proyectosPermitidos.includes(proyectoId);
+  // Política: cualquier usuario autenticado puede crear proyectos. Solo se
+  // exige haber iniciado sesión (guard de login, no de vínculo).
+  const puedeCrearProyecto = uid !== null;
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -92,6 +126,10 @@ export default function Home() {
   }, [fetchTiposSistema, fetchProjects]);
 
   const openCreateModal = () => {
+    if (!uid) {
+      toast.error('Debes iniciar sesión para crear proyectos');
+      return;
+    }
     setEditingProject(null);
     setFormData({
       nombre: '',
@@ -102,6 +140,10 @@ export default function Home() {
   };
 
   const openEditModal = (p: Proyecto) => {
+    if (!puedeEditarProyecto(p.proyecto_id)) {
+      toast.error('Solo miembros de un equipo vinculado pueden editar este proyecto');
+      return;
+    }
     setEditingProject(p);
     setFormData({
       nombre: p.nombre,
@@ -121,7 +163,11 @@ export default function Home() {
     setSaving(true);
     try {
       if (editingProject) {
-        // Actualizar
+        // Actualizar (defensa en cliente: solo relacionados al proyecto)
+        if (!puedeEditarProyecto(editingProject.proyecto_id)) {
+          toast.error('No tienes permiso para editar este proyecto');
+          return;
+        }
         await updateProyecto(editingProject.proyecto_id, {
           nombre: formData.nombre.trim(),
           descripcion: formData.descripcion.trim(),
@@ -129,11 +175,17 @@ export default function Home() {
         });
         toast.success('Proyecto actualizado correctamente');
       } else {
-        // Crear
+        // Crear (defensa en cliente: cualquier usuario autenticado; se
+        // registra `id_creador=uid` para que el creador pueda editar/eliminar).
+        if (!uid) {
+          toast.error('Debes iniciar sesión para crear proyectos');
+          return;
+        }
         await createProyecto({
           nombre: formData.nombre.trim(),
           descripcion: formData.descripcion.trim(),
-          id_tipo_sistema: formData.id_tipo_sistema || null
+          id_tipo_sistema: formData.id_tipo_sistema || null,
+          id_creador: uid
         });
         toast.success('Proyecto creado correctamente');
       }
@@ -149,6 +201,10 @@ export default function Home() {
   };
 
   const deleteProject = async (id: string, nombre: string) => {
+    if (!puedeEditarProyecto(id)) {
+      toast.error('Solo miembros de un equipo vinculado pueden eliminar este proyecto');
+      return;
+    }
     if (!confirm(`¿Estás seguro de que deseas eliminar el proyecto "${nombre}"? Esta acción eliminará también sus requerimientos asociados.`)) {
       return;
     }
@@ -188,7 +244,9 @@ export default function Home() {
         </div>
         <button
           onClick={openCreateModal}
-          className="inline-flex items-center justify-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-xs font-medium text-xs gap-1.5 cursor-pointer"
+          disabled={loadingPermisos || !puedeCrearProyecto}
+          title={puedeCrearProyecto ? 'Crear un nuevo proyecto' : 'Debes iniciar sesión para crear proyectos'}
+          className="inline-flex items-center justify-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-xs font-medium text-xs gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={15} />
           Nuevo Proyecto
@@ -225,7 +283,7 @@ export default function Home() {
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-sm mx-auto">
             {searchTerm ? "No coincide ningún proyecto con tu búsqueda." : "Crea tu primer proyecto para empezar a registrar requerimientos técnicos."}
           </p>
-          {!searchTerm && (
+          {!searchTerm && puedeCrearProyecto && (
             <button
               onClick={openCreateModal}
               className="mt-4 inline-flex items-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-medium transition-all shadow-xs gap-1.5 cursor-pointer"
@@ -233,6 +291,12 @@ export default function Home() {
               <Plus size={15} />
               Crear Proyecto
             </button>
+          )}
+          {!searchTerm && !puedeCrearProyecto && !loadingPermisos && (
+            <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-zinc-400">
+              <Lock size={13} />
+              Inicia sesión para crear proyectos.
+            </p>
           )}
         </div>
       ) : (
@@ -250,30 +314,52 @@ export default function Home() {
                   </div>
                   
                   <div className="flex items-center space-x-1">
-                    <button 
-                      onClick={() => openEditModal(proj)}
-                      title="Editar Proyecto"
-                      className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <Edit2 size={13} />
-                    </button>
-                    <button 
-                      onClick={() => deleteProject(proj.proyecto_id, proj.nombre)}
-                      title="Eliminar Proyecto"
-                      className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                    {puedeEditarProyecto(proj.proyecto_id) ? (
+                      <>
+                        <button 
+                          onClick={() => openEditModal(proj)}
+                          title="Editar Proyecto"
+                          className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                        <button 
+                          onClick={() => deleteProject(proj.proyecto_id, proj.nombre)}
+                          title="Eliminar Proyecto"
+                          className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </>
+                    ) : (
+                      <span
+                        title="Solo lectura: solo el creador o miembros de un equipo vinculado pueden editar este proyecto"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
+                      >
+                        <Lock size={12} />
+                        Solo lectura
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 {/* Badge Tipo Sistema */}
+                <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
                 {proj.tipos_sistema && (
-                  <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-zinc-100 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium mb-2.5 border border-zinc-200/50 dark:border-zinc-700/50">
+                  <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-zinc-100 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
                     {getTipoSistemaIcon(proj.tipos_sistema.nombre)}
                     <span>{proj.tipos_sistema.nombre}</span>
                   </div>
                 )}
+                {uid !== null && proj.id_creador === uid && (
+                  <span
+                    title="Eres el creador de este proyecto"
+                    className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[10px] font-medium border border-blue-200/60 dark:border-blue-800/60"
+                  >
+                    Creador
+                  </span>
+                )}
+                </div>
 
                 {/* Info */}
                 <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">

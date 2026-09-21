@@ -16,6 +16,29 @@ import { toast } from 'react-hot-toast';
 import { Lock, Mail, User, Briefcase, ArrowRight, Sparkles, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
 import { Profesion } from '@/lib/database.types';
 
+// Mensaje para API key inválida. El env NEXT_PUBLIC_* se congela en build,
+// por eso tras corregir .env.local hay que reiniciar `npm run dev` y
+// reconstruir (`npm run build`) el export en `out/`.
+const FIREBASE_API_KEY_ERROR_MSG =
+  'Configuración Firebase inválida. Verifica NEXT_PUBLIC_FIREBASE_API_KEY y reinicia npm run dev';
+
+// Extrae `code`/`message` de errores de Firebase sin usar `any`.
+function getFirebaseErrorCode(err: unknown): string {
+  if (typeof err === 'object' && err !== null && 'code' in err) {
+    const code: unknown = (err as { code?: unknown }).code;
+    return typeof code === 'string' ? code : '';
+  }
+  return '';
+}
+
+function getFirebaseErrorMessage(err: unknown): string {
+  if (typeof err === 'object' && err !== null && 'message' in err) {
+    const message: unknown = (err as { message?: unknown }).message;
+    return typeof message === 'string' ? message : '';
+  }
+  return '';
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { user: authUser, loading: authLoading } = useAuth();
@@ -124,10 +147,12 @@ export default function LoginPage() {
         toast.success('¡Cuenta creada exitosamente!');
         window.location.href = '/';
       }
-    } catch (err: any) {
-      const code = err.code || '';
+    } catch (err: unknown) {
+      const code = getFirebaseErrorCode(err);
       let msg = 'Ocurrió un error al procesar la solicitud';
-      if (code === 'auth/too-many-requests') {
+      if (code === 'auth/api-key-not-valid' || code === 'auth/invalid-api-key') {
+        msg = FIREBASE_API_KEY_ERROR_MSG;
+      } else if (code === 'auth/too-many-requests') {
         msg = 'Límite de solicitudes superado. Por favor espera unos minutos.';
       } else if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
         msg = 'Correo electrónico o contraseña incorrectos.';
@@ -137,8 +162,11 @@ export default function LoginPage() {
         msg = 'El formato del correo no es válido (ej. usuario@correo.com).';
       } else if (code === 'auth/weak-password') {
         msg = 'La contraseña debe tener al menos 6 caracteres.';
-      } else if (err.message) {
-        msg = err.message;
+      } else {
+        const fallback = getFirebaseErrorMessage(err);
+        if (fallback) {
+          msg = fallback;
+        }
       }
       toast.error(msg);
     } finally {
@@ -163,8 +191,13 @@ export default function LoginPage() {
 
       toast.success('¡Sesión iniciada con Google!');
       window.location.href = '/';
-    } catch (err: any) {
-      if (err.code !== 'auth/popup-closed-by-user') {
+    } catch (err: unknown) {
+      const code = getFirebaseErrorCode(err);
+      if (code === 'auth/popup-closed-by-user') {
+        // El usuario cerró el popup: no es un error a reportar.
+      } else if (code === 'auth/api-key-not-valid' || code === 'auth/invalid-api-key') {
+        toast.error(FIREBASE_API_KEY_ERROR_MSG);
+      } else {
         toast.error('No se pudo iniciar sesión con Google.');
       }
     } finally {
