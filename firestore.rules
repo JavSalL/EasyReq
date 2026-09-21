@@ -24,7 +24,8 @@ service cloud.firestore {
     // 2. Catálogos base (profesiones, roles, estados, modalidades, tipos, modelos)
     // Lectura para autenticados; escritura permitida para usuarios autenticados (permite el auto-seed inicial)
     match /profesiones/{docId} {
-      allow read: if isAuthenticated();
+      // Lectura pública: el formulario de registro necesita el catálogo antes de que exista sesión.
+      allow read: if true;
       allow write: if isAuthenticated();
     }
     match /tipos_sistema/{docId} {
