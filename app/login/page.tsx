@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   signInWithEmailAndPassword,
@@ -13,7 +13,7 @@ import { auth } from '@/lib/firebase';
 import { getProfesiones, saveUserProfile, getUserProfile } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { toast } from 'react-hot-toast';
-import { Lock, Mail, User, Briefcase, ArrowRight, Sparkles, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, User, Briefcase, ChevronDown, X, ArrowRight, Sparkles, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
 import { Profesion } from '@/lib/database.types';
 
 // Mensaje para API key inválida. El env NEXT_PUBLIC_* se congela en build,
@@ -51,7 +51,39 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nombre, setNombre] = useState('');
-  const [idProfesion, setIdProfesion] = useState('');
+  const [idsProfesiones, setIdsProfesiones] = useState<string[]>([]);
+  const [profMenuOpen, setProfMenuOpen] = useState(false);
+  const profMenuRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar el desplegable de profesiones al hacer clic fuera o con Escape
+  useEffect(() => {
+    if (!profMenuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (profMenuRef.current && !profMenuRef.current.contains(e.target as Node)) {
+        setProfMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setProfMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [profMenuOpen]);
+
+  const toggleProfesion = (id: string) => {
+    setIdsProfesiones((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  };
+
+  const profesionesBotonTexto =
+    idsProfesiones.length === 0
+      ? 'Seleccionar profesiones...'
+      : idsProfesiones.length === 1
+        ? (profesiones.find((p) => p.id === idsProfesiones[0])?.nombre ?? '1 seleccionada')
+        : `${idsProfesiones.length} profesiones seleccionadas`;
 
   // Password validation rules
   const passMinLength = password.length >= 8;
@@ -106,8 +138,8 @@ export default function LoginPage() {
           return;
         }
 
-        if (!idProfesion) {
-          toast.error('Por favor selecciona tu profesión');
+        if (idsProfesiones.length === 0) {
+          toast.error('Por favor selecciona al menos una profesión');
           setLoading(false);
           return;
         }
@@ -135,13 +167,17 @@ export default function LoginPage() {
         const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
         await updateProfile(credential.user, { displayName: nombre.trim() });
 
-        // 2. Crear perfil en Firestore, incluyendo la profesión seleccionada
-        const profesionSeleccionada = profesiones.find((p) => p.id === idProfesion);
+        // 2. Crear perfil en Firestore con una o más profesiones
+        const profesionesSeleccionadas = profesiones.filter((p) => idsProfesiones.includes(p.id));
         await saveUserProfile(credential.user.uid, {
           nombre: nombre.trim(),
           correo: email.trim(),
-          id_profesion: idProfesion,
-          profesion_nombre: profesionSeleccionada?.nombre || undefined,
+          ids_profesiones: profesionesSeleccionadas.map((p) => p.id),
+          profesiones_nombres: profesionesSeleccionadas.map((p) => p.nombre),
+          profesiones: profesionesSeleccionadas,
+          // Compat legacy: primera profesión como campo singular
+          id_profesion: profesionesSeleccionadas[0]?.id,
+          profesion_nombre: profesionesSeleccionadas[0]?.nombre || undefined,
         });
 
         toast.success('¡Cuenta creada exitosamente!');
@@ -272,30 +308,112 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Campo Profesión (Solo en Registro) */}
+            {/* Campo Profesiones (Solo en Registro, desplegable multi-selección) */}
             {!isLogin && (
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
                   Profesión / Especialidad
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
-                    <Briefcase size={18} />
-                  </div>
-                  <select
-                    required={!isLogin}
-                    value={idProfesion}
-                    onChange={(e) => setIdProfesion(e.target.value)}
-                    className="block w-full pl-10 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                <div ref={profMenuRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setProfMenuOpen((v) => !v)}
+                    aria-haspopup="listbox"
+                    aria-expanded={profMenuOpen}
+                    className={`relative block w-full pl-10 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-800/60 border rounded-xl text-sm text-left focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer ${
+                      idsProfesiones.length === 0
+                        ? 'text-zinc-400 border-zinc-200 dark:border-zinc-700'
+                        : 'text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-700'
+                    } ${profMenuOpen ? 'ring-2 ring-blue-500 border-blue-500' : ''}`}
                   >
-                    <option value="">Seleccionar profesión...</option>
-                    {profesiones.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre}
-                      </option>
-                    ))}
-                  </select>
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
+                      <Briefcase size={18} />
+                    </span>
+                    <span className="block truncate">{profesionesBotonTexto}</span>
+                    <span className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-zinc-400">
+                      <ChevronDown size={18} className={`transition-transform ${profMenuOpen ? 'rotate-180' : ''}`} />
+                    </span>
+                  </button>
+
+                  {profMenuOpen && (
+                    <div className="absolute z-20 mt-2 w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-2xl shadow-zinc-900/10 overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-100 dark:border-zinc-800">
+                        <span className="text-[11px] font-medium text-zinc-400">
+                          Elige una o más ({idsProfesiones.length})
+                        </span>
+                        {idsProfesiones.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setIdsProfesiones([])}
+                            className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                          >
+                            Limpiar
+                          </button>
+                        )}
+                      </div>
+                      <div role="listbox" aria-multiselectable className="max-h-56 overflow-y-auto p-1.5 space-y-0.5">
+                        {profesiones.length === 0 && (
+                          <p className="text-xs text-zinc-400 px-2.5 py-2">Cargando profesiones...</p>
+                        )}
+                        {profesiones.map((p) => {
+                          const checked = idsProfesiones.includes(p.id);
+                          return (
+                            <label
+                              key={p.id}
+                              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm cursor-pointer transition-colors ${
+                                checked
+                                  ? 'bg-blue-50 dark:bg-blue-950/50 text-zinc-900 dark:text-white'
+                                  : 'text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleProfesion(p.id)}
+                                className="w-4 h-4 rounded accent-blue-600 shrink-0 cursor-pointer"
+                              />
+                              <span className="flex-1 truncate">{p.nombre}</span>
+                              {checked && <Check size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <div className="px-2.5 py-2 border-t border-zinc-100 dark:border-zinc-800">
+                        <button
+                          type="button"
+                          onClick={() => setProfMenuOpen(false)}
+                          className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          Listo{idsProfesiones.length > 0 ? ` (${idsProfesiones.length})` : ''}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+                {idsProfesiones.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {idsProfesiones.map((id) => {
+                      const prof = profesiones.find((p) => p.id === id);
+                      if (!prof) return null;
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 text-[11px] font-medium bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-full"
+                        >
+                          <span className="max-w-40 truncate">{prof.nombre}</span>
+                          <button
+                            type="button"
+                            aria-label={`Quitar ${prof.nombre}`}
+                            onClick={() => toggleProfesion(id)}
+                            className="w-4 h-4 rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 flex items-center justify-center cursor-pointer"
+                          >
+                            <X size={11} />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 

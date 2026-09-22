@@ -47,7 +47,15 @@ export interface PerfilUsuario {
   nombre: string;
   correo: string;
   created_at?: string;
+  // Multi-profesión (modelo actual). Se guarda desnormalizado en
+  // `perfil_usuario` para evitar joins en Firestore.
+  ids_profesiones?: UUID[];
+  profesiones_nombres?: string[];
   profesiones?: Profesion[];
+  // Legacy single-profesión: se mantiene por compatibilidad con
+  // documentos antiguos. No usar en código nuevo.
+  id_profesion?: UUID | null;
+  profesion_nombre?: string | null;
 }
 
 export interface Equipo {

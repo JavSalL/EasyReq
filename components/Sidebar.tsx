@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { FolderGit2, Users, BookOpen, HelpCircle, LogOut } from 'lucide-react';
 import { useAuth } from '@/lib/firebase-auth-provider';
+import { getProfesionesLabel } from '@/lib/firestore-service';
 import { toast } from 'react-hot-toast';
 
 interface SidebarProps {
@@ -34,7 +35,7 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
   ];
 
   const displayName = profile?.nombre || user?.displayName || user?.email?.split('@')[0] || 'Usuario';
-  const displaySubtitle = (profile as any)?.profesion_nombre || profile?.correo || user?.email || 'Miembro';
+  const displaySubtitle = getProfesionesLabel(profile, profile?.correo || user?.email || 'Miembro');
   const initials = displayName.slice(0, 2).toUpperCase();
 
   const sidebarContent = (
