@@ -28,7 +28,8 @@ import {
   Modelo, 
   ProyectoEquipo, 
   MiembroEquipo, 
-  LogRequerimiento 
+  LogRequerimiento,
+  UUID
 } from './database.types';
 
 // ==========================================
@@ -250,13 +251,63 @@ export async function getModelos(): Promise<Modelo[]> {
 
 // ==========================================
 // USUARIOS Y PERFILES
+// Modelo multi-profesión: `perfil_usuario` guarda
+// `ids_profesiones: string[]` + `profesiones_nombres: string[]`
+// desnormalizados. Los campos legacy `id_profesion` /
+// `profesion_nombre` (una sola profesión) se siguen escribiendo
+// con el primer elemento por compatibilidad y se normalizan
+// al leer.
 // ==========================================
+function normalizePerfilProfesiones(data: Record<string, unknown>): Pick<PerfilUsuario, 'ids_profesiones' | 'profesiones_nombres' | 'profesiones' | 'id_profesion' | 'profesion_nombre'> {
+  const rawIds = data.ids_profesiones;
+  const rawNombres = data.profesiones_nombres;
+  const rawProfesiones = data.profesiones;
+  const rawId = data.id_profesion;
+  const rawNombre = data.profesion_nombre;
+  const ids: UUID[] = Array.isArray(rawIds)
+    ? rawIds.filter((v: unknown): v is UUID => typeof v === 'string' && v.length > 0)
+    : typeof rawId === 'string' && rawId
+      ? [rawId]
+      : [];
+  const nombres: string[] = Array.isArray(rawNombres)
+    ? rawNombres.filter((v: unknown): v is string => typeof v === 'string' && v.length > 0)
+    : Array.isArray(rawProfesiones)
+      ? (rawProfesiones as Profesion[]).map((p) => p.nombre).filter((n) => typeof n === 'string' && n.length > 0)
+      : typeof rawNombre === 'string' && rawNombre
+        ? [rawNombre]
+        : [];
+  const profesiones: Profesion[] = Array.isArray(rawProfesiones)
+    ? (rawProfesiones as Profesion[])
+    : ids.map((id, i) => ({ id, nombre: nombres[i] ?? '' })).filter((p) => p.id && p.nombre);
+  return {
+    ids_profesiones: ids,
+    profesiones_nombres: nombres,
+    profesiones,
+    id_profesion: ids[0] ?? (typeof rawId === 'string' ? rawId : null),
+    profesion_nombre: nombres[0] ?? (typeof rawNombre === 'string' ? rawNombre : null),
+  };
+}
+
+/** Texto para mostrar las profesiones de un perfil ("A, B" o fallback). */
+export function getProfesionesLabel(profile: PerfilUsuario | null | undefined, fallback = ''): string {
+  if (!profile) return fallback;
+  const nombres = Array.isArray(profile.profesiones_nombres) && profile.profesiones_nombres.length > 0
+    ? profile.profesiones_nombres
+    : Array.isArray(profile.profesiones) && profile.profesiones.length > 0
+      ? profile.profesiones.map((p) => p.nombre)
+      : profile.profesion_nombre
+        ? [profile.profesion_nombre]
+        : [];
+  return nombres.length > 0 ? nombres.join(', ') : fallback;
+}
+
 export async function getUserProfile(userId: string): Promise<PerfilUsuario | null> {
   try {
     const docRef = doc(db, 'perfil_usuario', userId);
     const snap = await getDoc(docRef);
     if (!snap.exists()) return null;
-    return { id: snap.id, ...(snap.data() as any) };
+    const data = snap.data() as Record<string, unknown>;
+    return { id: snap.id, ...(data as unknown as Omit<PerfilUsuario, 'id'>), ...normalizePerfilProfesiones(data) };
   } catch (e) {
     console.error('Error fetching user profile:', e);
     return null;
@@ -264,12 +315,34 @@ export async function getUserProfile(userId: string): Promise<PerfilUsuario | nu
 }
 
 export async function saveUserProfile(
-  userId: string, 
-  data: { nombre: string; correo: string; id_profesion?: string; profesion_nombre?: string }
+  userId: string,
+  data: {
+    nombre: string;
+    correo: string;
+    id_profesion?: string;
+    profesion_nombre?: string;
+    ids_profesiones?: string[];
+    profesiones_nombres?: string[];
+    profesiones?: Profesion[];
+  }
 ): Promise<void> {
+  // Normaliza entrada: acepta formato nuevo (arrays) o legacy (uno solo).
+  const normalized = normalizePerfilProfesiones({
+    ids_profesiones: data.ids_profesiones,
+    profesiones_nombres: data.profesiones_nombres,
+    profesiones: data.profesiones,
+    id_profesion: data.id_profesion,
+    profesion_nombre: data.profesion_nombre,
+  });
   const docRef = doc(db, 'perfil_usuario', userId);
   await setDoc(docRef, {
     ...data,
+    ids_profesiones: normalized.ids_profesiones ?? [],
+    profesiones_nombres: normalized.profesiones_nombres ?? [],
+    profesiones: normalized.profesiones ?? [],
+    // Compat: primer elemento como campo singular.
+    id_profesion: normalized.id_profesion ?? null,
+    profesion_nombre: normalized.profesion_nombre ?? null,
     updated_at: new Date().toISOString()
   }, { merge: true });
 }
@@ -277,7 +350,10 @@ export async function saveUserProfile(
 export async function getAllUsers(): Promise<PerfilUsuario[]> {
   try {
     const snap = await getDocs(collection(db, 'perfil_usuario'));
-    return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    return snap.docs.map(d => {
+      const data = d.data() as Record<string, unknown>;
+      return { id: d.id, ...(data as unknown as Omit<PerfilUsuario, 'id'>), ...normalizePerfilProfesiones(data) };
+    });
   } catch (e) {
     console.error('Error fetching all users:', e);
     return [];
@@ -302,6 +378,9 @@ export async function getProyectos(): Promise<Proyecto[]> {
         descripcion: data.descripcion || '',
         id_tipo_sistema: data.id_tipo_sistema || null,
         tipos_sistema: data.id_tipo_sistema ? tiposMap.get(data.id_tipo_sistema) || null : null,
+        // Documentos legacy pueden no tener `id_creador`: se normaliza a null
+        // y se tratan como hoy (solo miembros vinculados editan).
+        id_creador: (data.id_creador as string | null | undefined) ?? null,
         created_at: data.created_at || new Date().toISOString()
       });
     }
@@ -325,6 +404,8 @@ export async function getProyectoById(id: string): Promise<Proyecto | null> {
       descripcion: data.descripcion || '',
       id_tipo_sistema: data.id_tipo_sistema || null,
       tipos_sistema: tipo,
+      // Documentos legacy sin `id_creador` se normalizan a null.
+      id_creador: (data.id_creador as string | null | undefined) ?? null,
       created_at: data.created_at || new Date().toISOString()
     };
   } catch (e) {
@@ -333,17 +414,24 @@ export async function getProyectoById(id: string): Promise<Proyecto | null> {
   }
 }
 
-export async function createProyecto(data: { nombre: string; descripcion?: string; id_tipo_sistema?: string | null }): Promise<Proyecto> {
+export async function createProyecto(data: { nombre: string; descripcion?: string; id_tipo_sistema?: string | null; id_creador?: UUID | null }): Promise<Proyecto> {
+  const created_at = new Date().toISOString();
   const docRef = await addDoc(collection(db, 'proyecto'), {
-    ...data,
-    created_at: new Date().toISOString()
+    nombre: data.nombre,
+    descripcion: data.descripcion || '',
+    id_tipo_sistema: data.id_tipo_sistema || null,
+    // UID del creador (política: cualquier autenticado puede crear; el
+    // creador siempre puede editar/eliminar). Null si no se provee.
+    id_creador: data.id_creador ?? null,
+    created_at
   });
   return {
     proyecto_id: docRef.id,
     nombre: data.nombre,
     descripcion: data.descripcion || '',
     id_tipo_sistema: data.id_tipo_sistema || null,
-    created_at: new Date().toISOString()
+    id_creador: data.id_creador ?? null,
+    created_at
   };
 }
 
@@ -479,6 +567,99 @@ export async function addMiembroEquipo(id_equipo: string, id_usuario: string, id
 export async function removeMiembroEquipo(id_equipo: string, id_usuario: string): Promise<void> {
   const docId = `${id_equipo}_${id_usuario}`;
   await deleteDoc(doc(db, 'miembros_equipo', docId));
+}
+
+// ==========================================
+// CONTROL DE ACCESO (proyectos)
+// Política: cualquier usuario autenticado puede CREAR proyectos y todo
+// proyecto es VISIBLE para todos los autenticados. Solo relacionados
+// pueden EDITAR/ELIMINAR: el creador (`proyecto.id_creador == uid`) más
+// los miembros de equipos vinculados vía `proyecto_equipos` +
+// `miembros_equipo`. Enforcement en cliente+servicio (ver firestore.rules:
+// TODO backend para enforcement real en servidor).
+// Proyectos legacy sin `id_creador` se tratan como hoy: solo miembros
+// vinculados editan. No hay migración destructiva.
+// Un usuario es "líder" de un equipo si su `roles.nombre_rol`
+// contiene "líder"/"lider" (insensible a acentos y mayúsculas).
+// ==========================================
+
+/** Normaliza un nombre de rol y detecta si corresponde a líder de equipo. */
+export function esRolLider(nombreRol: string | null | undefined): boolean {
+  const normalizado = (nombreRol ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return normalizado.includes('lider');
+}
+
+/**
+ * IDs de proyectos relacionados al usuario: proyectos que creó
+ * (`proyecto.id_creador == userId`) más aquellos donde es miembro de un
+ * equipo vinculado vía `proyecto_equipos`. Sin N+1: 3 lecturas en
+ * paralelo (vínculos + membresías con joins + creados propios).
+ */
+export async function getProyectosRelacionados(userId: string): Promise<UUID[]> {
+  if (!userId) return [];
+  const [vinculos, membresias, creadosSnap] = await Promise.all([
+    getProyectoEquipos(),
+    getMiembrosEquipo(),
+    getDocs(query(collection(db, 'proyecto'), where('id_creador', '==', userId)))
+  ]);
+  const equiposDelUsuario = new Set(
+    membresias
+      .filter((m: MiembroEquipo) => m.id_usuario === userId)
+      .map((m: MiembroEquipo) => m.id_equipo)
+  );
+  const proyectos = new Set<UUID>();
+  for (const d of creadosSnap.docs) {
+    proyectos.add(d.id);
+  }
+  for (const pe of vinculos) {
+    if (pe.id_proyecto && equiposDelUsuario.has(pe.id_equipo)) {
+      proyectos.add(pe.id_proyecto);
+    }
+  }
+  return [...proyectos];
+}
+
+/**
+ * Indica si el usuario puede editar/eliminar el proyecto: true si es su
+ * creador (`id_creador == userId`) o miembro de un equipo vinculado.
+ */
+export async function isUsuarioRelacionadoAProyecto(
+  userId: string,
+  proyectoId: string
+): Promise<boolean> {
+  if (!userId || !proyectoId) return false;
+  // Chequeo barato primero: creador del proyecto (1 lectura directa).
+  try {
+    const snap = await getDoc(doc(db, 'proyecto', proyectoId));
+    if (snap.exists() && snap.data().id_creador === userId) return true;
+  } catch (e) {
+    console.error('Error verificando creador del proyecto:', e);
+  }
+  const relacionados = await getProyectosRelacionados(userId);
+  return relacionados.includes(proyectoId);
+}
+
+/** Indica si el usuario tiene rol de líder en el equipo dado. */
+export async function isLiderDeEquipo(
+  userId: string,
+  equipoId: string
+): Promise<boolean> {
+  if (!userId || !equipoId) return false;
+  const miembros = await getMiembrosEquipo(equipoId);
+  const propio = miembros.find((m: MiembroEquipo) => m.id_usuario === userId);
+  return esRolLider(propio?.rol?.nombre_rol);
+}
+
+/** IDs de equipos donde el usuario tiene rol de líder. Una lectura con joins. */
+export async function getEquiposLideradosPor(userId: string): Promise<UUID[]> {
+  if (!userId) return [];
+  const membresias = await getMiembrosEquipo();
+  return membresias
+    .filter((m: MiembroEquipo) => m.id_usuario === userId && esRolLider(m.rol?.nombre_rol))
+    .map((m: MiembroEquipo) => m.id_equipo);
 }
 
 // ==========================================

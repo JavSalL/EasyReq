@@ -47,7 +47,15 @@ export interface PerfilUsuario {
   nombre: string;
   correo: string;
   created_at?: string;
+  // Multi-profesión (modelo actual). Se guarda desnormalizado en
+  // `perfil_usuario` para evitar joins en Firestore.
+  ids_profesiones?: UUID[];
+  profesiones_nombres?: string[];
   profesiones?: Profesion[];
+  // Legacy single-profesión: se mantiene por compatibilidad con
+  // documentos antiguos. No usar en código nuevo.
+  id_profesion?: UUID | null;
+  profesion_nombre?: string | null;
 }
 
 export interface Equipo {
@@ -63,6 +71,10 @@ export interface Proyecto {
   descripcion?: string;
   id_tipo_sistema: UUID | null;
   tipos_sistema?: TipoSistema | null;
+  // UID de Firebase Auth del usuario que creó el proyecto. Opcional (null
+  // en documentos legacy creados antes de este campo): esos se tratan como
+  // hoy, solo miembros de equipos vinculados pueden editarlos.
+  id_creador?: UUID | null;
   created_at?: string;
 }
 

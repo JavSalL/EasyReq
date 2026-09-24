@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { 
   Users, Plus, Search, ChevronRight, ChevronLeft, FolderGit2, 
-  X, Save, Edit2, Trash2, Crown, UserPlus, Shield, Check
+  X, Save, Edit2, Trash2, Crown, UserPlus, Shield, Check, Lock
 } from 'lucide-react';
 import type { Equipo, Proyecto, PerfilUsuario, Rol } from '@/lib/database.types';
 import { 
@@ -21,8 +21,11 @@ import {
   unlinkEquipoFromProyecto, 
   getMiembrosEquipo, 
   addMiembroEquipo, 
-  removeMiembroEquipo 
+  removeMiembroEquipo,
+  getEquiposLideradosPor,
+  esRolLider
 } from '@/lib/firestore-service';
+import { useAuth } from '@/lib/firebase-auth-provider';
 
 interface EquipoDetallado extends Equipo {
   proyectos?: Array<{ proyecto_id: string; nombre: string }>;
@@ -35,12 +38,35 @@ interface EquipoDetallado extends Equipo {
 
 export default function EquiposGlobalPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const uid = user?.uid ?? null;
   const [equipos, setEquipos] = useState<Array<EquipoDetallado>>([]);
   const [proyectos, setProyectos] = useState<Array<Proyecto>>([]);
   const [usuarios, setUsuarios] = useState<Array<PerfilUsuario>>([]);
   const [roles, setRoles] = useState<Array<Rol>>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Control de acceso: lectura total; solo el líder de cada equipo puede
+  // editarlo y gestionar sus miembros.
+  const [equiposLiderados, setEquiposLiderados] = useState<Array<string>>([]);
+
+  const cargarLiderazgo = useCallback(async () => {
+    try {
+      const ids = uid ? await getEquiposLideradosPor(uid) : [];
+      setEquiposLiderados(ids);
+    } catch (err) {
+      console.error('Error al cargar liderazgo de equipos:', err);
+      setEquiposLiderados([]);
+    }
+  }, [uid]);
+
+  useEffect(() => {
+    cargarLiderazgo();
+  }, [cargarLiderazgo]);
+
+  const puedeGestionarEquipo = (equipoId: string) =>
+    equiposLiderados.includes(equipoId);
 
   // Modal Equipo (Crear / Editar)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -125,6 +151,12 @@ export default function EquiposGlobalPage() {
 
   // Apertura modal equipo
   const openModal = (team: EquipoDetallado | null = null) => {
+    // Crear equipo está permitido a cualquier autenticado (queda como líder
+    // inicial); editar requiere ser líder de ese equipo.
+    if (team && !puedeGestionarEquipo(team.equipo_id)) {
+      toast.error('Solo el líder del equipo puede editarlo');
+      return;
+    }
     if (team) {
       setEditingEquipo(team);
       setFormData({ 
@@ -156,6 +188,10 @@ export default function EquiposGlobalPage() {
       let teamId = editingEquipo?.equipo_id;
 
       if (editingEquipo) {
+        if (!puedeGestionarEquipo(editingEquipo.equipo_id)) {
+          toast.error('Solo el líder del equipo puede editarlo');
+          return;
+        }
         await updateEquipo(editingEquipo.equipo_id, { 
           nombre: formData.nombre.trim(), 
           descripcion: formData.descripcion.trim() || undefined
@@ -166,6 +202,15 @@ export default function EquiposGlobalPage() {
           descripcion: formData.descripcion.trim() || undefined
         });
         teamId = newTeam.equipo_id;
+        // El creador queda como líder inicial para poder gestionar el equipo.
+        if (uid) {
+          const rolLider = roles.find(r => esRolLider(r.nombre_rol));
+          try {
+            await addMiembroEquipo(teamId, uid, rolLider?.id ?? null);
+          } catch (e) {
+            console.error('No se pudo asignar al creador como miembro líder:', e);
+          }
+        }
       }
 
       // Sincronizar asignaciones de proyectos
@@ -187,6 +232,7 @@ export default function EquiposGlobalPage() {
       toast.success(editingEquipo ? "Equipo actualizado" : "Equipo creado con éxito");
       setIsModalOpen(false);
       fetchData();
+      cargarLiderazgo();
     } catch (e: any) {
       console.error(e);
       toast.error(e.message || "Error al guardar equipo");
@@ -198,6 +244,10 @@ export default function EquiposGlobalPage() {
   // Eliminar Equipo
   const handleDeleteTeam = async () => {
     if (!equipoToDelete) return;
+    if (!puedeGestionarEquipo(equipoToDelete.equipo_id)) {
+      toast.error('Solo el líder del equipo puede eliminarlo');
+      return;
+    }
     try {
       await deleteEquipo(equipoToDelete.equipo_id);
       toast.success("Equipo eliminado");
@@ -222,11 +272,16 @@ export default function EquiposGlobalPage() {
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!equipoParaMiembros || !memberForm.id_usuario) return;
+    if (!puedeGestionarEquipo(equipoParaMiembros.equipo_id)) {
+      toast.error('Solo el líder del equipo puede agregar miembros');
+      return;
+    }
 
     try {
       await addMiembroEquipo(equipoParaMiembros.equipo_id, memberForm.id_usuario, memberForm.id_rol || null);
       toast.success("Miembro agregado al equipo");
       fetchData();
+      cargarLiderazgo();
     } catch (e: any) {
       toast.error("Error al agregar miembro");
     }
@@ -235,10 +290,15 @@ export default function EquiposGlobalPage() {
   // Remover Miembro del Equipo
   const handleRemoveMember = async (userId: string) => {
     if (!equipoParaMiembros) return;
+    if (!puedeGestionarEquipo(equipoParaMiembros.equipo_id)) {
+      toast.error('Solo el líder del equipo puede remover miembros');
+      return;
+    }
     try {
       await removeMiembroEquipo(equipoParaMiembros.equipo_id, userId);
       toast.success("Miembro removido");
       fetchData();
+      cargarLiderazgo();
     } catch (e: any) {
       toast.error("Error al remover miembro");
     }
@@ -252,6 +312,8 @@ export default function EquiposGlobalPage() {
   if (isMemberModalOpen && equipoParaMiembros) {
     // Buscar datos actualizados del equipo
     const currentDetailed = equipos.find(e => e.equipo_id === equipoParaMiembros.equipo_id) || equipoParaMiembros;
+    // Lectura total: cualquiera ve miembros; solo el líder gestiona.
+    const puedeGestionar = puedeGestionarEquipo(currentDetailed.equipo_id);
 
     return (
       <div className="space-y-6 animate-in fade-in duration-300">
@@ -277,7 +339,13 @@ export default function EquiposGlobalPage() {
           </div>
         </div>
 
-        {/* Formulario para agregar miembro */}
+        {/* Formulario para agregar miembro (solo líder) */}
+        {!puedeGestionar ? (
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+            <Lock size={15} className="shrink-0" />
+            <span>Solo el líder de este equipo puede agregar o remover miembros. Tienes acceso de lectura.</span>
+          </div>
+        ) : (
         <div className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 shadow-xs">
           <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-2">
             <UserPlus size={16} className="text-blue-600" />
@@ -326,6 +394,7 @@ export default function EquiposGlobalPage() {
             </button>
           </form>
         </div>
+        )}
 
         {/* Lista de Miembros Actuales */}
         <div className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl overflow-hidden">
@@ -365,8 +434,9 @@ export default function EquiposGlobalPage() {
                     )}
                     <button
                       onClick={() => handleRemoveMember(m.usuario.id)}
-                      className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
-                      title="Remover miembro"
+                      disabled={!puedeGestionar}
+                      className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                      title={puedeGestionar ? "Remover miembro" : "Solo el líder puede remover miembros"}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -395,6 +465,7 @@ export default function EquiposGlobalPage() {
         </div>
         <button
           onClick={() => openModal()}
+          title="Cualquier usuario autenticado puede crear un equipo (queda como líder inicial)"
           className="inline-flex items-center justify-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-xs font-medium text-xs gap-1.5 cursor-pointer"
         >
           <Plus size={15} />
@@ -446,23 +517,35 @@ export default function EquiposGlobalPage() {
                     <Users size={18} />
                   </div>
                   <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => openModal(team)}
-                      title="Editar equipo"
-                      className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg cursor-pointer"
-                    >
-                      <Edit2 size={13} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEquipoToDelete(team);
-                        setIsDeleteModalOpen(true);
-                      }}
-                      title="Eliminar equipo"
-                      className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                    {puedeGestionarEquipo(team.equipo_id) ? (
+                      <>
+                        <button
+                          onClick={() => openModal(team)}
+                          title="Editar equipo"
+                          className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg cursor-pointer"
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEquipoToDelete(team);
+                            setIsDeleteModalOpen(true);
+                          }}
+                          title="Eliminar equipo"
+                          className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </>
+                    ) : (
+                      <span
+                        title="Solo el líder del equipo puede editarlo"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
+                      >
+                        <Lock size={12} />
+                        Solo lectura
+                      </span>
+                    )}
                   </div>
                 </div>
 
