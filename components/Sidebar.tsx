@@ -31,7 +31,7 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
     { name: 'Proyectos', href: '/', icon: FolderGit2 },
     { name: 'Equipos', href: '/equipos-global/', icon: Users },
     { name: 'Patrones & Modelos', href: '/patrones/', icon: BookOpen },
-    { name: 'Ayuda', href: '#', icon: HelpCircle },
+    { name: 'Ayuda', href: '/ayuda/', icon: HelpCircle },
   ];
 
   const displayName = profile?.nombre || user?.displayName || user?.email?.split('@')[0] || 'Usuario';
@@ -72,7 +72,8 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
         {menuItems.map((item) => {
           const Icon = item.icon;
           const cleanPath = pathname ? (pathname.endsWith('/') && pathname.length > 1 ? pathname.slice(0, -1) : pathname) : '';
-          const isActive = cleanPath === item.href;
+          const cleanHref = item.href.endsWith('/') && item.href.length > 1 ? item.href.slice(0, -1) : item.href;
+          const isActive = cleanPath === cleanHref;
           return (
             <Link
               key={item.name}
