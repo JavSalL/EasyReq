@@ -31,7 +31,7 @@ interface EquipoDetallado extends Equipo {
   proyectos?: Array<{ proyecto_id: string; nombre: string }>;
   miembros?: Array<{
     usuario: PerfilUsuario;
-    rol: Rol | null;
+    roles: Rol[];
   }>;
   lider_actual?: PerfilUsuario | null;
 }
@@ -83,7 +83,7 @@ export default function EquiposGlobalPage() {
   const [equipoParaMiembros, setEquipoParaMiembros] = useState<EquipoDetallado | null>(null);
   const [memberForm, setMemberForm] = useState({
     id_usuario: '',
-    id_rol: ''
+    id_roles: [] as string[]
   });
 
   // Modal Eliminar
@@ -122,11 +122,11 @@ export default function EquiposGlobalPage() {
           .filter(me => me.id_equipo === eq.equipo_id && me.usuario)
           .map(me => ({
             usuario: me.usuario!,
-            rol: me.rol || null
+            roles: me.roles ?? []
           }));
 
         // Identificar líder por rol
-        const liderMember = members.find(m => m.rol?.nombre_rol?.toLowerCase().includes('líder') || m.rol?.nombre_rol?.toLowerCase().includes('lider'));
+        const liderMember = members.find(m => m.roles.some(r => esRolLider(r.nombre_rol)));
 
         return {
           ...eq,
@@ -206,7 +206,7 @@ export default function EquiposGlobalPage() {
         if (uid) {
           const rolLider = roles.find(r => esRolLider(r.nombre_rol));
           try {
-            await addMiembroEquipo(teamId, uid, rolLider?.id ?? null);
+            await addMiembroEquipo(teamId, uid, rolLider ? [rolLider.id] : []);
           } catch (e) {
             console.error('No se pudo asignar al creador como miembro líder:', e);
           }
@@ -263,7 +263,7 @@ export default function EquiposGlobalPage() {
     setEquipoParaMiembros(team);
     setMemberForm({
       id_usuario: '',
-      id_rol: ''
+      id_roles: []
     });
     setIsMemberModalOpen(true);
   };
@@ -277,9 +277,13 @@ export default function EquiposGlobalPage() {
       return;
     }
 
+    const esMiembroExistente = (equipoParaMiembros.miembros || [])
+      .some(m => m.usuario.id === memberForm.id_usuario);
+
     try {
-      await addMiembroEquipo(equipoParaMiembros.equipo_id, memberForm.id_usuario, memberForm.id_rol || null);
-      toast.success("Miembro agregado al equipo");
+      await addMiembroEquipo(equipoParaMiembros.equipo_id, memberForm.id_usuario, memberForm.id_roles);
+      toast.success(esMiembroExistente ? "Roles actualizados" : "Miembro agregado al equipo");
+      setMemberForm({ id_usuario: '', id_roles: [] });
       fetchData();
       cargarLiderazgo();
     } catch (e: any) {
@@ -304,7 +308,25 @@ export default function EquiposGlobalPage() {
     }
   };
 
-  const filteredTeams = equipos.filter(t => 
+  // Al elegir un usuario que ya es miembro, precargar sus roles para editarlos
+  const seleccionarUsuarioMiembro = (userId: string) => {
+    const existente = equipoParaMiembros?.miembros?.find(m => m.usuario.id === userId);
+    setMemberForm({
+      id_usuario: userId,
+      id_roles: existente ? existente.roles.map(r => r.id) : []
+    });
+  };
+
+  const toggleRolMiembro = (rolId: string) => {
+    setMemberForm(prev => ({
+      ...prev,
+      id_roles: prev.id_roles.includes(rolId)
+        ? prev.id_roles.filter(id => id !== rolId)
+        : [...prev.id_roles, rolId]
+    }));
+  };
+
+  const filteredTeams = equipos.filter(t =>
     t.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (t.proyectos || []).some(p => p.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
   );
@@ -314,6 +336,8 @@ export default function EquiposGlobalPage() {
     const currentDetailed = equipos.find(e => e.equipo_id === equipoParaMiembros.equipo_id) || equipoParaMiembros;
     // Lectura total: cualquiera ve miembros; solo el líder gestiona.
     const puedeGestionar = puedeGestionarEquipo(currentDetailed.equipo_id);
+    const editandoMiembro = (currentDetailed.miembros || [])
+      .some(m => m.usuario.id === memberForm.id_usuario);
 
     return (
       <div className="space-y-6 animate-in fade-in duration-300">
@@ -334,7 +358,7 @@ export default function EquiposGlobalPage() {
               Gestión de Miembros: {currentDetailed.nombre}
             </h1>
             <p className="text-zinc-500 dark:text-zinc-400 mt-1 text-xs">
-              {currentDetailed.descripcion || 'Asigna usuarios registrados a este equipo con su respectivo rol.'}
+              {currentDetailed.descripcion || 'Asigna usuarios registrados a este equipo con uno o varios roles.'}
             </p>
           </div>
         </div>
@@ -349,9 +373,9 @@ export default function EquiposGlobalPage() {
         <div className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 shadow-xs">
           <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-2">
             <UserPlus size={16} className="text-blue-600" />
-            Asignar Nuevo Miembro
+            {editandoMiembro ? 'Editar Roles del Miembro' : 'Asignar Nuevo Miembro'}
           </h3>
-          <form onSubmit={handleAddMember} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+          <form onSubmit={handleAddMember} className="space-y-3">
             <div>
               <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
                 Usuario Registrado <span className="text-rose-500">*</span>
@@ -359,7 +383,7 @@ export default function EquiposGlobalPage() {
               <select
                 required
                 value={memberForm.id_usuario}
-                onChange={(e) => setMemberForm({ ...memberForm, id_usuario: e.target.value })}
+                onChange={(e) => seleccionarUsuarioMiembro(e.target.value)}
                 className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-white"
               >
                 <option value="">Seleccionar usuario...</option>
@@ -371,27 +395,53 @@ export default function EquiposGlobalPage() {
 
             <div>
               <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
-                Rol en el Equipo
+                Roles en el Equipo
               </label>
-              <select
-                value={memberForm.id_rol}
-                onChange={(e) => setMemberForm({ ...memberForm, id_rol: e.target.value })}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-white"
-              >
-                <option value="">Seleccionar rol...</option>
-                {roles.map(r => (
-                  <option key={r.id} value={r.id}>{r.nombre_rol}</option>
-                ))}
-              </select>
+              {roles.length === 0 ? (
+                <p className="text-[11px] text-zinc-400">No hay roles disponibles</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {roles.map(r => {
+                    const seleccionado = memberForm.id_roles.includes(r.id);
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => toggleRolMiembro(r.id)}
+                        aria-pressed={seleccionado}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
+                          seleccionado
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-blue-400'
+                        }`}
+                      >
+                        {seleccionado && <Check size={11} />}
+                        {r.nombre_rol}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            <button
-              type="submit"
-              className="py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-            >
-              <Plus size={14} />
-              Agregar Miembro
-            </button>
+            <div className="flex justify-end gap-2">
+              {editandoMiembro && (
+                <button
+                  type="button"
+                  onClick={() => setMemberForm({ id_usuario: '', id_roles: [] })}
+                  className="py-2 px-4 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-400 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              )}
+              <button
+                type="submit"
+                className="py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                {editandoMiembro ? <Save size={14} /> : <Plus size={14} />}
+                {editandoMiembro ? 'Guardar Roles' : 'Agregar Miembro'}
+              </button>
+            </div>
           </form>
         </div>
         )}
@@ -426,11 +476,22 @@ export default function EquiposGlobalPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-3">
-                    {m.rol && (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
-                        {m.rol.nombre_rol}
-                      </span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap justify-end gap-1">
+                      {m.roles.map(r => (
+                        <span key={r.id} className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
+                          {r.nombre_rol}
+                        </span>
+                      ))}
+                    </div>
+                    {puedeGestionar && (
+                      <button
+                        onClick={() => seleccionarUsuarioMiembro(m.usuario.id)}
+                        className="p-1.5 text-zinc-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer"
+                        title="Editar roles"
+                      >
+                        <Edit2 size={15} />
+                      </button>
                     )}
                     <button
                       onClick={() => handleRemoveMember(m.usuario.id)}

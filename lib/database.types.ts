@@ -119,9 +119,9 @@ export interface ProyectoEquipo {
 export interface MiembroEquipo {
   id_equipo: UUID;
   id_usuario: UUID;
-  id_rol: UUID | null;
+  id_roles: UUID[];
   usuario?: PerfilUsuario;
-  rol?: Rol | null;
+  roles?: Rol[];
 }
 
 export interface UsuarioProfesion {

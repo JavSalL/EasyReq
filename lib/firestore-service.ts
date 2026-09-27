@@ -541,12 +541,16 @@ export async function getMiembrosEquipo(id_equipo?: string): Promise<MiembroEqui
 
     return snap.docs.map(d => {
       const data = d.data();
+      // Compatibilidad: documentos anteriores guardaban un solo `id_rol`
+      const id_roles: string[] = Array.isArray(data.id_roles)
+        ? data.id_roles
+        : data.id_rol ? [data.id_rol] : [];
       return {
         id_equipo: data.id_equipo,
         id_usuario: data.id_usuario,
-        id_rol: data.id_rol || null,
+        id_roles,
         usuario: userMap.get(data.id_usuario),
-        rol: data.id_rol ? roleMap.get(data.id_rol) || null : null
+        roles: id_roles.map(id => roleMap.get(id)).filter((r): r is Rol => Boolean(r))
       };
     });
   } catch (e) {
@@ -555,12 +559,12 @@ export async function getMiembrosEquipo(id_equipo?: string): Promise<MiembroEqui
   }
 }
 
-export async function addMiembroEquipo(id_equipo: string, id_usuario: string, id_rol: string | null): Promise<void> {
+export async function addMiembroEquipo(id_equipo: string, id_usuario: string, id_roles: string[]): Promise<void> {
   const docId = `${id_equipo}_${id_usuario}`;
   await setDoc(doc(db, 'miembros_equipo', docId), {
     id_equipo,
     id_usuario,
-    id_rol: id_rol || null
+    id_roles
   });
 }
 
@@ -579,8 +583,8 @@ export async function removeMiembroEquipo(id_equipo: string, id_usuario: string)
 // TODO backend para enforcement real en servidor).
 // Proyectos legacy sin `id_creador` se tratan como hoy: solo miembros
 // vinculados editan. No hay migración destructiva.
-// Un usuario es "líder" de un equipo si su `roles.nombre_rol`
-// contiene "líder"/"lider" (insensible a acentos y mayúsculas).
+// Un usuario es "líder" de un equipo si alguno de sus roles tiene un
+// `nombre_rol` que contiene "líder"/"lider" (insensible a acentos y mayúsculas).
 // ==========================================
 
 /** Normaliza un nombre de rol y detecta si corresponde a líder de equipo. */
@@ -650,7 +654,7 @@ export async function isLiderDeEquipo(
   if (!userId || !equipoId) return false;
   const miembros = await getMiembrosEquipo(equipoId);
   const propio = miembros.find((m: MiembroEquipo) => m.id_usuario === userId);
-  return esRolLider(propio?.rol?.nombre_rol);
+  return (propio?.roles ?? []).some(r => esRolLider(r.nombre_rol));
 }
 
 /** IDs de equipos donde el usuario tiene rol de líder. Una lectura con joins. */
@@ -658,7 +662,7 @@ export async function getEquiposLideradosPor(userId: string): Promise<UUID[]> {
   if (!userId) return [];
   const membresias = await getMiembrosEquipo();
   return membresias
-    .filter((m: MiembroEquipo) => m.id_usuario === userId && esRolLider(m.rol?.nombre_rol))
+    .filter((m: MiembroEquipo) => m.id_usuario === userId && (m.roles ?? []).some(r => esRolLider(r.nombre_rol)))
     .map((m: MiembroEquipo) => m.id_equipo);
 }
 
