@@ -272,6 +272,26 @@ export default function EquiposGlobalPage() {
     setIsMemberModalOpen(true);
   };
 
+  // Miembros del equipo abierto según los datos más recientes
+  // (`equipoParaMiembros` es la foto tomada al abrir la pantalla)
+  const miembrosActuales = () =>
+    equipos.find(eq => eq.equipo_id === equipoParaMiembros?.equipo_id)?.miembros
+      ?? equipoParaMiembros?.miembros
+      ?? [];
+
+  const esIdRolLider = (id: string) => esRolLider(roles.find(r => r.id === id)?.nombre_rol);
+
+  // Un equipo con líder no puede quedarse sin ninguno: nadie podría gestionarlo
+  const quedariaSinLider = (userId: string, nuevosIdRoles: string[]) => {
+    const tieneLider = (ids: string[]) => ids.some(esIdRolLider);
+    const miembros = miembrosActuales();
+    const habiaLider = miembros.some(m => tieneLider(m.roles.map(r => r.id)));
+    const quedaLider = miembros.some(m =>
+      tieneLider(m.usuario.id === userId ? nuevosIdRoles : m.roles.map(r => r.id))
+    ) || tieneLider(nuevosIdRoles);
+    return habiaLider && !quedaLider;
+  };
+
   // Agregar Miembro al Equipo
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -280,14 +300,17 @@ export default function EquiposGlobalPage() {
       toast.error('Solo el líder del equipo puede agregar miembros');
       return;
     }
+    if (quedariaSinLider(memberForm.id_usuario, memberForm.id_roles)) {
+      toast.error('El equipo debe conservar al menos un líder');
+      return;
+    }
 
-    const esMiembroExistente = (equipoParaMiembros.miembros || [])
+    const esMiembroExistente = miembrosActuales()
       .some(m => m.usuario.id === memberForm.id_usuario);
 
     try {
       // El rol de líder va primero: es el que se guarda en el `id_rol` legacy
-      const esLider = (id: string) => esRolLider(roles.find(r => r.id === id)?.nombre_rol);
-      const idRolesOrdenados = [...memberForm.id_roles].sort((a, b) => Number(esLider(b)) - Number(esLider(a)));
+      const idRolesOrdenados = [...memberForm.id_roles].sort((a, b) => Number(esIdRolLider(b)) - Number(esIdRolLider(a)));
       await addMiembroEquipo(equipoParaMiembros.equipo_id, memberForm.id_usuario, idRolesOrdenados);
       toast.success(esMiembroExistente ? "Roles actualizados" : "Miembro agregado al equipo");
       setMemberForm({ id_usuario: '', id_roles: [] });
@@ -305,6 +328,10 @@ export default function EquiposGlobalPage() {
       toast.error('Solo el líder del equipo puede remover miembros');
       return;
     }
+    if (quedariaSinLider(userId, [])) {
+      toast.error('No puedes remover al único líder del equipo');
+      return;
+    }
     try {
       await removeMiembroEquipo(equipoParaMiembros.equipo_id, userId);
       toast.success("Miembro removido");
@@ -317,7 +344,7 @@ export default function EquiposGlobalPage() {
 
   // Al elegir un usuario que ya es miembro, precargar sus roles para editarlos
   const seleccionarUsuarioMiembro = (userId: string) => {
-    const existente = equipoParaMiembros?.miembros?.find(m => m.usuario.id === userId);
+    const existente = miembrosActuales().find(m => m.usuario.id === userId);
     setMemberForm({
       id_usuario: userId,
       id_roles: existente ? existente.roles.map(r => r.id) : []
