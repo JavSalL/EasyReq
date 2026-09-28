@@ -6,7 +6,7 @@ import {
   Users, Plus, Search, ChevronRight, ChevronLeft, FolderGit2, 
   X, Save, Edit2, Trash2, UserPlus, Lock, Bell
 } from 'lucide-react';
-import type { Equipo, Proyecto, PerfilUsuario, Rol, InvitacionEquipo } from '@/lib/database.types';
+import type { Equipo, PerfilUsuario, Rol, InvitacionEquipo } from '@/lib/database.types';
 import { 
   getEquipos, 
   createEquipo, 
@@ -16,22 +16,27 @@ import {
   getAllUsers, 
   getRoles, 
   getProyectoEquipos, 
-  linkEquipoToProyecto, 
-  unlinkEquipoFromProyecto, 
   getMiembrosEquipo, 
-  addMiembroEquipo, 
   removeMiembroEquipo,
   getEquiposLideradosPor,
   esRolLider,
   getInvitacionesRecibidas,
   crearInvitacionEquipo,
   aceptarInvitacionEquipo,
-  rechazarInvitacionEquipo
+  rechazarInvitacionEquipo,
+  crearSolicitudProyectoEquipo,
+  getSolicitudesProyectoEquipoEnviadas
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
+import ProjectTeamRequestInbox from '@/components/ProjectTeamRequestInbox';
 
 interface EquipoDetallado extends Equipo {
-  proyectos?: Array<{ proyecto_id: string; nombre: string }>;
+  proyectos?: Array<{
+    proyecto_id: string;
+    nombre: string;
+    id_creador?: string | null;
+    solicitudDesvinculacionPendiente?: boolean;
+  }>;
   miembrosIds: string[];
   miembros?: Array<{
     usuario: PerfilUsuario;
@@ -44,7 +49,6 @@ export default function EquiposGlobalPage() {
   const { user } = useAuth();
   const uid = user?.uid ?? null;
   const [equipos, setEquipos] = useState<Array<EquipoDetallado>>([]);
-  const [proyectos, setProyectos] = useState<Array<Proyecto>>([]);
   const [usuarios, setUsuarios] = useState<Array<PerfilUsuario>>([]);
   const [roles, setRoles] = useState<Array<Rol>>([]);
   const [loading, setLoading] = useState(true);
@@ -80,8 +84,7 @@ export default function EquiposGlobalPage() {
   const [editingEquipo, setEditingEquipo] = useState<Equipo | null>(null);
   const [formData, setFormData] = useState({ 
     nombre: '', 
-    descripcion: '',
-    proyectos_seleccionados: [] as string[]
+    descripcion: ''
   });
   const [saving, setSaving] = useState(false);
 
@@ -101,20 +104,25 @@ export default function EquiposGlobalPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [projData, usersData, rolesData, equiposData, peData, meData] = await Promise.all([
+      const [projData, usersData, rolesData, equiposData, peData, meData, sentRequests] = await Promise.all([
         getProyectos(),
         getAllUsers(),
         getRoles(),
         getEquipos(),
         getProyectoEquipos(),
-        getMiembrosEquipo()
+        getMiembrosEquipo(),
+        uid ? getSolicitudesProyectoEquipoEnviadas(uid) : Promise.resolve([])
       ]);
 
-      setProyectos(projData);
       setUsuarios(usersData);
       setRoles(rolesData);
 
       const projMap = new Map(projData.map(p => [p.proyecto_id, p]));
+      const pendingUnlinkIds = new Set(
+        sentRequests
+          .filter(request => request.tipo === 'desvincular')
+          .map(request => `${request.id_proyecto}_${request.id_equipo}`)
+      );
 
       const formated: EquipoDetallado[] = equiposData.map(eq => {
         const assignedProjIds = peData
@@ -124,7 +132,12 @@ export default function EquiposGlobalPage() {
         const projs = assignedProjIds
           .map(id => projMap.get(id))
           .filter(Boolean)
-          .map(p => ({ proyecto_id: p!.proyecto_id, nombre: p!.nombre }));
+          .map(p => ({
+            proyecto_id: p!.proyecto_id,
+            nombre: p!.nombre,
+            id_creador: p!.id_creador,
+            solicitudDesvinculacionPendiente: pendingUnlinkIds.has(`${p!.proyecto_id}_${eq.equipo_id}`)
+          }));
 
         const members = meData
           .filter(me => me.id_equipo === eq.equipo_id && me.usuario)
@@ -154,7 +167,7 @@ export default function EquiposGlobalPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [uid]);
 
   useEffect(() => {
     fetchData();
@@ -194,15 +207,13 @@ export default function EquiposGlobalPage() {
       setEditingEquipo(team);
       setFormData({ 
         nombre: team.nombre, 
-        descripcion: team.descripcion || '',
-        proyectos_seleccionados: (team.proyectos || []).map(p => p.proyecto_id)
+        descripcion: team.descripcion || ''
       });
     } else {
       setEditingEquipo(null);
       setFormData({ 
         nombre: '', 
-        descripcion: '',
-        proyectos_seleccionados: []
+        descripcion: ''
       });
     }
     setIsModalOpen(true);
@@ -218,8 +229,6 @@ export default function EquiposGlobalPage() {
 
     setSaving(true);
     try {
-      let teamId = editingEquipo?.equipo_id;
-
       if (editingEquipo) {
         if (!puedeGestionarEquipo(editingEquipo.equipo_id)) {
           toast.error('Solo el líder del equipo puede editarlo');
@@ -230,36 +239,21 @@ export default function EquiposGlobalPage() {
           descripcion: formData.descripcion.trim() || undefined
         });
       } else {
-        const newTeam = await createEquipo({ 
-          nombre: formData.nombre.trim(), 
-          descripcion: formData.descripcion.trim() || undefined
+        if (!uid) {
+          toast.error('Debes iniciar sesión para crear un equipo');
+          return;
+        }
+        const rolLider = roles.find(r => esRolLider(r.nombre_rol));
+        if (!rolLider) {
+          toast.error('No está configurado el rol de líder; no se puede crear el equipo');
+          return;
+        }
+        await createEquipo({
+          nombre: formData.nombre.trim(),
+          descripcion: formData.descripcion.trim() || undefined,
+          id_creador: uid,
+          id_rol_lider: rolLider.id
         });
-        teamId = newTeam.equipo_id;
-        // El creador queda como líder inicial para poder gestionar el equipo.
-        if (uid) {
-          const rolLider = roles.find(r => esRolLider(r.nombre_rol));
-          try {
-            await addMiembroEquipo(teamId, uid, rolLider?.id ?? null);
-          } catch (e) {
-            console.error('No se pudo asignar al creador como miembro líder:', e);
-          }
-        }
-      }
-
-      // Sincronizar asignaciones de proyectos
-      if (teamId) {
-        // Unlink old
-        const allPE = await getProyectoEquipos();
-        const currentPE = allPE.filter(pe => pe.id_equipo === teamId);
-        for (const pe of currentPE) {
-          if (!formData.proyectos_seleccionados.includes(pe.id_proyecto)) {
-            await unlinkEquipoFromProyecto(pe.id_proyecto, teamId);
-          }
-        }
-        // Link new
-        for (const projId of formData.proyectos_seleccionados) {
-          await linkEquipoToProyecto(projId, teamId);
-        }
       }
 
       toast.success(editingEquipo ? "Equipo actualizado" : "Equipo creado con éxito");
@@ -372,6 +366,22 @@ export default function EquiposGlobalPage() {
     }
   };
 
+  const handleRequestProjectUnlink = async (projectId: string) => {
+    if (!uid || !equipoParaMiembros) return;
+    if (!puedeGestionarEquipo(equipoParaMiembros.equipo_id)) {
+      toast.error('Solo el líder del equipo puede solicitar la desvinculación');
+      return;
+    }
+    try {
+      await crearSolicitudProyectoEquipo(projectId, equipoParaMiembros.equipo_id, uid, 'desvincular');
+      toast.success('Solicitud de desvinculación enviada al creador del proyecto');
+      await fetchData();
+    } catch (err) {
+      console.error('Error al solicitar desvinculación del proyecto:', err);
+      toast.error(err instanceof Error ? err.message : 'No se pudo enviar la solicitud');
+    }
+  };
+
   const filteredTeams = equipos.filter(t => 
     t.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (t.proyectos || []).some(p => p.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -473,6 +483,30 @@ export default function EquiposGlobalPage() {
         </div>
         )}
 
+        {currentDetailed.proyectos && currentDetailed.proyectos.length > 0 && (
+          <div className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Proyectos vinculados</h3>
+            </div>
+            <div className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
+              {currentDetailed.proyectos.map(project => (
+                <div key={project.proyecto_id} className="px-5 py-3 flex items-center justify-between gap-3">
+                  <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200">{project.nombre}</span>
+                  {puedeGestionar && (
+                    <button
+                      onClick={() => handleRequestProjectUnlink(project.proyecto_id)}
+                      disabled={project.solicitudDesvinculacionPendiente}
+                      className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {project.solicitudDesvinculacionPendiente ? 'Solicitud pendiente' : 'Solicitar desvinculación'}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Lista de Miembros Actuales */}
         <div className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl overflow-hidden">
           <div className="px-5 py-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
@@ -511,9 +545,13 @@ export default function EquiposGlobalPage() {
                     )}
                     <button
                       onClick={() => handleRemoveMember(m.usuario.id)}
-                      disabled={!puedeGestionar}
+                      disabled={!puedeGestionar || m.usuario.id === uid}
                       className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                      title={puedeGestionar ? "Remover miembro" : "Solo el líder puede remover miembros"}
+                      title={!puedeGestionar
+                        ? "Solo el líder puede remover miembros"
+                        : m.usuario.id === uid
+                          ? "No puedes removerte a ti mismo del equipo"
+                          : "Remover miembro"}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -541,6 +579,12 @@ export default function EquiposGlobalPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <ProjectTeamRequestInbox
+            userId={uid}
+            onResponded={async () => {
+              await Promise.all([fetchData(), cargarLiderazgo()]);
+            }}
+          />
           <div className="relative">
             <button
               onClick={() => {
@@ -822,45 +866,6 @@ export default function EquiposGlobalPage() {
                   onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                   className="w-full px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-zinc-900 dark:text-zinc-100 resize-none"
                 />
-              </div>
-
-              {/* Selector de Proyectos */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  Asignar a Proyectos
-                </label>
-                <div className="max-h-36 overflow-y-auto space-y-1 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2 bg-zinc-50/50 dark:bg-zinc-950 custom-scrollbar">
-                  {proyectos.length === 0 ? (
-                    <p className="text-[11px] text-zinc-400">No hay proyectos disponibles</p>
-                  ) : (
-                    proyectos.map(p => {
-                      const isChecked = formData.proyectos_seleccionados.includes(p.proyecto_id);
-                      return (
-                        <label key={p.proyecto_id} className="flex items-center gap-2 p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg cursor-pointer text-xs">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setFormData({
-                                  ...formData,
-                                  proyectos_seleccionados: [...formData.proyectos_seleccionados, p.proyecto_id]
-                                });
-                              } else {
-                                setFormData({
-                                  ...formData,
-                                  proyectos_seleccionados: formData.proyectos_seleccionados.filter(id => id !== p.proyecto_id)
-                                });
-                              }
-                            }}
-                            className="rounded text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="text-zinc-800 dark:text-zinc-200">{p.nombre}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
               </div>
 
               <div className="flex items-center justify-end space-x-2 pt-2">

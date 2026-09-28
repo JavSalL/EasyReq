@@ -62,6 +62,7 @@ export interface Equipo {
   equipo_id: UUID;
   nombre: string;
   descripcion?: string;
+  id_creador?: UUID | null;
   created_at?: string;
 }
 
@@ -112,6 +113,7 @@ export interface Requerimiento {
 export interface ProyectoEquipo {
   id_proyecto: UUID;
   id_equipo: UUID;
+  id_solicitud?: UUID;
   equipo?: Equipo;
   proyecto?: Proyecto;
 }
@@ -133,6 +135,23 @@ export interface InvitacionEquipo {
   id_invitado: UUID;
   id_rol: UUID | null;
   estado: EstadoInvitacionEquipo;
+  created_at: string;
+}
+
+export type TipoSolicitudProyectoEquipo = 'vincular' | 'desvincular';
+export type EstadoSolicitudProyectoEquipo = 'pendiente' | 'aceptada' | 'rechazada';
+
+export interface SolicitudProyectoEquipo {
+  id: UUID;
+  id_proyecto: UUID;
+  id_equipo: UUID;
+  id_solicitante: UUID;
+  id_destinatario: UUID;
+  tipo: TipoSolicitudProyectoEquipo;
+  estado: EstadoSolicitudProyectoEquipo;
+  nombre_proyecto: string;
+  nombre_equipo: string;
+  nombre_solicitante: string;
   created_at: string;
 }
 

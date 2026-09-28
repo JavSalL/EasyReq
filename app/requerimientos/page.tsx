@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { generateSingleRequirement } from '@/lib/ai-actions';
 import type { 
-  Proyecto, Requerimiento, TipoRequerimiento, Estado, 
+  Proyecto, Equipo, Requerimiento, TipoRequerimiento, Estado,
   Modalidad, Modelo, Patron, PerfilUsuario 
 } from '@/lib/database.types';
 import {
@@ -30,8 +30,8 @@ import {
   getLogsRequerimientos,
   getEquipos,
   getProyectoEquipos,
-  linkEquipoToProyecto,
-  unlinkEquipoFromProyecto,
+  crearSolicitudProyectoEquipo,
+  getSolicitudesProyectoEquipoEnviadas,
   isUsuarioRelacionadoAProyecto
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
@@ -90,14 +90,16 @@ export default function RequerimientosPage() {
   const [currentReqForLogs, setCurrentReqForLogs] = useState<Requerimiento | null>(null);
 
   // Equipos asignados al proyecto
-  const [equipos, setEquipos] = useState<Array<any>>([]);
+  const [equipos, setEquipos] = useState<Array<Equipo>>([]);
   const [equiposAsignados, setEquiposAsignados] = useState<string[]>([]);
+  const [solicitudesEquiposPendientes, setSolicitudesEquiposPendientes] = useState<string[]>([]);
   const [showEquiposModal, setShowEquiposModal] = useState(false);
 
   // Control de acceso: lectura total; crear/editar requerimientos y
   // vincular equipos solo si el usuario está relacionado al proyecto
   // (miembro de un equipo vinculado).
   const [puedeEditar, setPuedeEditar] = useState(false);
+  const puedeGestionarVinculos = uid !== null && proyecto?.id_creador === uid;
 
   useEffect(() => {
     let activo = true;
@@ -172,17 +174,19 @@ export default function RequerimientosPage() {
   const fetchEquipos = useCallback(async () => {
     if (!proyectoId) return;
     try {
-      const [todos, pes] = await Promise.all([
+      const [todos, pes, requests] = await Promise.all([
         getEquipos(),
-        getProyectoEquipos()
+        getProyectoEquipos(),
+        uid ? getSolicitudesProyectoEquipoEnviadas(uid, proyectoId) : Promise.resolve([])
       ]);
       setEquipos(todos);
       const asignados = pes.filter(p => p.id_proyecto === proyectoId).map(p => p.id_equipo);
       setEquiposAsignados(asignados);
+      setSolicitudesEquiposPendientes(requests.map(request => request.id_equipo));
     } catch (err) {
       console.error(err);
     }
-  }, [proyectoId]);
+  }, [proyectoId, uid]);
 
   useEffect(() => {
     loadCatalogsAndProject();
@@ -405,26 +409,26 @@ export default function RequerimientosPage() {
     setSelectedReqLogs(logs);
   };
 
-  // Toggle asignar equipo al proyecto
+  // Solicitar que se vincule o desvincule un equipo del proyecto.
   const toggleEquipoAsignado = async (equipoId: string) => {
-    if (!proyectoId) return;
-    if (!puedeEditar) {
-      toast.error('Solo miembros de un equipo vinculado pueden vincular equipos');
+    if (!proyectoId || !uid) return;
+    if (!puedeGestionarVinculos) {
+      toast.error('Solo el creador del proyecto puede invitar equipos o solicitar su desvinculación');
       return;
     }
     const isAsignado = equiposAsignados.includes(equipoId);
+    const tipo = isAsignado ? 'desvincular' : 'vincular';
     try {
-      if (isAsignado) {
-        await unlinkEquipoFromProyecto(proyectoId, equipoId);
-        setEquiposAsignados(prev => prev.filter(id => id !== equipoId));
-        toast.success('Equipo removido del proyecto');
-      } else {
-        await linkEquipoToProyecto(proyectoId, equipoId);
-        setEquiposAsignados(prev => [...prev, equipoId]);
-        toast.success('Equipo asignado al proyecto');
-      }
-    } catch (e) {
-      toast.error('Error al actualizar equipos');
+      await crearSolicitudProyectoEquipo(proyectoId, equipoId, uid, tipo);
+      setSolicitudesEquiposPendientes(prev => [...new Set([...prev, equipoId])]);
+      toast.success(
+        isAsignado
+          ? 'Solicitud de desvinculación enviada al líder del equipo'
+          : 'Invitación enviada al líder del equipo'
+      );
+    } catch (error) {
+      console.error('Error al crear solicitud de vínculo proyecto-equipo:', error);
+      toast.error(error instanceof Error ? error.message : 'No se pudo enviar la solicitud');
     }
   };
 
@@ -510,7 +514,7 @@ export default function RequerimientosPage() {
       {!puedeEditar && (
         <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-3.5 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
           <Lock size={15} className="shrink-0" />
-          <span>Tienes acceso de lectura a este proyecto. Solo miembros de un equipo vinculado pueden crear o editar requerimientos y vincular equipos.</span>
+          <span>Tienes acceso de lectura a este proyecto. Solo miembros de un equipo vinculado pueden crear o editar requerimientos; el creador administra las invitaciones de equipos.</span>
         </div>
       )}
 
@@ -1016,6 +1020,7 @@ export default function RequerimientosPage() {
               ) : (
                 equipos.map(eq => {
                   const isAssigned = equiposAsignados.includes(eq.equipo_id);
+                  const hasPendingRequest = solicitudesEquiposPendientes.includes(eq.equipo_id);
                   return (
                     <div key={eq.equipo_id} className="flex items-center justify-between p-3 bg-zinc-50/80 dark:bg-zinc-800/50 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60">
                       <div>
@@ -1024,11 +1029,19 @@ export default function RequerimientosPage() {
                       </div>
                       <button
                         onClick={() => toggleEquipoAsignado(eq.equipo_id)}
-                        disabled={!puedeEditar}
-                        title={puedeEditar ? (isAssigned ? 'Remover equipo del proyecto' : 'Asignar equipo al proyecto') : 'Solo miembros de un equipo vinculado pueden modificar asignaciones'}
+                        disabled={!puedeGestionarVinculos || hasPendingRequest}
+                        title={!puedeGestionarVinculos
+                          ? 'Solo el creador del proyecto puede gestionar las solicitudes de equipos'
+                          : hasPendingRequest
+                            ? 'Ya hay una solicitud pendiente para este equipo'
+                            : isAssigned
+                              ? 'Solicitar desvinculación al líder del equipo'
+                              : 'Invitar al líder del equipo a vincularse'}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${isAssigned ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-900/50' : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50'}`}
                       >
-                        {isAssigned ? 'Remover' : 'Asignar'}
+                        {hasPendingRequest
+                          ? 'Solicitud pendiente'
+                          : isAssigned ? 'Solicitar desvinculación' : 'Invitar equipo'}
                       </button>
                     </div>
                   );
