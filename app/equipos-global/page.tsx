@@ -281,7 +281,10 @@ export default function EquiposGlobalPage() {
       .some(m => m.usuario.id === memberForm.id_usuario);
 
     try {
-      await addMiembroEquipo(equipoParaMiembros.equipo_id, memberForm.id_usuario, memberForm.id_roles);
+      // El rol de líder va primero: es el que se guarda en el `id_rol` legacy
+      const esLider = (id: string) => esRolLider(roles.find(r => r.id === id)?.nombre_rol);
+      const idRolesOrdenados = [...memberForm.id_roles].sort((a, b) => Number(esLider(b)) - Number(esLider(a)));
+      await addMiembroEquipo(equipoParaMiembros.equipo_id, memberForm.id_usuario, idRolesOrdenados);
       toast.success(esMiembroExistente ? "Roles actualizados" : "Miembro agregado al equipo");
       setMemberForm({ id_usuario: '', id_roles: [] });
       fetchData();

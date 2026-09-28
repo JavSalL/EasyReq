@@ -569,7 +569,9 @@ export async function addMiembroEquipo(id_equipo: string, id_usuario: string, id
   await setDoc(doc(db, 'miembros_equipo', docId), {
     id_equipo,
     id_usuario,
-    id_roles
+    id_roles,
+    // Compatibilidad: código previo a KAN-13 solo lee `id_rol`
+    id_rol: id_roles[0] ?? null
   });
 }
 
