@@ -182,6 +182,10 @@ export default function EquiposGlobalPage() {
       toast.error("El nombre del equipo es obligatorio");
       return;
     }
+    if (!formData.descripcion.trim()) {
+      toast.error("La descripción del equipo es obligatoria");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -194,12 +198,12 @@ export default function EquiposGlobalPage() {
         }
         await updateEquipo(editingEquipo.equipo_id, { 
           nombre: formData.nombre.trim(), 
-          descripcion: formData.descripcion.trim() || undefined
+          descripcion: formData.descripcion.trim()
         });
       } else {
         const newTeam = await createEquipo({ 
           nombre: formData.nombre.trim(), 
-          descripcion: formData.descripcion.trim() || undefined
+          descripcion: formData.descripcion.trim()
         });
         teamId = newTeam.equipo_id;
         // El creador queda como líder inicial para poder gestionar el equipo.
@@ -685,7 +689,7 @@ export default function EquiposGlobalPage() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  Descripción
+                  Descripción <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   rows={2}
