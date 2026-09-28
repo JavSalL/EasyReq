@@ -36,8 +36,10 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     return <main className="min-h-screen w-full">{children}</main>;
   }
 
-  // Spinner mientras valida la sesión inicial
-  if (loading) {
+  // Spinner mientras valida la sesión inicial. Sin usuario tampoco se renderiza
+  // la página: sus consultas a Firestore fallarían por permisos antes de que
+  // el efecto de arriba redirija a /login.
+  if (loading || !user) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-zinc-50 dark:bg-zinc-950">
         <div className="flex flex-col items-center gap-3">
