@@ -10,7 +10,8 @@ import {
   query, 
   where, 
   orderBy,
-  limit
+  limit,
+  runTransaction
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { 
@@ -28,6 +29,7 @@ import {
   Modelo, 
   ProyectoEquipo, 
   MiembroEquipo, 
+  InvitacionEquipo,
   LogRequerimiento,
   UUID
 } from './database.types';
@@ -493,6 +495,10 @@ export async function deleteEquipo(id: string): Promise<void> {
   for (const d of peSnap.docs) {
     await deleteDoc(d.ref);
   }
+  const invitationsSnap = await getDocs(query(collection(db, 'invitaciones_equipo'), where('id_equipo', '==', id)));
+  for (const d of invitationsSnap.docs) {
+    await deleteDoc(d.ref);
+  }
   const mbSnap = await getDocs(query(collection(db, 'miembros_equipo'), where('id_equipo', '==', id)));
   for (const d of mbSnap.docs) {
     await deleteDoc(d.ref);
@@ -567,6 +573,128 @@ export async function addMiembroEquipo(id_equipo: string, id_usuario: string, id
 export async function removeMiembroEquipo(id_equipo: string, id_usuario: string): Promise<void> {
   const docId = `${id_equipo}_${id_usuario}`;
   await deleteDoc(doc(db, 'miembros_equipo', docId));
+}
+
+export async function getInvitacionesRecibidas(userId: string): Promise<InvitacionEquipo[]> {
+  if (!userId) return [];
+
+  const snap = await getDocs(query(
+    collection(db, 'invitaciones_equipo'),
+    where('id_invitado', '==', userId)
+  ));
+
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }) as InvitacionEquipo)
+    .filter(invitation => invitation.estado === 'pendiente');
+}
+
+export async function crearInvitacionEquipo(
+  id_equipo: string,
+  id_invitador: string,
+  id_invitado: string,
+  id_rol: string | null
+): Promise<void> {
+  if (!id_equipo || !id_invitador || !id_invitado) {
+    throw new Error('Faltan datos para crear la invitación');
+  }
+  if (id_invitador === id_invitado) {
+    throw new Error('No puedes invitarte a tu propio equipo');
+  }
+
+  const equiposLiderados = await getEquiposLideradosPor(id_invitador);
+  if (!equiposLiderados.includes(id_equipo)) {
+    throw new Error('Solo el líder del equipo puede invitar miembros');
+  }
+
+  const invitadoSnap = await getDoc(doc(db, 'perfil_usuario', id_invitado));
+  if (!invitadoSnap.exists()) {
+    throw new Error('El usuario seleccionado no está registrado');
+  }
+
+  const invitationId = `${id_equipo}_${id_invitado}`;
+  const invitationRef = doc(db, 'invitaciones_equipo', invitationId);
+  const memberRef = doc(db, 'miembros_equipo', invitationId);
+  const teamRef = doc(db, 'equipo', id_equipo);
+
+  await runTransaction(db, async transaction => {
+    const [teamSnap, memberSnap, invitationSnap] = await Promise.all([
+      transaction.get(teamRef),
+      transaction.get(memberRef),
+      transaction.get(invitationRef)
+    ]);
+
+    if (!teamSnap.exists()) {
+      throw new Error('El equipo ya no existe');
+    }
+    if (memberSnap.exists()) {
+      throw new Error('Este usuario ya forma parte del equipo');
+    }
+    if (invitationSnap.exists() && invitationSnap.data().estado === 'pendiente') {
+      throw new Error('Ya existe una invitación pendiente para este usuario');
+    }
+
+    transaction.set(invitationRef, {
+      id_equipo,
+      id_invitador,
+      id_invitado,
+      id_rol: id_rol || null,
+      estado: 'pendiente',
+      created_at: new Date().toISOString()
+    });
+  });
+}
+
+export async function aceptarInvitacionEquipo(invitationId: string, userId: string): Promise<void> {
+  const invitationRef = doc(db, 'invitaciones_equipo', invitationId);
+
+  await runTransaction(db, async transaction => {
+    const invitationSnap = await transaction.get(invitationRef);
+    if (!invitationSnap.exists()) {
+      throw new Error('La invitación ya no está disponible');
+    }
+
+    const invitation = invitationSnap.data() as Omit<InvitacionEquipo, 'id'>;
+    if (invitation.id_invitado !== userId || invitation.estado !== 'pendiente') {
+      throw new Error('La invitación ya fue respondida o no te pertenece');
+    }
+
+    const teamRef = doc(db, 'equipo', invitation.id_equipo);
+    const memberRef = doc(db, 'miembros_equipo', `${invitation.id_equipo}_${userId}`);
+    const [teamSnap, memberSnap] = await Promise.all([
+      transaction.get(teamRef),
+      transaction.get(memberRef)
+    ]);
+    if (!teamSnap.exists()) {
+      throw new Error('El equipo de esta invitación ya no existe');
+    }
+
+    if (!memberSnap.exists()) {
+      transaction.set(memberRef, {
+        id_equipo: invitation.id_equipo,
+        id_usuario: userId,
+        id_rol: invitation.id_rol || null
+      });
+    }
+    transaction.update(invitationRef, { estado: 'aceptada' });
+  });
+}
+
+export async function rechazarInvitacionEquipo(invitationId: string, userId: string): Promise<void> {
+  const invitationRef = doc(db, 'invitaciones_equipo', invitationId);
+
+  await runTransaction(db, async transaction => {
+    const invitationSnap = await transaction.get(invitationRef);
+    if (!invitationSnap.exists()) {
+      throw new Error('La invitación ya no está disponible');
+    }
+
+    const invitation = invitationSnap.data();
+    if (invitation.id_invitado !== userId || invitation.estado !== 'pendiente') {
+      throw new Error('La invitación ya fue respondida o no te pertenece');
+    }
+
+    transaction.update(invitationRef, { estado: 'rechazada' });
+  });
 }
 
 // ==========================================

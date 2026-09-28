@@ -231,6 +231,12 @@ export default function Home() {
     p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (p.tipos_sistema?.nombre && p.tipos_sistema.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+  const misProyectos = filteredProjects.filter(p => puedeEditarProyecto(p.proyecto_id));
+  const proyectosComunidad = filteredProjects.filter(p => !puedeEditarProyecto(p.proyecto_id));
+  const gruposProyectos = [
+    { title: 'Mis proyectos', proyectos: misProyectos, emptyMessage: 'No tienes proyectos relacionados que coincidan con la búsqueda.' },
+    { title: 'Proyectos de la comunidad', proyectos: proyectosComunidad, emptyMessage: 'No hay otros proyectos que coincidan con la búsqueda.' }
+  ];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -268,7 +274,7 @@ export default function Home() {
       </div>
 
       {/* Grid Projects */}
-      {loading ? (
+      {loading || loadingPermisos ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-48 rounded-2xl bg-zinc-100 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 animate-pulse" />
@@ -300,12 +306,22 @@ export default function Home() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProjects.map((proj) => (
-            <div
-              key={proj.proyecto_id}
-              className="group bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-200 relative flex flex-col justify-between"
-            >
+        <div className="space-y-8">
+          {gruposProyectos.map(({ title, proyectos, emptyMessage }) => (
+            <section key={title} className="space-y-3">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{title}</h2>
+                <span className="text-[11px] text-zinc-500 dark:text-zinc-400">({proyectos.length})</span>
+              </div>
+              {proyectos.length === 0 ? (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">{emptyMessage}</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {proyectos.map((proj) => (
+                    <div
+                      key={proj.proyecto_id}
+                      className="group bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-200 relative flex flex-col justify-between"
+                    >
               <div>
                 {/* Header Card */}
                 <div className="flex items-start justify-between mb-3">
@@ -392,7 +408,11 @@ export default function Home() {
                   <ChevronRight size={14} />
                 </button>
               </div>
-            </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           ))}
         </div>
       )}

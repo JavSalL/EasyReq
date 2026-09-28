@@ -13,6 +13,19 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isTeamLeader(teamId) {
+      let memberPath = /databases/$(database)/documents/miembros_equipo/$(teamId + "_" + request.auth.uid);
+      return isAuthenticated() &&
+        exists(memberPath) &&
+        get(memberPath).data.id_rol != null &&
+        get(/databases/$(database)/documents/roles/$(get(memberPath).data.id_rol)).data.nombre_rol.matches('(?i).*l[ií]der.*');
+    }
+
+    function isValidTeamRole(roleId) {
+      return roleId == null ||
+        exists(/databases/$(database)/documents/roles/$(roleId));
+    }
+
     // 1. Perfiles de usuario
     match /perfil_usuario/{userId} {
       // Cualquier usuario autenticado puede leer perfiles (necesario para listas de miembros, autores, etc.)
@@ -86,6 +99,46 @@ service cloud.firestore {
     }
     match /miembros_equipo/{docId} {
       allow read, write: if isAuthenticated();
+    }
+    match /invitaciones_equipo/{invitationId} {
+      allow get: if isAuthenticated() && (
+        resource == null ||
+        resource.data.id_invitado == request.auth.uid ||
+        resource.data.id_invitador == request.auth.uid ||
+        isTeamLeader(resource.data.id_equipo)
+      );
+      allow list: if isAuthenticated() && (
+        resource.data.id_invitado == request.auth.uid ||
+        resource.data.id_invitador == request.auth.uid ||
+        isTeamLeader(resource.data.id_equipo)
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.id_invitador == request.auth.uid &&
+        request.resource.data.estado == 'pendiente' &&
+        request.resource.data.id_invitado != request.auth.uid &&
+        invitationId == request.resource.data.id_equipo + "_" + request.resource.data.id_invitado &&
+        isTeamLeader(request.resource.data.id_equipo) &&
+        isValidTeamRole(request.resource.data.id_rol) &&
+        !exists(/databases/$(database)/documents/miembros_equipo/$(request.resource.data.id_equipo + "_" + request.resource.data.id_invitado));
+      allow update: if isAuthenticated() && (
+        (
+          resource.data.id_invitado == request.auth.uid &&
+          resource.data.estado == 'pendiente' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado']) &&
+          request.resource.data.estado in ['aceptada', 'rechazada']
+        ) ||
+        (
+          resource.data.estado != 'pendiente' &&
+          isTeamLeader(resource.data.id_equipo) &&
+          request.resource.data.id_invitador == request.auth.uid &&
+          request.resource.data.id_equipo == resource.data.id_equipo &&
+          request.resource.data.id_invitado == resource.data.id_invitado &&
+          request.resource.data.estado == 'pendiente' &&
+          isValidTeamRole(request.resource.data.id_rol) &&
+          !exists(/databases/$(database)/documents/miembros_equipo/$(resource.data.id_equipo + "_" + resource.data.id_invitado))
+        )
+      );
+      allow delete: if isAuthenticated() && isTeamLeader(resource.data.id_equipo);
     }
 
     // 5. Requerimientos

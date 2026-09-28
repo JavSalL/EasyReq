@@ -2,12 +2,11 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
-import { useRouter } from "next/navigation";
 import { 
   Users, Plus, Search, ChevronRight, ChevronLeft, FolderGit2, 
-  X, Save, Edit2, Trash2, Crown, UserPlus, Shield, Check, Lock
+  X, Save, Edit2, Trash2, UserPlus, Lock, Bell
 } from 'lucide-react';
-import type { Equipo, Proyecto, PerfilUsuario, Rol } from '@/lib/database.types';
+import type { Equipo, Proyecto, PerfilUsuario, Rol, InvitacionEquipo } from '@/lib/database.types';
 import { 
   getEquipos, 
   createEquipo, 
@@ -23,12 +22,17 @@ import {
   addMiembroEquipo, 
   removeMiembroEquipo,
   getEquiposLideradosPor,
-  esRolLider
+  esRolLider,
+  getInvitacionesRecibidas,
+  crearInvitacionEquipo,
+  aceptarInvitacionEquipo,
+  rechazarInvitacionEquipo
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 
 interface EquipoDetallado extends Equipo {
   proyectos?: Array<{ proyecto_id: string; nombre: string }>;
+  miembrosIds: string[];
   miembros?: Array<{
     usuario: PerfilUsuario;
     rol: Rol | null;
@@ -37,7 +41,6 @@ interface EquipoDetallado extends Equipo {
 }
 
 export default function EquiposGlobalPage() {
-  const router = useRouter();
   const { user } = useAuth();
   const uid = user?.uid ?? null;
   const [equipos, setEquipos] = useState<Array<EquipoDetallado>>([]);
@@ -46,6 +49,10 @@ export default function EquiposGlobalPage() {
   const [roles, setRoles] = useState<Array<Rol>>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [invitaciones, setInvitaciones] = useState<Array<InvitacionEquipo>>([]);
+  const [isInvitationsModalOpen, setIsInvitationsModalOpen] = useState(false);
+  const [loadingInvitations, setLoadingInvitations] = useState(true);
+  const [invitationActionId, setInvitationActionId] = useState<string | null>(null);
 
   // Control de acceso: lectura total; solo el líder de cada equipo puede
   // editarlo y gestionar sus miembros.
@@ -85,6 +92,7 @@ export default function EquiposGlobalPage() {
     id_usuario: '',
     id_rol: ''
   });
+  const [sendingInvitation, setSendingInvitation] = useState(false);
 
   // Modal Eliminar
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -131,6 +139,9 @@ export default function EquiposGlobalPage() {
         return {
           ...eq,
           proyectos: projs,
+          miembrosIds: meData
+            .filter(me => me.id_equipo === eq.equipo_id)
+            .map(me => me.id_usuario),
           miembros: members,
           lider_actual: liderMember ? liderMember.usuario : null
         };
@@ -148,6 +159,28 @@ export default function EquiposGlobalPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const fetchInvitaciones = useCallback(async () => {
+    if (!uid) {
+      setInvitaciones([]);
+      setLoadingInvitations(false);
+      return;
+    }
+
+    setLoadingInvitations(true);
+    try {
+      setInvitaciones(await getInvitacionesRecibidas(uid));
+    } catch (err) {
+      console.error('Error al cargar invitaciones de equipos:', err);
+      toast.error('No se pudieron cargar tus invitaciones');
+    } finally {
+      setLoadingInvitations(false);
+    }
+  }, [uid]);
+
+  useEffect(() => {
+    fetchInvitaciones();
+  }, [fetchInvitaciones]);
 
   // Apertura modal equipo
   const openModal = (team: EquipoDetallado | null = null) => {
@@ -233,9 +266,9 @@ export default function EquiposGlobalPage() {
       setIsModalOpen(false);
       fetchData();
       cargarLiderazgo();
-    } catch (e: any) {
-      console.error(e);
-      toast.error(e.message || "Error al guardar equipo");
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "Error al guardar equipo");
     } finally {
       setSaving(false);
     }
@@ -253,7 +286,7 @@ export default function EquiposGlobalPage() {
       toast.success("Equipo eliminado");
       setIsDeleteModalOpen(false);
       fetchData();
-    } catch (e: any) {
+    } catch {
       toast.error("Error al eliminar equipo");
     }
   };
@@ -268,22 +301,57 @@ export default function EquiposGlobalPage() {
     setIsMemberModalOpen(true);
   };
 
-  // Agregar Miembro al Equipo
-  const handleAddMember = async (e: React.FormEvent) => {
+  // Invitar un usuario; su membresía se crea solo cuando acepta.
+  const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!equipoParaMiembros || !memberForm.id_usuario) return;
     if (!puedeGestionarEquipo(equipoParaMiembros.equipo_id)) {
-      toast.error('Solo el líder del equipo puede agregar miembros');
+      toast.error('Solo el líder del equipo puede invitar miembros');
       return;
     }
 
+    setSendingInvitation(true);
     try {
-      await addMiembroEquipo(equipoParaMiembros.equipo_id, memberForm.id_usuario, memberForm.id_rol || null);
-      toast.success("Miembro agregado al equipo");
-      fetchData();
-      cargarLiderazgo();
-    } catch (e: any) {
-      toast.error("Error al agregar miembro");
+      if (!uid) {
+        toast.error('Debes iniciar sesión para enviar invitaciones');
+        return;
+      }
+      await crearInvitacionEquipo(
+        equipoParaMiembros.equipo_id,
+        uid,
+        memberForm.id_usuario,
+        memberForm.id_rol || null
+      );
+      toast.success('Invitación enviada');
+      setMemberForm({ id_usuario: '', id_rol: '' });
+    } catch (err) {
+      console.error('Error al enviar invitación al equipo:', err);
+      toast.error(err instanceof Error ? err.message : 'Error al enviar invitación');
+    } finally {
+      setSendingInvitation(false);
+    }
+  };
+
+  const handleRespondToInvitation = async (
+    invitation: InvitacionEquipo,
+    accept: boolean
+  ) => {
+    if (!uid) return;
+    setInvitationActionId(invitation.id);
+    try {
+      if (accept) {
+        await aceptarInvitacionEquipo(invitation.id, uid);
+        toast.success('Te uniste al equipo');
+      } else {
+        await rechazarInvitacionEquipo(invitation.id, uid);
+        toast.success('Invitación rechazada');
+      }
+      await Promise.all([fetchInvitaciones(), fetchData(), cargarLiderazgo()]);
+    } catch (err) {
+      console.error('Error al responder la invitación:', err);
+      toast.error(err instanceof Error ? err.message : 'No se pudo responder la invitación');
+    } finally {
+      setInvitationActionId(null);
     }
   };
 
@@ -299,7 +367,7 @@ export default function EquiposGlobalPage() {
       toast.success("Miembro removido");
       fetchData();
       cargarLiderazgo();
-    } catch (e: any) {
+    } catch {
       toast.error("Error al remover miembro");
     }
   };
@@ -308,6 +376,8 @@ export default function EquiposGlobalPage() {
     t.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (t.proyectos || []).some(p => p.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+  const misEquipos = filteredTeams.filter(team => uid && team.miembrosIds.includes(uid));
+  const equiposComunidad = filteredTeams.filter(team => !uid || !team.miembrosIds.includes(uid));
 
   if (isMemberModalOpen && equipoParaMiembros) {
     // Buscar datos actualizados del equipo
@@ -334,27 +404,27 @@ export default function EquiposGlobalPage() {
               Gestión de Miembros: {currentDetailed.nombre}
             </h1>
             <p className="text-zinc-500 dark:text-zinc-400 mt-1 text-xs">
-              {currentDetailed.descripcion || 'Asigna usuarios registrados a este equipo con su respectivo rol.'}
+              {currentDetailed.descripcion || 'Invita usuarios registrados para que se unan a este equipo.'}
             </p>
           </div>
         </div>
 
-        {/* Formulario para agregar miembro (solo líder) */}
+        {/* Formulario para invitar miembros (solo líder) */}
         {!puedeGestionar ? (
           <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
             <Lock size={15} className="shrink-0" />
-            <span>Solo el líder de este equipo puede agregar o remover miembros. Tienes acceso de lectura.</span>
+            <span>Solo el líder de este equipo puede invitar o remover miembros. Tienes acceso de lectura.</span>
           </div>
         ) : (
         <div className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 shadow-xs">
           <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-2">
             <UserPlus size={16} className="text-blue-600" />
-            Asignar Nuevo Miembro
+            Invitar a un usuario
           </h3>
-          <form onSubmit={handleAddMember} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+          <form onSubmit={handleInviteMember} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
             <div>
               <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
-                Usuario Registrado <span className="text-rose-500">*</span>
+                Usuario registrado <span className="text-rose-500">*</span>
               </label>
               <select
                 required
@@ -363,9 +433,11 @@ export default function EquiposGlobalPage() {
                 className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-white"
               >
                 <option value="">Seleccionar usuario...</option>
-                {usuarios.map(u => (
-                  <option key={u.id} value={u.id}>{u.nombre || u.correo} ({u.correo})</option>
-                ))}
+                {usuarios
+                  .filter(u => u.id !== uid && !currentDetailed.miembrosIds.includes(u.id))
+                  .map(u => (
+                    <option key={u.id} value={u.id}>{u.nombre || u.correo}</option>
+                  ))}
               </select>
             </div>
 
@@ -378,7 +450,7 @@ export default function EquiposGlobalPage() {
                 onChange={(e) => setMemberForm({ ...memberForm, id_rol: e.target.value })}
                 className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-white"
               >
-                <option value="">Seleccionar rol...</option>
+                <option value="">Sin rol específico</option>
                 {roles.map(r => (
                   <option key={r.id} value={r.id}>{r.nombre_rol}</option>
                 ))}
@@ -387,10 +459,15 @@ export default function EquiposGlobalPage() {
 
             <button
               type="submit"
-              className="py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+              disabled={sendingInvitation}
+              className="py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Plus size={14} />
-              Agregar Miembro
+              {sendingInvitation ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Bell size={14} />
+              )}
+              Enviar invitación
             </button>
           </form>
         </div>
@@ -463,14 +540,105 @@ export default function EquiposGlobalPage() {
             Gestión global de equipos multidisciplinarios, integrantes, asignación de roles y proyectos.
           </p>
         </div>
-        <button
-          onClick={() => openModal()}
-          title="Cualquier usuario autenticado puede crear un equipo (queda como líder inicial)"
-          className="inline-flex items-center justify-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-xs font-medium text-xs gap-1.5 cursor-pointer"
-        >
-          <Plus size={15} />
-          Nuevo Equipo
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={() => {
+                if (!isInvitationsModalOpen) {
+                  void fetchInvitaciones();
+                }
+                setIsInvitationsModalOpen(open => !open);
+              }}
+              aria-expanded={isInvitationsModalOpen}
+              aria-haspopup="dialog"
+              className="relative inline-flex items-center justify-center px-3.5 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-200 rounded-xl transition-all font-medium text-xs gap-1.5 cursor-pointer"
+            >
+              <Bell size={15} />
+              Invitaciones
+              {invitaciones.length > 0 && (
+                <span className="min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center">
+                  {invitaciones.length}
+                </span>
+              )}
+            </button>
+            {isInvitationsModalOpen && (
+              <div
+                role="dialog"
+                aria-label="Invitaciones recibidas"
+                className="absolute right-0 top-full mt-2 z-40 w-[min(22rem,calc(100vw-2rem))] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden"
+              >
+                <div className="px-4 py-3 border-b border-zinc-200/60 dark:border-zinc-800/60 flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Invitaciones recibidas</h2>
+                  <button
+                    onClick={() => setIsInvitationsModalOpen(false)}
+                    aria-label="Cerrar invitaciones"
+                    className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 cursor-pointer"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+                <div className="max-h-[min(26rem,70vh)] overflow-y-auto">
+                  {loadingInvitations ? (
+                    <div className="p-6 flex justify-center">
+                      <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : invitaciones.length === 0 ? (
+                    <p className="p-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
+                      No tienes invitaciones pendientes.
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
+                      {invitaciones.map(invitation => {
+                        const team = equipos.find(item => item.equipo_id === invitation.id_equipo);
+                        const inviter = usuarios.find(item => item.id === invitation.id_invitador);
+                        const role = roles.find(item => item.id === invitation.id_rol);
+                        const isProcessing = invitationActionId === invitation.id;
+                        return (
+                          <li key={invitation.id} className="p-4">
+                            <p className="text-xs text-zinc-700 dark:text-zinc-200">
+                              <span className="font-semibold">{inviter?.nombre || inviter?.correo || 'Un usuario'}</span>
+                              {' te invita a unirte a '}
+                              <span className="font-semibold">{team?.nombre || 'un equipo'}</span>.
+                            </p>
+                            {role && (
+                              <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                                Rol propuesto: {role.nombre_rol}
+                              </p>
+                            )}
+                            <div className="mt-3 flex justify-end gap-2">
+                              <button
+                                onClick={() => handleRespondToInvitation(invitation, false)}
+                                disabled={isProcessing}
+                                className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 cursor-pointer"
+                              >
+                                Rechazar
+                              </button>
+                              <button
+                                onClick={() => handleRespondToInvitation(invitation, true)}
+                                disabled={isProcessing}
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-[11px] font-medium text-white disabled:opacity-50 cursor-pointer"
+                              >
+                                {isProcessing ? 'Procesando...' : 'Aceptar'}
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => openModal()}
+            title="Cualquier usuario autenticado puede crear un equipo (queda como líder inicial)"
+            className="inline-flex items-center justify-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-xs font-medium text-xs gap-1.5 cursor-pointer"
+          >
+            <Plus size={15} />
+            Nuevo Equipo
+          </button>
+        </div>
       </div>
 
       {/* Buscador */}
@@ -505,85 +673,109 @@ export default function EquiposGlobalPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTeams.map((team) => (
-            <div
-              key={team.equipo_id}
-              className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-200 flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300">
-                    <Users size={18} />
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    {puedeGestionarEquipo(team.equipo_id) ? (
-                      <>
-                        <button
-                          onClick={() => openModal(team)}
-                          title="Editar equipo"
-                          className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg cursor-pointer"
-                        >
-                          <Edit2 size={13} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEquipoToDelete(team);
-                            setIsDeleteModalOpen(true);
-                          }}
-                          title="Eliminar equipo"
-                          className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </>
-                    ) : (
-                      <span
-                        title="Solo el líder del equipo puede editarlo"
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
-                      >
-                        <Lock size={12} />
-                        Solo lectura
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">
-                  {team.nombre}
-                </h3>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 line-clamp-2">
-                  {team.descripcion || "Sin descripción."}
-                </p>
-
-                {/* Proyectos Vinculados */}
-                <div className="mt-3 flex flex-wrap gap-1">
-                  {team.proyectos && team.proyectos.length > 0 ? (
-                    team.proyectos.map(p => (
-                      <span key={p.proyecto_id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
-                        <FolderGit2 size={10} />
-                        {p.nombre}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-[10px] text-zinc-400 italic">Sin proyectos asignados</span>
-                  )}
-                </div>
+        <div className="space-y-8">
+          {[
+            {
+              title: 'Mis Equipos',
+              teams: misEquipos,
+              emptyMessage: 'No formas parte de ningún equipo que coincida con la búsqueda.'
+            },
+            {
+              title: 'Equipos de la comunidad',
+              teams: equiposComunidad,
+              emptyMessage: 'No hay otros equipos que coincidan con la búsqueda.'
+            }
+          ].map(({ title, teams, emptyMessage }) => (
+            <section key={title} className="space-y-3">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{title}</h2>
+                <span className="text-[11px] text-zinc-500 dark:text-zinc-400">({teams.length})</span>
               </div>
+              {teams.length === 0 ? (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">{emptyMessage}</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {teams.map((team) => (
+                    <div
+                      key={team.equipo_id}
+                      className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-200 flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                            <Users size={18} />
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            {puedeGestionarEquipo(team.equipo_id) ? (
+                              <>
+                                <button
+                                  onClick={() => openModal(team)}
+                                  title="Editar equipo"
+                                  className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg cursor-pointer"
+                                >
+                                  <Edit2 size={13} />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setEquipoToDelete(team);
+                                    setIsDeleteModalOpen(true);
+                                  }}
+                                  title="Eliminar equipo"
+                                  className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </>
+                            ) : (
+                              <span
+                                title="Solo el líder del equipo puede editarlo"
+                                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
+                              >
+                                <Lock size={12} />
+                                Solo lectura
+                              </span>
+                            )}
+                          </div>
+                        </div>
 
-              <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-xs">
-                <span className="text-zinc-500 text-[11px]">
-                  {team.miembros?.length || 0} integrantes
-                </span>
-                <button
-                  onClick={() => openMembersModal(team)}
-                  className="font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
-                >
-                  <span>Gestionar Miembros</span>
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-            </div>
+                        <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">
+                          {team.nombre}
+                        </h3>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 line-clamp-2">
+                          {team.descripcion || "Sin descripción."}
+                        </p>
+
+                        <div className="mt-3 flex flex-wrap gap-1">
+                          {team.proyectos && team.proyectos.length > 0 ? (
+                            team.proyectos.map(p => (
+                              <span key={p.proyecto_id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
+                                <FolderGit2 size={10} />
+                                {p.nombre}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[10px] text-zinc-400 italic">Sin proyectos asignados</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-xs">
+                        <span className="text-zinc-500 text-[11px]">
+                          {team.miembros?.length || 0} integrantes
+                        </span>
+                        <button
+                          onClick={() => openMembersModal(team)}
+                          className="font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>Gestionar Miembros</span>
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           ))}
         </div>
       )}

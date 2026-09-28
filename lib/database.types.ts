@@ -124,6 +124,18 @@ export interface MiembroEquipo {
   rol?: Rol | null;
 }
 
+export type EstadoInvitacionEquipo = 'pendiente' | 'aceptada' | 'rechazada';
+
+export interface InvitacionEquipo {
+  id: UUID;
+  id_equipo: UUID;
+  id_invitador: UUID;
+  id_invitado: UUID;
+  id_rol: UUID | null;
+  estado: EstadoInvitacionEquipo;
+  created_at: string;
+}
+
 export interface UsuarioProfesion {
   id_usuario: UUID;
   id_profesion: UUID;
