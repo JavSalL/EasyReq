@@ -471,8 +471,10 @@ export async function getEquipos(): Promise<Equipo[]> {
 }
 
 export async function createEquipo(data: { nombre: string; descripcion?: string }): Promise<Equipo> {
+  // Firestore rechaza campos con valor `undefined`
   const docRef = await addDoc(collection(db, 'equipo'), {
-    ...data,
+    nombre: data.nombre,
+    descripcion: data.descripcion ?? '',
     created_at: new Date().toISOString()
   });
   return {
@@ -484,7 +486,10 @@ export async function createEquipo(data: { nombre: string; descripcion?: string 
 }
 
 export async function updateEquipo(id: string, data: { nombre: string; descripcion?: string }): Promise<void> {
-  await updateDoc(doc(db, 'equipo', id), data);
+  await updateDoc(doc(db, 'equipo', id), {
+    nombre: data.nombre,
+    descripcion: data.descripcion ?? ''
+  });
 }
 
 export async function deleteEquipo(id: string): Promise<void> {
