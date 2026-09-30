@@ -825,8 +825,7 @@ export default function EquiposGlobalPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ProjectTeamRequestInbox userId={uid} onResponded={recargar} />
-
+          {/*<ProjectTeamRequestInbox userId={uid} onResponded={recargar} />*/}
           {/* Invitaciones recibidas */}
           <div className="relative">
             <button
