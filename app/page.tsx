@@ -3,37 +3,46 @@
 import React, { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
-import { 
-  Plus, Edit2, Trash2, FolderGit2, ChevronRight, Search, 
-  Layers, Users, X, Save, CheckCircle2, Cpu, Smartphone, Globe, Laptop, Server, Lock
+import {
+  Plus, Edit2, Trash2, FolderGit2, ChevronRight, Search,
+  Layers, Users, Save, Cpu, Smartphone, Globe, Laptop, Server, Lock
 } from 'lucide-react';
 import type { Proyecto, TipoSistema } from '@/lib/database.types';
-import { 
-  getProyectos, 
-  getTiposSistema, 
-  createProyecto, 
-  updateProyecto, 
+import {
+  getProyectos,
+  getTiposSistema,
+  createProyecto,
+  updateProyecto,
   deleteProyecto,
   getRequerimientos,
   getProyectoEquipos,
   getProyectosRelacionados
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
+import { mensajeError } from '@/lib/errores';
+import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
+import {
+  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
+} from '@/components/ui/estilos';
 
 interface ProyectoConStats extends Proyecto {
-  tipos_sistema?: TipoSistema | null;
   requerimientos_count?: number;
   equipos_count?: number;
 }
 
+const plural = (n: number, singular: string, pluralTxt: string) => `${n} ${n === 1 ? singular : pluralTxt}`;
+
 export default function Home() {
   const router = useRouter();
+  const confirmar = useConfirm();
   const { user } = useAuth();
   const uid = user?.uid ?? null;
   const [projects, setProjects] = useState<Array<ProyectoConStats>>([]);
   const [tiposSistema, setTiposSistema] = useState<Array<TipoSistema>>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [soloMios, setSoloMios] = useState(false);
 
   // Control de acceso: todo proyecto es visible para autenticados;
   // cualquier autenticado puede crear; editar/eliminar solo relacionados
@@ -41,29 +50,24 @@ export default function Home() {
   const [proyectosPermitidos, setProyectosPermitidos] = useState<Array<string>>([]);
   const [loadingPermisos, setLoadingPermisos] = useState(true);
 
-  useEffect(() => {
-    let activo = true;
-    const cargarPermisos = async () => {
-      setLoadingPermisos(true);
-      try {
-        const ids = uid ? await getProyectosRelacionados(uid) : [];
-        if (activo) setProyectosPermitidos(ids);
-      } catch (err) {
-        console.error('Error al cargar permisos de proyectos:', err);
-        if (activo) setProyectosPermitidos([]);
-      } finally {
-        if (activo) setLoadingPermisos(false);
-      }
-    };
-    cargarPermisos();
-    return () => { activo = false; };
+  const cargarPermisos = useCallback(async () => {
+    try {
+      const ids = uid ? await getProyectosRelacionados(uid) : [];
+      setProyectosPermitidos(ids);
+    } catch (err) {
+      console.error('Error al cargar permisos de proyectos:', err);
+      setProyectosPermitidos([]);
+    } finally {
+      setLoadingPermisos(false);
+    }
   }, [uid]);
+
+  useEffect(() => {
+    cargarPermisos();
+  }, [cargarPermisos]);
 
   const puedeEditarProyecto = (proyectoId: string) =>
     proyectosPermitidos.includes(proyectoId);
-  // Política: cualquier usuario autenticado puede crear proyectos. Solo se
-  // exige haber iniciado sesión (guard de login, no de vínculo).
-  const puedeCrearProyecto = uid !== null;
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -75,61 +79,54 @@ export default function Home() {
   });
   const [saving, setSaving] = useState(false);
 
-  // Cargar Tipos de Sistema
-  const fetchTiposSistema = useCallback(async () => {
-    const data = await getTiposSistema();
-    setTiposSistema(data);
-  }, []);
-
   // Cargar Proyectos con su tipo y contadores
   const fetchProjects = useCallback(async () => {
-    setLoading(true);
     try {
-      const [projectsData, reqs, pes] = await Promise.all([
+      const [projectsData, reqs, pes, tipos] = await Promise.all([
         getProyectos(),
         getRequerimientos(),
-        getProyectoEquipos()
+        getProyectoEquipos(),
+        getTiposSistema()
       ]);
+      setTiposSistema(tipos);
 
       const reqCountMap: Record<string, number> = {};
-      (reqs || []).forEach((r: any) => {
+      reqs.forEach((r) => {
         if (r.id_proyecto) {
           reqCountMap[r.id_proyecto] = (reqCountMap[r.id_proyecto] || 0) + 1;
         }
       });
 
       const peCountMap: Record<string, number> = {};
-      (pes || []).forEach((pe: any) => {
+      pes.forEach((pe) => {
         if (pe.id_proyecto) {
           peCountMap[pe.id_proyecto] = (peCountMap[pe.id_proyecto] || 0) + 1;
         }
       });
 
-      const formatted: ProyectoConStats[] = projectsData.map((p) => ({
-        ...p,
-        requerimientos_count: reqCountMap[p.proyecto_id] || 0,
-        equipos_count: peCountMap[p.proyecto_id] || 0
-      }));
+      const formatted: ProyectoConStats[] = projectsData
+        .map((p) => ({
+          ...p,
+          requerimientos_count: reqCountMap[p.proyecto_id] || 0,
+          equipos_count: peCountMap[p.proyecto_id] || 0
+        }))
+        // Más recientes primero
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
 
       setProjects(formatted);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Excepción al consultar proyectos en Firestore:', err);
-      toast.error('Error al cargar proyectos de Firestore');
+      toast.error(mensajeError(err, 'No se pudieron cargar los proyectos'));
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchTiposSistema();
     fetchProjects();
-  }, [fetchTiposSistema, fetchProjects]);
+  }, [fetchProjects]);
 
   const openCreateModal = () => {
-    if (!uid) {
-      toast.error('Debes iniciar sesión para crear proyectos');
-      return;
-    }
     setEditingProject(null);
     setFormData({
       nombre: '',
@@ -141,7 +138,7 @@ export default function Home() {
 
   const openEditModal = (p: Proyecto) => {
     if (!puedeEditarProyecto(p.proyecto_id)) {
-      toast.error('Solo miembros de un equipo vinculado pueden editar este proyecto');
+      toast.error('Solo el creador o miembros de un equipo vinculado pueden editar este proyecto');
       return;
     }
     setEditingProject(p);
@@ -159,6 +156,10 @@ export default function Home() {
       toast.error('El nombre del proyecto es obligatorio');
       return;
     }
+    if (!uid) {
+      toast.error('Debes iniciar sesión para guardar proyectos');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -173,98 +174,133 @@ export default function Home() {
           descripcion: formData.descripcion.trim(),
           id_tipo_sistema: formData.id_tipo_sistema || null
         });
-        toast.success('Proyecto actualizado correctamente');
+        toast.success('Proyecto actualizado');
       } else {
-        // Crear (defensa en cliente: cualquier usuario autenticado; se
-        // registra `id_creador=uid` para que el creador pueda editar/eliminar).
-        if (!uid) {
-          toast.error('Debes iniciar sesión para crear proyectos');
-          return;
-        }
+        // Se registra `id_creador=uid` para que el creador pueda editar/eliminar.
         await createProyecto({
           nombre: formData.nombre.trim(),
           descripcion: formData.descripcion.trim(),
           id_tipo_sistema: formData.id_tipo_sistema || null,
           id_creador: uid
         });
-        toast.success('Proyecto creado correctamente');
+        toast.success('Proyecto creado');
       }
 
       setIsModalOpen(false);
-      fetchProjects();
-    } catch (error: any) {
+      await Promise.all([fetchProjects(), cargarPermisos()]);
+    } catch (error) {
       console.error(error);
-      toast.error(error.message || 'Error al guardar el proyecto');
+      toast.error(mensajeError(error, 'No se pudo guardar el proyecto'));
     } finally {
       setSaving(false);
     }
   };
 
-  const deleteProject = async (id: string, nombre: string) => {
-    if (!puedeEditarProyecto(id)) {
-      toast.error('Solo miembros de un equipo vinculado pueden eliminar este proyecto');
+  const deleteProject = async (proj: ProyectoConStats) => {
+    if (!puedeEditarProyecto(proj.proyecto_id)) {
+      toast.error('Solo el creador o miembros de un equipo vinculado pueden eliminar este proyecto');
       return;
     }
-    if (!confirm(`¿Estás seguro de que deseas eliminar el proyecto "${nombre}"? Esta acción eliminará también sus requerimientos asociados.`)) {
-      return;
-    }
+    const reqs = proj.requerimientos_count || 0;
+    const ok = await confirmar({
+      titulo: '¿Eliminar proyecto?',
+      mensaje: (
+        <>
+          Se eliminará <strong className="text-zinc-900 dark:text-zinc-100">{proj.nombre}</strong>
+          {reqs > 0 ? <> junto con sus {plural(reqs, 'requerimiento', 'requerimientos')}</> : null}.
+          Esta acción no se puede deshacer.
+        </>
+      ),
+      textoConfirmar: 'Eliminar',
+      peligro: true
+    });
+    if (!ok) return;
 
     try {
-      await deleteProyecto(id);
+      await deleteProyecto(proj.proyecto_id);
       toast.success('Proyecto eliminado');
       fetchProjects();
-    } catch (error: any) {
-      toast.error('Error al eliminar el proyecto');
+    } catch (error) {
+      toast.error(mensajeError(error, 'No se pudo eliminar el proyecto'));
     }
   };
+
+  const abrirProyecto = (id: string) => router.push(`/requerimientos/?id=${id}`);
 
   const getTipoSistemaIcon = (nombre?: string) => {
     const n = (nombre || '').toLowerCase();
-    if (n.includes('móvil') || n.includes('movil')) return <Smartphone size={16} className="text-purple-500" />;
-    if (n.includes('embebido') || n.includes('iot')) return <Cpu size={16} className="text-amber-500" />;
-    if (n.includes('escritorio')) return <Laptop size={16} className="text-emerald-500" />;
-    if (n.includes('api') || n.includes('microservicio')) return <Server size={16} className="text-rose-500" />;
-    return <Globe size={16} className="text-blue-500" />;
+    if (n.includes('móvil') || n.includes('movil')) return <Smartphone size={14} className="text-purple-500" />;
+    if (n.includes('embebido') || n.includes('iot')) return <Cpu size={14} className="text-amber-500" />;
+    if (n.includes('escritorio')) return <Laptop size={14} className="text-emerald-500" />;
+    if (n.includes('api') || n.includes('microservicio')) return <Server size={14} className="text-rose-500" />;
+    return <Globe size={14} className="text-blue-500" />;
   };
 
-  const filteredProjects = projects.filter(p => 
-    p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p.tipos_sistema?.nombre && p.tipos_sistema.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const termino = searchTerm.trim().toLowerCase();
+  const filteredProjects = projects.filter(p => {
+    if (soloMios && !puedeEditarProyecto(p.proyecto_id)) return false;
+    if (!termino) return true;
+    return p.nombre.toLowerCase().includes(termino) ||
+      (p.descripcion || '').toLowerCase().includes(termino) ||
+      (p.tipos_sistema?.nombre || '').toLowerCase().includes(termino);
+  });
+  const hayFiltros = termino !== '' || soloMios;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="space-y-6 animate-in fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">Proyectos</h1>
+          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
+            <FolderGit2 className="text-zinc-700 dark:text-zinc-300" size={24} />
+            Proyectos
+          </h1>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-            Gestión centralizada de sistemas de software y especificación de requerimientos técnicos.
+            Sistemas de software y la especificación de sus requerimientos.
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          disabled={loadingPermisos || !puedeCrearProyecto}
-          title={puedeCrearProyecto ? 'Crear un nuevo proyecto' : 'Debes iniciar sesión para crear proyectos'}
-          className="inline-flex items-center justify-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-xs font-medium text-xs gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        <button onClick={openCreateModal} className={btnPrimario}>
           <Plus size={15} />
           Nuevo Proyecto
         </button>
       </div>
 
-      {/* Search Bar */}
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
-          <Search size={15} />
+      {/* Búsqueda y filtro */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+            <Search size={14} />
+          </div>
+          <input
+            type="search"
+            placeholder="Buscar por nombre, descripción o tipo de sistema..."
+            aria-label="Buscar proyectos"
+            className={buscador}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
-        <input
-          type="text"
-          placeholder="Buscar proyecto por nombre o tipo de sistema..."
-          className="block w-full pl-9 pr-4 py-2.5 border border-zinc-200/80 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900/60 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-xs"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
+        <div role="group" aria-label="Filtrar proyectos" className="inline-flex p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl self-start">
+          {[
+            { valor: false, texto: 'Todos' },
+            { valor: true, texto: 'Mis proyectos' }
+          ].map(op => (
+            <button
+              key={op.texto}
+              type="button"
+              onClick={() => setSoloMios(op.valor)}
+              aria-pressed={soloMios === op.valor}
+              disabled={op.valor && loadingPermisos}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                soloMios === op.valor
+                  ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-xs'
+                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
+              }`}
+            >
+              {op.texto}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Grid Projects */}
@@ -279,211 +315,194 @@ export default function Home() {
           <div className="w-12 h-12 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl flex items-center justify-center mx-auto mb-3">
             <FolderGit2 size={22} />
           </div>
-          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">No hay proyectos encontrados</h3>
+          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+            {hayFiltros ? 'Sin resultados' : 'Todavía no hay proyectos'}
+          </h3>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-sm mx-auto">
-            {searchTerm ? "No coincide ningún proyecto con tu búsqueda." : "Crea tu primer proyecto para empezar a registrar requerimientos técnicos."}
+            {termino
+              ? 'Ningún proyecto coincide con tu búsqueda.'
+              : soloMios
+                ? 'Aún no participas en ningún proyecto. Crea uno o pide que vinculen a tu equipo.'
+                : 'Crea tu primer proyecto para empezar a registrar requerimientos.'}
           </p>
-          {!searchTerm && puedeCrearProyecto && (
-            <button
-              onClick={openCreateModal}
-              className="mt-4 inline-flex items-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-medium transition-all shadow-xs gap-1.5 cursor-pointer"
-            >
-              <Plus size={15} />
-              Crear Proyecto
-            </button>
-          )}
-          {!searchTerm && !puedeCrearProyecto && !loadingPermisos && (
-            <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-zinc-400">
-              <Lock size={13} />
-              Inicia sesión para crear proyectos.
-            </p>
-          )}
+          <div className="mt-4 flex justify-center gap-2">
+            {hayFiltros && (
+              <button onClick={() => { setSearchTerm(''); setSoloMios(false); }} className={btnSecundario}>
+                Quitar filtros
+              </button>
+            )}
+            {!termino && (
+              <button onClick={openCreateModal} className={btnPrimario}>
+                <Plus size={15} />
+                Crear Proyecto
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProjects.map((proj) => (
-            <div
-              key={proj.proyecto_id}
-              className="group bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-200 relative flex flex-col justify-between"
-            >
-              <div>
-                {/* Header Card */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-200">
-                    <FolderGit2 size={18} />
+          {filteredProjects.map((proj) => {
+            const editable = puedeEditarProyecto(proj.proyecto_id);
+            const reqs = proj.requerimientos_count || 0;
+            const eqs = proj.equipos_count || 0;
+            return (
+              <div
+                key={proj.proyecto_id}
+                role="link"
+                tabIndex={0}
+                onClick={() => abrirProyecto(proj.proyecto_id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.target === e.currentTarget) abrirProyecto(proj.proyecto_id);
+                }}
+                aria-label={`Abrir requerimientos de ${proj.nombre}`}
+                className={`group ${tarjeta} p-5 hover:border-blue-300 dark:hover:border-blue-800 hover:shadow-sm transition-all duration-200 flex flex-col justify-between cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40`}
+              >
+                <div>
+                  {/* Header Card */}
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-200">
+                      <FolderGit2 size={18} />
+                    </div>
+
+                    <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                      {editable ? (
+                        <>
+                          <button
+                            onClick={() => openEditModal(proj)}
+                            title="Editar proyecto"
+                            aria-label={`Editar ${proj.nombre}`}
+                            className={btnIcono}
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => deleteProject(proj)}
+                            title="Eliminar proyecto"
+                            aria-label={`Eliminar ${proj.nombre}`}
+                            className={btnIconoPeligro}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      ) : !loadingPermisos && (
+                        <span
+                          title="Solo el creador o miembros de un equipo vinculado pueden editar este proyecto"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
+                        >
+                          <Lock size={12} />
+                          Solo lectura
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  
-                  <div className="flex items-center space-x-1">
-                    {puedeEditarProyecto(proj.proyecto_id) ? (
-                      <>
-                        <button 
-                          onClick={() => openEditModal(proj)}
-                          title="Editar Proyecto"
-                          className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Edit2 size={13} />
-                        </button>
-                        <button 
-                          onClick={() => deleteProject(proj.proyecto_id, proj.nombre)}
-                          title="Eliminar Proyecto"
-                          className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </>
-                    ) : (
-                      <span
-                        title="Solo lectura: solo el creador o miembros de un equipo vinculado pueden editar este proyecto"
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
-                      >
-                        <Lock size={12} />
-                        Solo lectura
+
+                  {/* Badges */}
+                  <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+                    {proj.tipos_sistema && (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
+                        {getTipoSistemaIcon(proj.tipos_sistema.nombre)}
+                        {proj.tipos_sistema.nombre}
+                      </span>
+                    )}
+                    {uid !== null && proj.id_creador === uid && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[10px] font-medium border border-blue-200/60 dark:border-blue-800/60">
+                        Creado por ti
                       </span>
                     )}
                   </div>
+
+                  <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                    {proj.nombre}
+                  </h3>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
+                    {proj.descripcion || "Sin descripción."}
+                  </p>
                 </div>
 
-                {/* Badge Tipo Sistema */}
-                <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
-                {proj.tipos_sistema && (
-                  <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-zinc-100 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
-                    {getTipoSistemaIcon(proj.tipos_sistema.nombre)}
-                    <span>{proj.tipos_sistema.nombre}</span>
+                <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between">
+                  <div className="flex items-center gap-3 text-[11px] text-zinc-500">
+                    <span className="flex items-center gap-1" title="Requerimientos">
+                      <Layers size={13} className="text-zinc-400" />
+                      {plural(reqs, 'requerimiento', 'requerimientos')}
+                    </span>
+                    <span className="flex items-center gap-1" title="Equipos vinculados">
+                      <Users size={13} className="text-zinc-400" />
+                      {plural(eqs, 'equipo', 'equipos')}
+                    </span>
                   </div>
-                )}
-                {uid !== null && proj.id_creador === uid && (
-                  <span
-                    title="Eres el creador de este proyecto"
-                    className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[10px] font-medium border border-blue-200/60 dark:border-blue-800/60"
-                  >
-                    Creador
-                  </span>
-                )}
+                  <ChevronRight size={16} className="text-zinc-300 dark:text-zinc-600 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
                 </div>
-
-                {/* Info */}
-                <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                  {proj.nombre}
-                </h3>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
-                  {proj.descripcion || "Sin descripción proporcionada."}
-                </p>
               </div>
-
-              <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between">
-                {/* Stats */}
-                <div className="flex items-center space-x-3 text-[11px] text-zinc-500">
-                  <span className="flex items-center gap-1 font-mono">
-                    <Layers size={13} className="text-zinc-400" />
-                    {proj.requerimientos_count} reqs
-                  </span>
-                  <span className="flex items-center gap-1 font-mono">
-                    <Users size={13} className="text-zinc-400" />
-                    {proj.equipos_count} eq
-                  </span>
-                </div>
-
-                {/* Actions Button */}
-                <button
-                  onClick={() => router.push(`/requerimientos/?id=${proj.proyecto_id}`)}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer"
-                >
-                  <span>Requerimientos</span>
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* Modal Crear / Editar Proyecto */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
-                {editingProject ? 'Editar Proyecto' : 'Crear Nuevo Proyecto'}
-              </h3>
-              <button 
-                onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              >
-                <X size={18} />
-              </button>
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingProject ? 'Editar Proyecto' : 'Nuevo Proyecto'}
+      >
+        <form onSubmit={handleSave} noValidate className="flex flex-col flex-1 min-h-0">
+          <ModalBody className="space-y-4">
+            <div>
+              <label htmlFor="proyecto-nombre" className={etiqueta}>
+                Nombre del Proyecto <span className="text-rose-500">*</span>
+              </label>
+              <input
+                id="proyecto-nombre"
+                type="text"
+                placeholder="Ej. Sistema de Pagos Móvil"
+                maxLength={120}
+                value={formData.nombre}
+                onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                className={campo}
+              />
             </div>
 
-            <form onSubmit={handleSave} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  Nombre del Proyecto <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej. Sistema de Pagos Móvil"
-                  value={formData.nombre}
-                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                  className="w-full px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-zinc-900 dark:text-zinc-100"
-                />
-              </div>
+            <div>
+              <label htmlFor="proyecto-tipo" className={etiqueta}>Tipo de Sistema</label>
+              <select
+                id="proyecto-tipo"
+                value={formData.id_tipo_sistema}
+                onChange={(e) => setFormData({ ...formData, id_tipo_sistema: e.target.value })}
+                className={campo}
+              >
+                <option value="">Sin especificar</option>
+                {tiposSistema.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nombre}</option>
+                ))}
+              </select>
+            </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  Tipo de Sistema
-                </label>
-                <select
-                  value={formData.id_tipo_sistema}
-                  onChange={(e) => setFormData({ ...formData, id_tipo_sistema: e.target.value })}
-                  className="w-full px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-zinc-900 dark:text-zinc-100"
-                >
-                  <option value="">Selecciona un tipo de sistema</option>
-                  {tiposSistema.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  Descripción
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Describe brevemente el alcance u objetivos del proyecto..."
-                  value={formData.descripcion}
-                  onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                  className="w-full px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-zinc-900 dark:text-zinc-100 resize-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-xs disabled:opacity-50 transition-all"
-                >
-                  {saving ? (
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Save size={14} />
-                  )}
-                  <span>Guardar</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <div>
+              <label htmlFor="proyecto-descripcion" className={etiqueta}>Descripción</label>
+              <textarea
+                id="proyecto-descripcion"
+                rows={3}
+                placeholder="Describe brevemente el alcance u objetivos del proyecto..."
+                value={formData.descripcion}
+                onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+                className={`${campo} resize-none`}
+              />
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <button type="button" onClick={() => setIsModalOpen(false)} className={btnSecundario}>
+              Cancelar
+            </button>
+            <button type="submit" disabled={saving} className={btnPrimario}>
+              {saving ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Save size={14} />
+              )}
+              {saving ? 'Guardando...' : editingProject ? 'Guardar cambios' : 'Crear Proyecto'}
+            </button>
+          </ModalFooter>
+        </form>
+      </Modal>
     </div>
   );
 }

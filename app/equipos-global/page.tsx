@@ -2,42 +2,54 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
-import { useRouter } from "next/navigation";
-import { 
-  Users, Plus, Search, ChevronRight, ChevronLeft, FolderGit2, 
-  X, Save, Edit2, Trash2, Crown, UserPlus, Shield, Check, Lock
+import Link from "next/link";
+import {
+  Users, Plus, Search, ChevronRight, ChevronLeft, FolderGit2,
+  Save, Edit2, Trash2, Crown, UserPlus, Check, Lock
 } from 'lucide-react';
 import type { Equipo, Proyecto, PerfilUsuario, Rol } from '@/lib/database.types';
-import { 
-  getEquipos, 
-  createEquipo, 
-  updateEquipo, 
-  deleteEquipo, 
-  getProyectos, 
-  getAllUsers, 
-  getRoles, 
-  getProyectoEquipos, 
-  linkEquipoToProyecto, 
-  unlinkEquipoFromProyecto, 
-  getMiembrosEquipo, 
-  addMiembroEquipo, 
+import {
+  getEquipos,
+  createEquipo,
+  updateEquipo,
+  deleteEquipo,
+  getProyectos,
+  getAllUsers,
+  getRoles,
+  getProyectoEquipos,
+  linkEquipoToProyecto,
+  unlinkEquipoFromProyecto,
+  getMiembrosEquipo,
+  addMiembroEquipo,
   removeMiembroEquipo,
   getEquiposLideradosPor,
   esRolLider
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
+import { mensajeError } from '@/lib/errores';
+import { usePageTitle } from '@/lib/use-page-title';
+import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
+import {
+  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
+} from '@/components/ui/estilos';
 
-interface EquipoDetallado extends Equipo {
-  proyectos?: Array<{ proyecto_id: string; nombre: string }>;
-  miembros?: Array<{
-    usuario: PerfilUsuario;
-    roles: Rol[];
-  }>;
-  lider_actual?: PerfilUsuario | null;
+interface MiembroDetallado {
+  usuario: PerfilUsuario;
+  roles: Rol[];
+  esLider: boolean;
 }
 
+interface EquipoDetallado extends Equipo {
+  proyectos: Array<{ proyecto_id: string; nombre: string }>;
+  miembros: MiembroDetallado[];
+}
+
+const nombreDe = (u: PerfilUsuario) => u.nombre || u.correo;
+const iniciales = (u: PerfilUsuario) => nombreDe(u).slice(0, 2).toUpperCase();
+
 export default function EquiposGlobalPage() {
-  const router = useRouter();
+  const confirmar = useConfirm();
   const { user } = useAuth();
   const uid = user?.uid ?? null;
   const [equipos, setEquipos] = useState<Array<EquipoDetallado>>([]);
@@ -71,27 +83,33 @@ export default function EquiposGlobalPage() {
   // Modal Equipo (Crear / Editar)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEquipo, setEditingEquipo] = useState<Equipo | null>(null);
-  const [formData, setFormData] = useState({ 
-    nombre: '', 
+  const [formData, setFormData] = useState({
+    nombre: '',
     descripcion: '',
     proyectos_seleccionados: [] as string[]
   });
   const [saving, setSaving] = useState(false);
 
-  // Modal Miembros
-  const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
-  const [equipoParaMiembros, setEquipoParaMiembros] = useState<EquipoDetallado | null>(null);
+  // Vista de miembros (se refleja en la URL como ?equipo=ID para que el botón
+  // "atrás" del navegador regrese a la lista)
+  const [equipoAbiertoId, setEquipoAbiertoId] = useState<string | null>(null);
   const [memberForm, setMemberForm] = useState({
     id_usuario: '',
     id_roles: [] as string[]
   });
+  const [guardandoMiembro, setGuardandoMiembro] = useState(false);
 
-  // Modal Eliminar
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [equipoToDelete, setEquipoToDelete] = useState<Equipo | null>(null);
+  useEffect(() => {
+    const leerUrl = () => {
+      setEquipoAbiertoId(new URLSearchParams(window.location.search).get('equipo'));
+      setMemberForm({ id_usuario: '', id_roles: [] });
+    };
+    leerUrl();
+    window.addEventListener('popstate', leerUrl);
+    return () => window.removeEventListener('popstate', leerUrl);
+  }, []);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
     try {
       const [projData, usersData, rolesData, equiposData, peData, meData] = await Promise.all([
         getProyectos(),
@@ -102,44 +120,39 @@ export default function EquiposGlobalPage() {
         getMiembrosEquipo()
       ]);
 
-      setProyectos(projData);
-      setUsuarios(usersData);
+      setProyectos([...projData].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      setUsuarios([...usersData].sort((a, b) => nombreDe(a).localeCompare(nombreDe(b))));
       setRoles(rolesData);
 
       const projMap = new Map(projData.map(p => [p.proyecto_id, p]));
 
       const formated: EquipoDetallado[] = equiposData.map(eq => {
-        const assignedProjIds = peData
+        const projs = peData
           .filter(pe => pe.id_equipo === eq.equipo_id)
-          .map(pe => pe.id_proyecto);
-
-        const projs = assignedProjIds
-          .map(id => projMap.get(id))
-          .filter(Boolean)
-          .map(p => ({ proyecto_id: p!.proyecto_id, nombre: p!.nombre }));
+          .map(pe => projMap.get(pe.id_proyecto))
+          .filter((p): p is Proyecto => Boolean(p))
+          .map(p => ({ proyecto_id: p.proyecto_id, nombre: p.nombre }));
 
         const members = meData
           .filter(me => me.id_equipo === eq.equipo_id && me.usuario)
-          .map(me => ({
-            usuario: me.usuario!,
-            roles: me.roles ?? []
-          }));
+          .map(me => {
+            const rolesMiembro = me.roles ?? [];
+            return {
+              usuario: me.usuario!,
+              roles: rolesMiembro,
+              esLider: rolesMiembro.some(r => esRolLider(r.nombre_rol))
+            };
+          })
+          // Líderes primero, luego por nombre
+          .sort((a, b) => Number(b.esLider) - Number(a.esLider) || nombreDe(a.usuario).localeCompare(nombreDe(b.usuario)));
 
-        // Identificar líder por rol
-        const liderMember = members.find(m => m.roles.some(r => esRolLider(r.nombre_rol)));
-
-        return {
-          ...eq,
-          proyectos: projs,
-          miembros: members,
-          lider_actual: liderMember ? liderMember.usuario : null
-        };
+        return { ...eq, proyectos: projs, miembros: members };
       });
 
-      setEquipos(formated);
+      setEquipos(formated.sort((a, b) => a.nombre.localeCompare(b.nombre)));
     } catch (err) {
       console.error(err);
-      toast.error('Error al cargar equipos');
+      toast.error(mensajeError(err, 'No se pudieron cargar los equipos'));
     } finally {
       setLoading(false);
     }
@@ -149,6 +162,21 @@ export default function EquiposGlobalPage() {
     fetchData();
   }, [fetchData]);
 
+  const equipoAbierto = equipos.find(e => e.equipo_id === equipoAbiertoId) ?? null;
+  usePageTitle(equipoAbierto ? `Miembros de ${equipoAbierto.nombre}` : 'Equipos');
+
+  const abrirMiembros = (team: EquipoDetallado) => {
+    window.history.pushState(null, '', `?equipo=${team.equipo_id}`);
+    setEquipoAbiertoId(team.equipo_id);
+    setMemberForm({ id_usuario: '', id_roles: [] });
+    window.scrollTo({ top: 0 });
+  };
+
+  const cerrarMiembros = () => {
+    window.history.pushState(null, '', window.location.pathname);
+    setEquipoAbiertoId(null);
+  };
+
   // Apertura modal equipo
   const openModal = (team: EquipoDetallado | null = null) => {
     // Crear equipo está permitido a cualquier autenticado (queda como líder
@@ -157,22 +185,22 @@ export default function EquiposGlobalPage() {
       toast.error('Solo el líder del equipo puede editarlo');
       return;
     }
-    if (team) {
-      setEditingEquipo(team);
-      setFormData({ 
-        nombre: team.nombre, 
-        descripcion: team.descripcion || '',
-        proyectos_seleccionados: (team.proyectos || []).map(p => p.proyecto_id)
-      });
-    } else {
-      setEditingEquipo(null);
-      setFormData({ 
-        nombre: '', 
-        descripcion: '',
-        proyectos_seleccionados: []
-      });
-    }
+    setEditingEquipo(team);
+    setFormData({
+      nombre: team?.nombre ?? '',
+      descripcion: team?.descripcion ?? '',
+      proyectos_seleccionados: (team?.proyectos || []).map(p => p.proyecto_id)
+    });
     setIsModalOpen(true);
+  };
+
+  const toggleProyectoFormulario = (proyectoId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      proyectos_seleccionados: prev.proyectos_seleccionados.includes(proyectoId)
+        ? prev.proyectos_seleccionados.filter(id => id !== proyectoId)
+        : [...prev.proyectos_seleccionados, proyectoId]
+    }));
   };
 
   // Guardar Equipo
@@ -196,13 +224,13 @@ export default function EquiposGlobalPage() {
           toast.error('Solo el líder del equipo puede editarlo');
           return;
         }
-        await updateEquipo(editingEquipo.equipo_id, { 
-          nombre: formData.nombre.trim(), 
+        await updateEquipo(editingEquipo.equipo_id, {
+          nombre: formData.nombre.trim(),
           descripcion: formData.descripcion.trim()
         });
       } else {
-        const newTeam = await createEquipo({ 
-          nombre: formData.nombre.trim(), 
+        const newTeam = await createEquipo({
+          nombre: formData.nombre.trim(),
           descripcion: formData.descripcion.trim()
         });
         teamId = newTeam.equipo_id;
@@ -217,67 +245,58 @@ export default function EquiposGlobalPage() {
         }
       }
 
-      // Sincronizar asignaciones de proyectos
+      // Sincronizar vínculos con proyectos (solo los que cambiaron)
       if (teamId) {
-        // Unlink old
         const allPE = await getProyectoEquipos();
-        const currentPE = allPE.filter(pe => pe.id_equipo === teamId);
-        for (const pe of currentPE) {
-          if (!formData.proyectos_seleccionados.includes(pe.id_proyecto)) {
-            await unlinkEquipoFromProyecto(pe.id_proyecto, teamId);
-          }
-        }
-        // Link new
-        for (const projId of formData.proyectos_seleccionados) {
-          await linkEquipoToProyecto(projId, teamId);
-        }
+        const actuales = allPE.filter(pe => pe.id_equipo === teamId).map(pe => pe.id_proyecto);
+        const seleccionados = formData.proyectos_seleccionados;
+        await Promise.all([
+          ...actuales.filter(id => !seleccionados.includes(id)).map(id => unlinkEquipoFromProyecto(id, teamId!)),
+          ...seleccionados.filter(id => !actuales.includes(id)).map(id => linkEquipoToProyecto(id, teamId!))
+        ]);
       }
 
-      toast.success(editingEquipo ? "Equipo actualizado" : "Equipo creado con éxito");
+      toast.success(editingEquipo ? "Equipo actualizado" : "Equipo creado. Eres su líder.");
       setIsModalOpen(false);
-      fetchData();
-      cargarLiderazgo();
-    } catch (e: any) {
+      await Promise.all([fetchData(), cargarLiderazgo()]);
+    } catch (e) {
       console.error(e);
-      toast.error(e.message || "Error al guardar equipo");
+      toast.error(mensajeError(e, 'No se pudo guardar el equipo'));
     } finally {
       setSaving(false);
     }
   };
 
   // Eliminar Equipo
-  const handleDeleteTeam = async () => {
-    if (!equipoToDelete) return;
-    if (!puedeGestionarEquipo(equipoToDelete.equipo_id)) {
+  const handleDeleteTeam = async (team: EquipoDetallado) => {
+    if (!puedeGestionarEquipo(team.equipo_id)) {
       toast.error('Solo el líder del equipo puede eliminarlo');
       return;
     }
+    const ok = await confirmar({
+      titulo: '¿Eliminar equipo?',
+      mensaje: (
+        <>
+          Se eliminará <strong className="text-zinc-900 dark:text-zinc-100">{team.nombre}</strong> y sus vínculos
+          con proyectos. Sus miembros podrían perder el permiso de editar esos proyectos.
+        </>
+      ),
+      textoConfirmar: 'Eliminar',
+      peligro: true
+    });
+    if (!ok) return;
     try {
-      await deleteEquipo(equipoToDelete.equipo_id);
+      await deleteEquipo(team.equipo_id);
       toast.success("Equipo eliminado");
-      setIsDeleteModalOpen(false);
-      fetchData();
-    } catch (e: any) {
-      toast.error("Error al eliminar equipo");
+      if (equipoAbiertoId === team.equipo_id) cerrarMiembros();
+      await Promise.all([fetchData(), cargarLiderazgo()]);
+    } catch (e) {
+      toast.error(mensajeError(e, 'No se pudo eliminar el equipo'));
     }
   };
 
-  // Abrir Modal de Miembros
-  const openMembersModal = (team: EquipoDetallado) => {
-    setEquipoParaMiembros(team);
-    setMemberForm({
-      id_usuario: '',
-      id_roles: []
-    });
-    setIsMemberModalOpen(true);
-  };
-
   // Miembros del equipo abierto según los datos más recientes
-  // (`equipoParaMiembros` es la foto tomada al abrir la pantalla)
-  const miembrosActuales = () =>
-    equipos.find(eq => eq.equipo_id === equipoParaMiembros?.equipo_id)?.miembros
-      ?? equipoParaMiembros?.miembros
-      ?? [];
+  const miembrosActuales = () => equipoAbierto?.miembros ?? [];
 
   const esIdRolLider = (id: string) => esRolLider(roles.find(r => r.id === id)?.nombre_rol);
 
@@ -285,18 +304,22 @@ export default function EquiposGlobalPage() {
   const quedariaSinLider = (userId: string, nuevosIdRoles: string[]) => {
     const tieneLider = (ids: string[]) => ids.some(esIdRolLider);
     const miembros = miembrosActuales();
-    const habiaLider = miembros.some(m => tieneLider(m.roles.map(r => r.id)));
+    const habiaLider = miembros.some(m => m.esLider);
     const quedaLider = miembros.some(m =>
       tieneLider(m.usuario.id === userId ? nuevosIdRoles : m.roles.map(r => r.id))
     ) || tieneLider(nuevosIdRoles);
     return habiaLider && !quedaLider;
   };
 
-  // Agregar Miembro al Equipo
+  // Agregar miembro o actualizar sus roles
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!equipoParaMiembros || !memberForm.id_usuario) return;
-    if (!puedeGestionarEquipo(equipoParaMiembros.equipo_id)) {
+    if (!equipoAbierto) return;
+    if (!memberForm.id_usuario) {
+      toast.error('Selecciona un usuario');
+      return;
+    }
+    if (!puedeGestionarEquipo(equipoAbierto.equipo_id)) {
       toast.error('Solo el líder del equipo puede agregar miembros');
       return;
     }
@@ -308,37 +331,49 @@ export default function EquiposGlobalPage() {
     const esMiembroExistente = miembrosActuales()
       .some(m => m.usuario.id === memberForm.id_usuario);
 
+    setGuardandoMiembro(true);
     try {
       // El rol de líder va primero: es el que se guarda en el `id_rol` legacy
       const idRolesOrdenados = [...memberForm.id_roles].sort((a, b) => Number(esIdRolLider(b)) - Number(esIdRolLider(a)));
-      await addMiembroEquipo(equipoParaMiembros.equipo_id, memberForm.id_usuario, idRolesOrdenados);
+      await addMiembroEquipo(equipoAbierto.equipo_id, memberForm.id_usuario, idRolesOrdenados);
       toast.success(esMiembroExistente ? "Roles actualizados" : "Miembro agregado al equipo");
       setMemberForm({ id_usuario: '', id_roles: [] });
-      fetchData();
-      cargarLiderazgo();
-    } catch (e: any) {
-      toast.error("Error al agregar miembro");
+      await Promise.all([fetchData(), cargarLiderazgo()]);
+    } catch (e) {
+      toast.error(mensajeError(e, esMiembroExistente ? 'No se pudieron actualizar los roles' : 'No se pudo agregar al miembro'));
+    } finally {
+      setGuardandoMiembro(false);
     }
   };
 
   // Remover Miembro del Equipo
-  const handleRemoveMember = async (userId: string) => {
-    if (!equipoParaMiembros) return;
-    if (!puedeGestionarEquipo(equipoParaMiembros.equipo_id)) {
+  const handleRemoveMember = async (miembro: MiembroDetallado) => {
+    if (!equipoAbierto) return;
+    if (!puedeGestionarEquipo(equipoAbierto.equipo_id)) {
       toast.error('Solo el líder del equipo puede remover miembros');
       return;
     }
-    if (quedariaSinLider(userId, [])) {
+    if (quedariaSinLider(miembro.usuario.id, [])) {
       toast.error('No puedes remover al único líder del equipo');
       return;
     }
+    const esUnoMismo = miembro.usuario.id === uid;
+    const ok = await confirmar({
+      titulo: esUnoMismo ? '¿Salir del equipo?' : '¿Remover miembro?',
+      mensaje: esUnoMismo
+        ? <>Dejarás de ser miembro de <strong className="text-zinc-900 dark:text-zinc-100">{equipoAbierto.nombre}</strong> y ya no podrás gestionarlo.</>
+        : <><strong className="text-zinc-900 dark:text-zinc-100">{nombreDe(miembro.usuario)}</strong> dejará de ser miembro de {equipoAbierto.nombre}.</>,
+      textoConfirmar: esUnoMismo ? 'Salir' : 'Remover',
+      peligro: true
+    });
+    if (!ok) return;
     try {
-      await removeMiembroEquipo(equipoParaMiembros.equipo_id, userId);
-      toast.success("Miembro removido");
-      fetchData();
-      cargarLiderazgo();
-    } catch (e: any) {
-      toast.error("Error al remover miembro");
+      await removeMiembroEquipo(equipoAbierto.equipo_id, miembro.usuario.id);
+      toast.success(esUnoMismo ? "Saliste del equipo" : "Miembro removido");
+      if (memberForm.id_usuario === miembro.usuario.id) setMemberForm({ id_usuario: '', id_roles: [] });
+      await Promise.all([fetchData(), cargarLiderazgo()]);
+    } catch (e) {
+      toast.error(mensajeError(e, 'No se pudo remover al miembro'));
     }
   };
 
@@ -360,209 +395,341 @@ export default function EquiposGlobalPage() {
     }));
   };
 
+  const termino = searchTerm.trim().toLowerCase();
   const filteredTeams = equipos.filter(t =>
-    t.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (t.proyectos || []).some(p => p.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
+    !termino ||
+    t.nombre.toLowerCase().includes(termino) ||
+    t.proyectos.some(p => p.nombre.toLowerCase().includes(termino)) ||
+    t.miembros.some(m => nombreDe(m.usuario).toLowerCase().includes(termino))
   );
 
-  if (isMemberModalOpen && equipoParaMiembros) {
-    // Buscar datos actualizados del equipo
-    const currentDetailed = equipos.find(e => e.equipo_id === equipoParaMiembros.equipo_id) || equipoParaMiembros;
-    // Lectura total: cualquiera ve miembros; solo el líder gestiona.
-    const puedeGestionar = puedeGestionarEquipo(currentDetailed.equipo_id);
-    const editandoMiembro = (currentDetailed.miembros || [])
-      .some(m => m.usuario.id === memberForm.id_usuario);
+  // ==========================================
+  // VISTA DE MIEMBROS DE UN EQUIPO
+  // ==========================================
+  if (equipoAbiertoId && (equipoAbierto || loading)) {
+    if (!equipoAbierto) {
+      return (
+        <div className="space-y-4">
+          <div className="h-8 w-72 max-w-full bg-zinc-200 dark:bg-zinc-800 rounded-lg animate-pulse" />
+          <div className="h-40 bg-zinc-100 dark:bg-zinc-900/40 rounded-2xl animate-pulse" />
+        </div>
+      );
+    }
+
+    const puedeGestionar = puedeGestionarEquipo(equipoAbierto.equipo_id);
+    const editandoMiembro = equipoAbierto.miembros.some(m => m.usuario.id === memberForm.id_usuario);
+    const idsMiembros = new Set(equipoAbierto.miembros.map(m => m.usuario.id));
 
     return (
-      <div className="space-y-6 animate-in fade-in duration-300">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-5">
-          <div>
-            <button 
-              onClick={() => {
-                setIsMemberModalOpen(false);
-                setEquipoParaMiembros(null);
-              }}
+      <div className="space-y-6 animate-in fade-in">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-5">
+          <div className="min-w-0">
+            <button
+              onClick={cerrarMiembros}
               className="inline-flex items-center text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors mb-2 group cursor-pointer"
             >
               <ChevronLeft size={14} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
-              Volver a Equipos
+              Equipos
             </button>
             <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
-              <Users className="text-zinc-700 dark:text-zinc-300" size={24} />
-              Gestión de Miembros: {currentDetailed.nombre}
+              <Users className="text-zinc-700 dark:text-zinc-300 shrink-0" size={24} />
+              {equipoAbierto.nombre}
             </h1>
             <p className="text-zinc-500 dark:text-zinc-400 mt-1 text-xs">
-              {currentDetailed.descripcion || 'Asigna usuarios registrados a este equipo con uno o varios roles.'}
+              {equipoAbierto.descripcion || 'Sin descripción.'}
             </p>
+            {equipoAbierto.proyectos.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {equipoAbierto.proyectos.map(p => (
+                  <Link
+                    key={p.proyecto_id}
+                    href={`/requerimientos/?id=${p.proyecto_id}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50 hover:border-blue-300 hover:text-blue-700 dark:hover:text-blue-300"
+                  >
+                    <FolderGit2 size={10} />
+                    {p.nombre}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
+          {puedeGestionar && (
+            <div className="flex gap-2 shrink-0">
+              <button onClick={() => openModal(equipoAbierto)} className={btnSecundario}>
+                <Edit2 size={14} />
+                Editar equipo
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Formulario para agregar miembro (solo líder) */}
         {!puedeGestionar ? (
           <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
             <Lock size={15} className="shrink-0" />
-            <span>Solo el líder de este equipo puede agregar o remover miembros. Tienes acceso de lectura.</span>
+            <span>Solo los líderes de este equipo pueden agregar o remover miembros. Tienes acceso de lectura.</span>
           </div>
         ) : (
-        <div className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 shadow-xs">
-          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-2">
-            <UserPlus size={16} className="text-blue-600" />
-            {editandoMiembro ? 'Editar Roles del Miembro' : 'Asignar Nuevo Miembro'}
-          </h3>
-          <form onSubmit={handleAddMember} className="space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
-                Usuario Registrado <span className="text-rose-500">*</span>
-              </label>
-              <select
-                required
-                value={memberForm.id_usuario}
-                onChange={(e) => seleccionarUsuarioMiembro(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-white"
-              >
-                <option value="">Seleccionar usuario...</option>
-                {usuarios.map(u => (
-                  <option key={u.id} value={u.id}>{u.nombre || u.correo} ({u.correo})</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
-                Roles en el Equipo
-              </label>
-              {roles.length === 0 ? (
-                <p className="text-[11px] text-zinc-400">No hay roles disponibles</p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {roles.map(r => {
-                    const seleccionado = memberForm.id_roles.includes(r.id);
-                    return (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => toggleRolMiembro(r.id)}
-                        aria-pressed={seleccionado}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
-                          seleccionado
-                            ? 'bg-blue-600 border-blue-600 text-white'
-                            : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-blue-400'
-                        }`}
-                      >
-                        {seleccionado && <Check size={11} />}
-                        {r.nombre_rol}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2">
-              {editandoMiembro && (
-                <button
-                  type="button"
-                  onClick={() => setMemberForm({ id_usuario: '', id_roles: [] })}
-                  className="py-2 px-4 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-400 cursor-pointer"
+          <div className={`${tarjeta} p-5 shadow-xs`}>
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-2">
+              <UserPlus size={16} className="text-blue-600" />
+              {editandoMiembro ? 'Editar roles del miembro' : 'Agregar miembro'}
+            </h3>
+            <form onSubmit={handleAddMember} noValidate className="space-y-3">
+              <div>
+                <label htmlFor="miembro-usuario" className={etiqueta}>
+                  Usuario <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  id="miembro-usuario"
+                  value={memberForm.id_usuario}
+                  onChange={(e) => seleccionarUsuarioMiembro(e.target.value)}
+                  className={campo}
                 >
-                  Cancelar
+                  <option value="">Seleccionar usuario...</option>
+                  {usuarios.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {nombreDe(u)} ({u.correo}){idsMiembros.has(u.id) ? ' · ya es miembro' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <span className={etiqueta}>Roles en el equipo</span>
+                {roles.length === 0 ? (
+                  <p className="text-[11px] text-zinc-400">No hay roles disponibles</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5" role="group" aria-label="Roles en el equipo">
+                    {roles.map(r => {
+                      const seleccionado = memberForm.id_roles.includes(r.id);
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => toggleRolMiembro(r.id)}
+                          aria-pressed={seleccionado}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
+                            seleccionado
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-blue-400'
+                          }`}
+                        >
+                          {seleccionado ? <Check size={11} /> : esRolLider(r.nombre_rol) ? <Crown size={11} /> : null}
+                          {r.nombre_rol}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2">
+                {memberForm.id_usuario && (
+                  <button
+                    type="button"
+                    onClick={() => setMemberForm({ id_usuario: '', id_roles: [] })}
+                    className={btnSecundario}
+                  >
+                    Cancelar
+                  </button>
+                )}
+                <button type="submit" disabled={guardandoMiembro} className={btnPrimario}>
+                  {editandoMiembro ? <Save size={14} /> : <Plus size={14} />}
+                  {guardandoMiembro ? 'Guardando...' : editandoMiembro ? 'Guardar roles' : 'Agregar miembro'}
                 </button>
-              )}
-              <button
-                type="submit"
-                className="py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-              >
-                {editandoMiembro ? <Save size={14} /> : <Plus size={14} />}
-                {editandoMiembro ? 'Guardar Roles' : 'Agregar Miembro'}
-              </button>
-            </div>
-          </form>
-        </div>
+              </div>
+            </form>
+          </div>
         )}
 
         {/* Lista de Miembros Actuales */}
-        <div className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl overflow-hidden">
+        <div className={`${tarjeta} overflow-hidden`}>
           <div className="px-5 py-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
             <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-              Integrantes Actuales ({currentDetailed.miembros?.length || 0})
+              Integrantes ({equipoAbierto.miembros.length})
             </h3>
           </div>
 
           <div className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
-            {!currentDetailed.miembros || currentDetailed.miembros.length === 0 ? (
+            {equipoAbierto.miembros.length === 0 ? (
               <div className="p-8 text-center text-xs text-zinc-500">
-                Este equipo aún no tiene miembros asignados.
+                Este equipo aún no tiene miembros.
               </div>
             ) : (
-              currentDetailed.miembros.map(m => (
-                <div key={m.usuario.id} className="p-4 flex items-center justify-between hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 transition-colors">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center justify-center text-xs font-bold uppercase">
-                      {(m.usuario.nombre || m.usuario.correo).slice(0, 2)}
+              equipoAbierto.miembros.map(m => (
+                <div
+                  key={m.usuario.id}
+                  className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                    memberForm.id_usuario === m.usuario.id ? 'bg-blue-50/60 dark:bg-blue-950/20' : 'hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="relative w-8 h-8 shrink-0 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center justify-center text-xs font-bold">
+                      {iniciales(m.usuario)}
+                      {m.esLider && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-white flex items-center justify-center" title="Líder">
+                          <Crown size={9} />
+                        </span>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">
                         {m.usuario.nombre || 'Usuario'}
+                        {m.usuario.id === uid && <span className="font-normal text-zinc-400"> (tú)</span>}
                       </p>
-                      <p className="text-[11px] text-zinc-500">
-                        {m.usuario.correo}
-                      </p>
+                      <p className="text-[11px] text-zinc-500 truncate">{m.usuario.correo}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-wrap justify-end gap-1">
-                      {m.roles.map(r => (
+                  <div className="flex items-center gap-2 sm:justify-end">
+                    <div className="flex flex-wrap gap-1 sm:justify-end">
+                      {m.roles.length === 0 ? (
+                        <span className="text-[10px] text-zinc-400 italic">Sin rol</span>
+                      ) : m.roles.map(r => (
                         <span key={r.id} className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
                           {r.nombre_rol}
                         </span>
                       ))}
                     </div>
                     {puedeGestionar && (
-                      <button
-                        onClick={() => seleccionarUsuarioMiembro(m.usuario.id)}
-                        className="p-1.5 text-zinc-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer"
-                        title="Editar roles"
-                      >
-                        <Edit2 size={15} />
-                      </button>
+                      <div className="flex items-center shrink-0">
+                        <button
+                          onClick={() => {
+                            seleccionarUsuarioMiembro(m.usuario.id);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className={btnIcono}
+                          title="Editar roles"
+                          aria-label={`Editar roles de ${nombreDe(m.usuario)}`}
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                        <button
+                          onClick={() => handleRemoveMember(m)}
+                          className={btnIconoPeligro}
+                          title={m.usuario.id === uid ? 'Salir del equipo' : 'Remover miembro'}
+                          aria-label={`Remover a ${nombreDe(m.usuario)}`}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     )}
-                    <button
-                      onClick={() => handleRemoveMember(m.usuario.id)}
-                      disabled={!puedeGestionar}
-                      className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                      title={puedeGestionar ? "Remover miembro" : "Solo el líder puede remover miembros"}
-                    >
-                      <Trash2 size={15} />
-                    </button>
                   </div>
                 </div>
               ))
             )}
           </div>
         </div>
+
+        {renderModalEquipo()}
       </div>
     );
   }
 
+  // ==========================================
+  // MODAL CREAR / EDITAR EQUIPO
+  // ==========================================
+  function renderModalEquipo() {
+    return (
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingEquipo ? 'Editar Equipo' : 'Nuevo Equipo'}
+        description={editingEquipo ? undefined : 'Quedarás como líder del equipo.'}
+      >
+        <form onSubmit={handleSaveTeam} noValidate className="flex flex-col flex-1 min-h-0">
+          <ModalBody className="space-y-4">
+            <div>
+              <label htmlFor="equipo-nombre" className={etiqueta}>
+                Nombre del Equipo <span className="text-rose-500">*</span>
+              </label>
+              <input
+                id="equipo-nombre"
+                type="text"
+                placeholder="Ej. Frontend Squad"
+                maxLength={80}
+                value={formData.nombre}
+                onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                className={campo}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="equipo-descripcion" className={etiqueta}>
+                Descripción <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                id="equipo-descripcion"
+                rows={2}
+                placeholder="Objetivos o enfoque del equipo..."
+                value={formData.descripcion}
+                onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+                className={`${campo} resize-none`}
+              />
+            </div>
+
+            <div>
+              <span className={etiqueta}>
+                Proyectos vinculados
+                {formData.proyectos_seleccionados.length > 0 && (
+                  <span className="text-zinc-400 font-normal"> ({formData.proyectos_seleccionados.length})</span>
+                )}
+              </span>
+              <div className="max-h-40 overflow-y-auto space-y-0.5 border border-zinc-200 dark:border-zinc-800 rounded-xl p-1.5 bg-zinc-50/50 dark:bg-zinc-950 custom-scrollbar">
+                {proyectos.length === 0 ? (
+                  <p className="text-[11px] text-zinc-400 p-1.5">No hay proyectos disponibles</p>
+                ) : (
+                  proyectos.map(p => (
+                    <label key={p.proyecto_id} className="flex items-center gap-2 p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg cursor-pointer text-xs">
+                      <input
+                        type="checkbox"
+                        checked={formData.proyectos_seleccionados.includes(p.proyecto_id)}
+                        onChange={() => toggleProyectoFormulario(p.proyecto_id)}
+                        className="rounded accent-blue-600"
+                      />
+                      <span className="text-zinc-800 dark:text-zinc-200">{p.nombre}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <button type="button" onClick={() => setIsModalOpen(false)} className={btnSecundario}>
+              Cancelar
+            </button>
+            <button type="submit" disabled={saving} className={btnPrimario}>
+              {saving ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Save size={14} />
+              )}
+              {saving ? 'Guardando...' : editingEquipo ? 'Guardar cambios' : 'Crear Equipo'}
+            </button>
+          </ModalFooter>
+        </form>
+      </Modal>
+    );
+  }
+
+  // ==========================================
+  // LISTA DE EQUIPOS
+  // ==========================================
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="space-y-6 animate-in fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
             <Users className="text-zinc-700 dark:text-zinc-300" size={24} />
-            Equipos de Desarrollo
+            Equipos
           </h1>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-            Gestión global de equipos multidisciplinarios, integrantes, asignación de roles y proyectos.
+            Equipos multidisciplinarios, sus integrantes, roles y proyectos.
           </p>
         </div>
-        <button
-          onClick={() => openModal()}
-          title="Cualquier usuario autenticado puede crear un equipo (queda como líder inicial)"
-          className="inline-flex items-center justify-center px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-xs font-medium text-xs gap-1.5 cursor-pointer"
-        >
+        <button onClick={() => openModal()} className={btnPrimario}>
           <Plus size={15} />
           Nuevo Equipo
         </button>
@@ -574,11 +741,12 @@ export default function EquiposGlobalPage() {
           <Search size={14} />
         </div>
         <input
-          type="text"
-          placeholder="Buscar por nombre de equipo o proyecto vinculado..."
+          type="search"
+          placeholder="Buscar por equipo, proyecto o integrante..."
+          aria-label="Buscar equipos"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-8 pr-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-zinc-900 dark:text-zinc-100"
+          className={buscador}
         />
       </div>
 
@@ -586,7 +754,7 @@ export default function EquiposGlobalPage() {
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-44 bg-zinc-100 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 rounded-2xl animate-pulse" />
+            <div key={i} className="h-48 bg-zinc-100 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 rounded-2xl animate-pulse" />
           ))}
         </div>
       ) : filteredTeams.length === 0 ? (
@@ -594,231 +762,144 @@ export default function EquiposGlobalPage() {
           <div className="w-12 h-12 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl flex items-center justify-center mx-auto mb-3">
             <Users size={22} />
           </div>
-          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">No hay equipos registrados</h3>
+          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+            {termino ? 'Sin resultados' : 'Todavía no hay equipos'}
+          </h3>
           <p className="text-zinc-500 dark:text-zinc-400 text-xs mt-1">
-            {searchTerm ? 'No se encontraron equipos para esta búsqueda.' : 'Crea tu primer equipo para organizar miembros y proyectos.'}
+            {termino ? 'Ningún equipo coincide con tu búsqueda.' : 'Crea tu primer equipo para organizar miembros y proyectos.'}
           </p>
+          <div className="mt-4 flex justify-center">
+            {termino ? (
+              <button onClick={() => setSearchTerm('')} className={btnSecundario}>Limpiar búsqueda</button>
+            ) : (
+              <button onClick={() => openModal()} className={btnPrimario}>
+                <Plus size={15} />
+                Crear Equipo
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTeams.map((team) => (
-            <div
-              key={team.equipo_id}
-              className="bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-200 flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300">
-                    <Users size={18} />
+          {filteredTeams.map((team) => {
+            const gestionable = puedeGestionarEquipo(team.equipo_id);
+            const lideres = team.miembros.filter(m => m.esLider);
+            const soyMiembro = team.miembros.some(m => m.usuario.id === uid);
+            return (
+              <div
+                key={team.equipo_id}
+                role="link"
+                tabIndex={0}
+                onClick={() => abrirMiembros(team)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.target === e.currentTarget) abrirMiembros(team);
+                }}
+                aria-label={`Ver miembros de ${team.nombre}`}
+                className={`group ${tarjeta} p-5 hover:border-blue-300 dark:hover:border-blue-800 hover:shadow-sm transition-all duration-200 flex flex-col justify-between cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40`}
+              >
+                <div>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                      <Users size={18} />
+                    </div>
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      {gestionable ? (
+                        <>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 mr-1 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium border border-amber-200/60 dark:border-amber-800/40">
+                            <Crown size={10} />
+                            Líder
+                          </span>
+                          <button
+                            onClick={() => openModal(team)}
+                            title="Editar equipo"
+                            aria-label={`Editar ${team.nombre}`}
+                            className={btnIcono}
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTeam(team)}
+                            title="Eliminar equipo"
+                            aria-label={`Eliminar ${team.nombre}`}
+                            className={btnIconoPeligro}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      ) : soyMiembro ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[10px] font-medium border border-blue-200/60 dark:border-blue-800/40">
+                          Eres miembro
+                        </span>
+                      ) : (
+                        <span
+                          title="Solo el líder del equipo puede editarlo"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
+                        >
+                          <Lock size={12} />
+                          Solo lectura
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    {puedeGestionarEquipo(team.equipo_id) ? (
-                      <>
-                        <button
-                          onClick={() => openModal(team)}
-                          title="Editar equipo"
-                          className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg cursor-pointer"
-                        >
-                          <Edit2 size={13} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEquipoToDelete(team);
-                            setIsDeleteModalOpen(true);
-                          }}
-                          title="Eliminar equipo"
-                          className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </>
+
+                  <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                    {team.nombre}
+                  </h3>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 line-clamp-2">
+                    {team.descripcion || "Sin descripción."}
+                  </p>
+
+                  {lideres.length > 0 && (
+                    <p className="mt-2 text-[11px] text-zinc-500 flex items-center gap-1 truncate">
+                      <Crown size={11} className="text-amber-500 shrink-0" />
+                      {lideres.map(l => nombreDe(l.usuario)).join(', ')}
+                    </p>
+                  )}
+
+                  {/* Proyectos Vinculados */}
+                  <div className="mt-3 flex flex-wrap gap-1">
+                    {team.proyectos.length > 0 ? (
+                      team.proyectos.map(p => (
+                        <span key={p.proyecto_id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
+                          <FolderGit2 size={10} />
+                          {p.nombre}
+                        </span>
+                      ))
                     ) : (
-                      <span
-                        title="Solo el líder del equipo puede editarlo"
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
-                      >
-                        <Lock size={12} />
-                        Solo lectura
-                      </span>
+                      <span className="text-[10px] text-zinc-400 italic">Sin proyectos vinculados</span>
                     )}
                   </div>
                 </div>
 
-                <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">
-                  {team.nombre}
-                </h3>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 line-clamp-2">
-                  {team.descripcion || "Sin descripción."}
-                </p>
-
-                {/* Proyectos Vinculados */}
-                <div className="mt-3 flex flex-wrap gap-1">
-                  {team.proyectos && team.proyectos.length > 0 ? (
-                    team.proyectos.map(p => (
-                      <span key={p.proyecto_id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
-                        <FolderGit2 size={10} />
-                        {p.nombre}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-[10px] text-zinc-400 italic">Sin proyectos asignados</span>
-                  )}
+                <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="flex -space-x-1.5">
+                      {team.miembros.slice(0, 4).map(m => (
+                        <span
+                          key={m.usuario.id}
+                          title={nombreDe(m.usuario)}
+                          className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 ring-2 ring-white dark:ring-zinc-900 flex items-center justify-center text-[9px] font-bold"
+                        >
+                          {iniciales(m.usuario)}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-zinc-500 text-[11px]">
+                      {team.miembros.length} {team.miembros.length === 1 ? 'integrante' : 'integrantes'}
+                    </span>
+                  </div>
+                  <span className="font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-0.5">
+                    Miembros
+                    <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+                  </span>
                 </div>
               </div>
-
-              <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-xs">
-                <span className="text-zinc-500 text-[11px]">
-                  {team.miembros?.length || 0} integrantes
-                </span>
-                <button
-                  onClick={() => openMembersModal(team)}
-                  className="font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
-                >
-                  <span>Gestionar Miembros</span>
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* Modal Crear / Editar Equipo */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
-                {editingEquipo ? 'Editar Equipo' : 'Nuevo Equipo'}
-              </h3>
-              <button 
-                onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveTeam} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  Nombre del Equipo <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej. Frontend Squad"
-                  value={formData.nombre}
-                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                  className="w-full px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-zinc-900 dark:text-zinc-100"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  Descripción <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Objetivos o enfoque del equipo..."
-                  value={formData.descripcion}
-                  onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                  className="w-full px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-zinc-900 dark:text-zinc-100 resize-none"
-                />
-              </div>
-
-              {/* Selector de Proyectos */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  Asignar a Proyectos
-                </label>
-                <div className="max-h-36 overflow-y-auto space-y-1 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2 bg-zinc-50/50 dark:bg-zinc-950 custom-scrollbar">
-                  {proyectos.length === 0 ? (
-                    <p className="text-[11px] text-zinc-400">No hay proyectos disponibles</p>
-                  ) : (
-                    proyectos.map(p => {
-                      const isChecked = formData.proyectos_seleccionados.includes(p.proyecto_id);
-                      return (
-                        <label key={p.proyecto_id} className="flex items-center gap-2 p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg cursor-pointer text-xs">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setFormData({
-                                  ...formData,
-                                  proyectos_seleccionados: [...formData.proyectos_seleccionados, p.proyecto_id]
-                                });
-                              } else {
-                                setFormData({
-                                  ...formData,
-                                  proyectos_seleccionados: formData.proyectos_seleccionados.filter(id => id !== p.proyecto_id)
-                                });
-                              }
-                            }}
-                            className="rounded text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="text-zinc-800 dark:text-zinc-200">{p.nombre}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-400"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-xs disabled:opacity-50"
-                >
-                  {saving ? (
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Save size={14} />
-                  )}
-                  <span>Guardar</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Confirmar Eliminar */}
-      {isDeleteModalOpen && equipoToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-zinc-900 dark:text-white">
-              ¿Eliminar equipo?
-            </h3>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              ¿Estás seguro de que deseas eliminar el equipo <strong>{equipoToDelete.nombre}</strong>? Esta acción removerá todas sus asignaciones.
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                onClick={() => setIsDeleteModalOpen(false)}
-                className="px-3.5 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleDeleteTeam}
-                className="px-3.5 py-1.5 text-xs font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-xl"
-              >
-                Eliminar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderModalEquipo()}
     </div>
   );
 }
