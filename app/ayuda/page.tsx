@@ -66,6 +66,7 @@ const PERMISOS: Array<[string, string]> = [
   ['Invitar un equipo a un proyecto', 'El creador del proyecto (el líder del equipo acepta)'],
   ['Pedir desvincular un equipo de un proyecto', 'El creador del proyecto o el líder del equipo'],
   ['Editar un equipo, invitar miembros y cambiar roles', 'Los líderes del equipo'],
+  ['Editar o eliminar patrones y modelos', 'Nadie por ahora. Se pueden copiar y crear nuevos'],
 ];
 
 const FAQS = [
