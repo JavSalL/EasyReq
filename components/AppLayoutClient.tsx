@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Menu } from 'lucide-react';
 import { FirebaseAuthProvider, useAuth } from '@/lib/firebase-auth-provider';
 import Sidebar from './Sidebar';
+import { ConfirmProvider } from './ui/ConfirmProvider';
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -77,8 +78,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
             <Menu size={22} />
           </button>
           <div className="flex items-center space-x-2">
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-sm">
-              R
+            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs tracking-wider shadow-sm">
+              ER
             </div>
             <span className="font-bold text-base tracking-tight">EasyReq</span>
           </div>
@@ -102,7 +103,9 @@ export default function AppLayoutClient({
 }) {
   return (
     <FirebaseAuthProvider>
-      <LayoutContent>{children}</LayoutContent>
+      <ConfirmProvider>
+        <LayoutContent>{children}</LayoutContent>
+      </ConfirmProvider>
     </FirebaseAuthProvider>
   );
 }

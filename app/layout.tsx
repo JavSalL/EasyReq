@@ -15,7 +15,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EasyReq | Gestión de Proyectos",
+  // Cada ruta define su título en su layout.tsx; "/" (Proyectos) usa el default
+  title: {
+    default: "Proyectos | EasyReq",
+    template: "%s | EasyReq",
+  },
   description: "Plataforma de gestión de requerimientos y equipos.",
 };
 
