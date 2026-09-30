@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import {
-  HelpCircle, FolderGit2, FileText, Users, BookOpen, Shield, Sparkles, Keyboard, ChevronRight
+  HelpCircle, FolderGit2, FileText, Users, BookOpen, Shield, Sparkles, Keyboard, ChevronRight, ChevronDown
 } from 'lucide-react';
 import { tarjeta } from '@/components/ui/estilos';
 
@@ -66,6 +66,37 @@ const PERMISOS: Array<[string, string]> = [
   ['Invitar un equipo a un proyecto', 'El creador del proyecto (el líder del equipo acepta)'],
   ['Pedir desvincular un equipo de un proyecto', 'El creador del proyecto o el líder del equipo'],
   ['Editar un equipo, invitar miembros y cambiar roles', 'Los líderes del equipo'],
+];
+
+const FAQS = [
+  {
+    pregunta: '¿Qué es un modelo y en qué se diferencia de un patrón?',
+    respuesta: 'El modelo es el enfoque o familia de especificación (EARS, Sistemas Embebidos, Dr. Reyes). El patrón es una plantilla concreta dentro de ese modelo (por ejemplo, “Event-Driven” dentro de EARS). Un modelo agrupa varios patrones.',
+  },
+  {
+    pregunta: '¿Cómo copio la sintaxis de un patrón?',
+    respuesta: 'Ve a Patrones y Modelos, localiza la tarjeta del patrón y pulsa el icono de copiar (Copy). Verás un aviso de “Sintaxis copiada al portapapeles” y podrás pegarla en el editor del requerimiento.',
+  },
+  {
+    pregunta: '¿Cómo creo un patrón nuevo?',
+    respuesta: 'En Patrones y Modelos pulsa “Nuevo Patrón”, elige el modelo al que pertenece, escribe un nombre descriptivo (por ejemplo “Timing Constraint”) y la sintaxis o prompt con placeholders entre < >. Guarda y aparecerá en el catálogo.',
+  },
+  {
+    pregunta: '¿Qué hago si un modelo no tiene patrones?',
+    respuesta: 'Verifica que el filtro de pestaña sea el correcto y limpia el buscador. Si el catálogo aún está vacío, es probable que falte la siembra inicial (seed) de Firestore; pide a un administrador que ejecute la inicialización de catálogos o crea los patrones manualmente con “Nuevo Patrón”.',
+  },
+  {
+    pregunta: '¿Cómo se vincula un modelo a un requerimiento?',
+    respuesta: 'Al crear o editar un requerimiento selecciona el modelo correspondiente y redacta el texto siguiendo la sintaxis del patrón elegido. El modelo queda registrado como referencia del estilo usado; el texto del requerimiento es el que debe respetar la plantilla.',
+  },
+  {
+    pregunta: '¿Cómo funcionan los proyectos, equipos y roles?',
+    respuesta: 'Los proyectos agrupan requerimientos. Cada proyecto tiene un equipo con miembros y roles (por ejemplo, administrador, analista). Gestiona los equipos desde la sección “Equipos” y asigna personas a cada proyecto para colaborar.',
+  },
+  {
+    pregunta: '¿A quién pido ayuda si algo falla?',
+    respuesta: 'Pregunta primero a tu líder de equipo o administrador del proyecto. Si el problema es técnico (error al guardar, catálogo vacío, sesión), repórtalo con captura de pantalla, pasos para reproducirlo y el mensaje de error exacto.',
+  },
 ];
 
 export default function AyudaPage() {
@@ -139,6 +170,29 @@ export default function AyudaPage() {
             {' '}guarda el requerimiento que estás redactando.
           </li>
         </ul>
+      </section>
+
+      <section className={`${tarjeta} p-5`}>
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
+          <HelpCircle size={16} className="text-blue-600 dark:text-blue-400" />
+          Preguntas frecuentes
+        </h2>
+        <div className="space-y-2">
+          {FAQS.map((faq) => (
+            <details
+              key={faq.pregunta}
+              className="group rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 p-3 text-xs open:bg-zinc-50 dark:open:bg-zinc-900/40 transition-colors"
+            >
+              <summary className="font-medium text-zinc-800 dark:text-zinc-200 cursor-pointer list-none flex items-center justify-between gap-2">
+                <span>{faq.pregunta}</span>
+                <ChevronDown size={14} className="text-zinc-400 group-open:rotate-180 transition-transform shrink-0" />
+              </summary>
+              <p className="mt-2 text-zinc-600 dark:text-zinc-400 leading-relaxed pl-1">
+                {faq.respuesta}
+              </p>
+            </details>
+          ))}
+        </div>
       </section>
     </div>
   );
