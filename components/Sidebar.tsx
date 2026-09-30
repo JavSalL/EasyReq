@@ -105,12 +105,10 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
             <div className="w-7 h-7 shrink-0 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 flex items-center justify-center text-[11px] font-bold uppercase">
               {initials}
             </div>
+            
             <div className="flex flex-col min-w-0">
               <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100 leading-tight truncate">
                 {displayName}
-              </span>
-              <span className="text-[10px] text-zinc-500 truncate">
-                {displaySubtitle}
               </span>
             </div>
           </div>
