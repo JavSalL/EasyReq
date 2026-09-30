@@ -25,6 +25,11 @@ export function mensajeError(err: unknown, fallback: string): string {
       return 'El elemento ya no existe. Recarga la página.';
     case 'resource-exhausted':
       return 'Se alcanzó el límite de uso del servidor. Inténtalo más tarde.';
+    case '':
+      // Errores propios del servicio (`throw new Error('...')`) ya traen un
+      // mensaje en español pensado para el usuario
+      if (err instanceof Error && err.message) return err.message;
+      return `${fallback}. Inténtalo de nuevo.`;
     default:
       return `${fallback}. Inténtalo de nuevo.`;
   }

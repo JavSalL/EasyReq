@@ -62,6 +62,7 @@ export interface Equipo {
   equipo_id: UUID;
   nombre: string;
   descripcion?: string;
+  id_creador?: UUID | null;
   created_at?: string;
 }
 
@@ -112,6 +113,7 @@ export interface Requerimiento {
 export interface ProyectoEquipo {
   id_proyecto: UUID;
   id_equipo: UUID;
+  id_solicitud?: UUID;
   equipo?: Equipo;
   proyecto?: Proyecto;
 }
@@ -122,6 +124,38 @@ export interface MiembroEquipo {
   id_roles: UUID[];
   usuario?: PerfilUsuario;
   roles?: Rol[];
+}
+
+export type EstadoInvitacionEquipo = 'pendiente' | 'aceptada' | 'rechazada';
+
+export interface InvitacionEquipo {
+  id: UUID;
+  id_equipo: UUID;
+  id_invitador: UUID;
+  id_invitado: UUID;
+  // Rol principal (el de líder, si lo hay); lo validan las reglas de Firestore
+  id_rol: UUID | null;
+  // Todos los roles propuestos (KAN-13); las invitaciones antiguas no lo tienen
+  id_roles?: UUID[];
+  estado: EstadoInvitacionEquipo;
+  created_at: string;
+}
+
+export type TipoSolicitudProyectoEquipo = 'vincular' | 'desvincular';
+export type EstadoSolicitudProyectoEquipo = 'pendiente' | 'aceptada' | 'rechazada';
+
+export interface SolicitudProyectoEquipo {
+  id: UUID;
+  id_proyecto: UUID;
+  id_equipo: UUID;
+  id_solicitante: UUID;
+  id_destinatario: UUID;
+  tipo: TipoSolicitudProyectoEquipo;
+  estado: EstadoSolicitudProyectoEquipo;
+  nombre_proyecto: string;
+  nombre_equipo: string;
+  nombre_solicitante: string;
+  created_at: string;
 }
 
 export interface UsuarioProfesion {

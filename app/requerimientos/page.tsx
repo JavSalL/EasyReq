@@ -29,8 +29,8 @@ import {
   getLogsRequerimientos,
   getEquipos,
   getProyectoEquipos,
-  linkEquipoToProyecto,
-  unlinkEquipoFromProyecto,
+  crearSolicitudProyectoEquipo,
+  getSolicitudesProyectoEquipoEnviadas,
   isUsuarioRelacionadoAProyecto
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
@@ -125,6 +125,7 @@ export default function RequerimientosPage() {
   // Equipos asignados al proyecto
   const [equipos, setEquipos] = useState<Array<Equipo>>([]);
   const [equiposAsignados, setEquiposAsignados] = useState<string[]>([]);
+  const [solicitudesEquiposPendientes, setSolicitudesEquiposPendientes] = useState<string[]>([]);
   const [showEquiposModal, setShowEquiposModal] = useState(false);
 
   // Control de acceso: lectura total; crear/editar requerimientos y
@@ -132,6 +133,16 @@ export default function RequerimientosPage() {
   // (creador o miembro de un equipo vinculado).
   const [puedeEditar, setPuedeEditar] = useState(false);
   const [permisoCargado, setPermisoCargado] = useState(false);
+  // Solo el creador invita equipos o pide desvincularlos (lo acepta el líder)
+  const puedeGestionarVinculos = uid !== null && proyecto?.id_creador === uid;
+
+  // Equipos con una solicitud de vínculo/desvínculo enviada y sin responder
+  useEffect(() => {
+    if (!uid || !proyectoId) return;
+    getSolicitudesProyectoEquipoEnviadas(uid, proyectoId)
+      .then(solicitudes => setSolicitudesEquiposPendientes(solicitudes.map(s => s.id_equipo)))
+      .catch(err => console.error('Error al cargar solicitudes enviadas:', err));
+  }, [uid, proyectoId]);
 
   useEffect(() => {
     let activo = true;
@@ -447,40 +458,40 @@ export default function RequerimientosPage() {
     }
   };
 
-  // Toggle asignar equipo al proyecto
-  const toggleEquipoAsignado = async (equipo: Equipo) => {
-    if (!proyectoId) return;
-    if (!puedeEditar) {
-      toast.error('Solo el creador o miembros de un equipo vinculado pueden vincular equipos');
+  // Solicitar al líder del equipo que se vincule o desvincule del proyecto.
+  // El vínculo solo cambia cuando el líder acepta la solicitud.
+  const solicitarVinculoEquipo = async (equipo: Equipo) => {
+    if (!proyectoId || !uid) return;
+    if (!puedeGestionarVinculos) {
+      toast.error('Solo el creador del proyecto puede invitar equipos o solicitar su desvinculación');
       return;
     }
     const isAsignado = equiposAsignados.includes(equipo.equipo_id);
     if (isAsignado) {
       const ok = await confirmar({
-        titulo: '¿Desvincular equipo?',
+        titulo: '¿Solicitar desvinculación?',
         mensaje: (
           <>
-            <strong className="text-zinc-900 dark:text-zinc-100">{equipo.nombre}</strong> dejará de estar vinculado a este proyecto
-            y sus miembros podrían perder el permiso de editarlo.
+            Se pedirá al líder de <strong className="text-zinc-900 dark:text-zinc-100">{equipo.nombre}</strong> que
+            acepte desvincular su equipo. Si acepta, sus miembros podrían perder el permiso de editar este proyecto.
           </>
         ),
-        textoConfirmar: 'Desvincular',
+        textoConfirmar: 'Enviar solicitud',
         peligro: true
       });
       if (!ok) return;
     }
     try {
-      if (isAsignado) {
-        await unlinkEquipoFromProyecto(proyectoId, equipo.equipo_id);
-        setEquiposAsignados(prev => prev.filter(id => id !== equipo.equipo_id));
-        toast.success('Equipo desvinculado del proyecto');
-      } else {
-        await linkEquipoToProyecto(proyectoId, equipo.equipo_id);
-        setEquiposAsignados(prev => [...prev, equipo.equipo_id]);
-        toast.success('Equipo vinculado al proyecto');
-      }
+      await crearSolicitudProyectoEquipo(proyectoId, equipo.equipo_id, uid, isAsignado ? 'desvincular' : 'vincular');
+      setSolicitudesEquiposPendientes(prev => [...new Set([...prev, equipo.equipo_id])]);
+      toast.success(
+        isAsignado
+          ? 'Solicitud de desvinculación enviada al líder del equipo'
+          : 'Invitación enviada al líder del equipo'
+      );
     } catch (e) {
-      toast.error(mensajeError(e, 'No se pudo actualizar el vínculo del equipo'));
+      console.error('Error al crear solicitud de vínculo proyecto-equipo:', e);
+      toast.error(mensajeError(e, 'No se pudo enviar la solicitud'));
     }
   };
 
@@ -578,7 +589,7 @@ export default function RequerimientosPage() {
           <Lock size={15} className="shrink-0" />
           <span>
             Tienes acceso de lectura. Solo el creador del proyecto o miembros de un equipo vinculado pueden
-            crear o editar requerimientos y vincular equipos.
+            crear o editar requerimientos; el creador administra las invitaciones de equipos.
           </span>
         </div>
       )}
@@ -1063,9 +1074,9 @@ export default function RequerimientosPage() {
         open={showEquiposModal}
         onClose={() => setShowEquiposModal(false)}
         title="Equipos del Proyecto"
-        description={puedeEditar
-          ? 'Los miembros de los equipos vinculados pueden editar este proyecto.'
-          : 'Equipos que trabajan en este proyecto.'}
+        description={puedeGestionarVinculos
+          ? 'Invita equipos a este proyecto. El vínculo se crea cuando el líder del equipo acepta.'
+          : 'Equipos que trabajan en este proyecto. Solo el creador del proyecto invita equipos.'}
       >
         <ModalBody className="space-y-2">
           {equipos.length === 0 ? (
@@ -1073,26 +1084,34 @@ export default function RequerimientosPage() {
           ) : (
             equiposOrdenados.map(eq => {
               const isAssigned = equiposAsignados.includes(eq.equipo_id);
-              if (!puedeEditar && !isAssigned) return null;
+              const pendiente = solicitudesEquiposPendientes.includes(eq.equipo_id);
+              if (!puedeGestionarVinculos && !isAssigned) return null;
               return (
                 <div key={eq.equipo_id} className={`flex items-center justify-between gap-3 p-3 rounded-xl border ${isAssigned ? 'bg-blue-50/60 dark:bg-blue-950/20 border-blue-200/60 dark:border-blue-800/40' : 'bg-zinc-50/80 dark:bg-zinc-800/50 border-zinc-200/60 dark:border-zinc-700/60'}`}>
                   <div className="min-w-0">
                     <p className="font-semibold text-zinc-900 dark:text-zinc-100 text-xs sm:text-sm">{eq.nombre}</p>
                     {eq.descripcion && <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{eq.descripcion}</p>}
                   </div>
-                  {puedeEditar && (
-                    <button
-                      onClick={() => toggleEquipoAsignado(eq)}
-                      className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${isAssigned ? 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:text-rose-600 hover:border-rose-300' : 'bg-blue-600 text-white hover:bg-blue-500'}`}
-                    >
-                      {isAssigned ? 'Desvincular' : 'Vincular'}
-                    </button>
+                  {puedeGestionarVinculos && (
+                    pendiente ? (
+                      <span className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40">
+                        Solicitud pendiente
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => solicitarVinculoEquipo(eq)}
+                        title={isAssigned ? 'Pedir al líder del equipo que acepte desvincularse' : 'Invitar al líder del equipo a vincularse'}
+                        className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${isAssigned ? 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:text-rose-600 hover:border-rose-300' : 'bg-blue-600 text-white hover:bg-blue-500'}`}
+                      >
+                        {isAssigned ? 'Solicitar desvinculación' : 'Invitar equipo'}
+                      </button>
+                    )
                   )}
                 </div>
               );
             })
           )}
-          {!puedeEditar && equipos.length > 0 && equiposAsignados.length === 0 && (
+          {!puedeGestionarVinculos && equipos.length > 0 && equiposAsignados.length === 0 && (
             <p className="text-zinc-500 text-xs text-center py-4">Este proyecto aún no tiene equipos vinculados.</p>
           )}
         </ModalBody>

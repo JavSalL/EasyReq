@@ -13,6 +13,134 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isTeamLeaderUser(teamId, userId) {
+      let memberPath = /databases/$(database)/documents/miembros_equipo/$(teamId + "_" + userId);
+      return isAuthenticated() &&
+        exists(memberPath) &&
+        get(memberPath).data.id_rol != null &&
+        isLeaderRole(get(memberPath).data.id_rol);
+    }
+
+    function isLeaderRole(roleId) {
+      let rolePath = /databases/$(database)/documents/roles/$(roleId);
+      return roleId != null &&
+        exists(rolePath) &&
+        get(rolePath).data.nombre_rol.matches('(?i).*l[ií]der.*');
+    }
+
+    function isTeamLeader(teamId) {
+      return isTeamLeaderUser(teamId, request.auth.uid);
+    }
+
+    function isProjectCreator(projectId, userId) {
+      let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
+      return exists(projectPath) && get(projectPath).data.id_creador == userId;
+    }
+
+    function isAcceptedLinkRequest(requestId, projectId, teamId) {
+      let requestPath = /databases/$(database)/documents/solicitudes_proyecto_equipo/$(requestId);
+      return getAfter(requestPath).data.tipo == 'vincular' &&
+        getAfter(requestPath).data.estado == 'aceptada' &&
+        getAfter(requestPath).data.id_proyecto == projectId &&
+        getAfter(requestPath).data.id_equipo == teamId &&
+        getAfter(requestPath).data.id_destinatario == request.auth.uid;
+    }
+
+    function isAcceptedUnlinkRequest(projectId, teamId) {
+      let requestPath = /databases/$(database)/documents/solicitudes_proyecto_equipo/$(("desvincular_" + projectId) + "_" + teamId);
+      return getAfter(requestPath).data.tipo == 'desvincular' &&
+        getAfter(requestPath).data.estado == 'aceptada' &&
+        getAfter(requestPath).data.id_proyecto == projectId &&
+        getAfter(requestPath).data.id_equipo == teamId &&
+        getAfter(requestPath).data.id_destinatario == request.auth.uid;
+    }
+
+    function isValidProjectTeamResponse(requestId, data) {
+      let relationPath = /databases/$(database)/documents/proyecto_equipos/$(data.id_proyecto + "_" + data.id_equipo);
+      return data.estado == 'rechazada' ||
+        (
+          data.estado == 'aceptada' &&
+          (
+            (
+              data.tipo == 'vincular' &&
+              isTeamLeader(data.id_equipo) &&
+              existsAfter(relationPath) &&
+              getAfter(relationPath).data.id_solicitud == requestId
+            ) ||
+            (
+              data.tipo == 'desvincular' &&
+              (
+                isTeamLeader(data.id_equipo) ||
+                isProjectCreator(data.id_proyecto, request.auth.uid)
+              ) &&
+              !existsAfter(relationPath)
+            )
+          )
+        );
+    }
+
+    function isValidProjectTeamRequest(data, requestId) {
+      let projectPath = /databases/$(database)/documents/proyecto/$(data.id_proyecto);
+      let teamPath = /databases/$(database)/documents/equipo/$(data.id_equipo);
+      let relationPath = /databases/$(database)/documents/proyecto_equipos/$(data.id_proyecto + "_" + data.id_equipo);
+      return data.id_solicitante == request.auth.uid &&
+        data.id_destinatario != request.auth.uid &&
+        data.estado == 'pendiente' &&
+        exists(projectPath) &&
+        exists(teamPath) &&
+        (
+          (
+            data.tipo == 'vincular' &&
+            requestId == 'vincular_' + data.id_proyecto + "_" + data.id_equipo &&
+            isProjectCreator(data.id_proyecto, request.auth.uid) &&
+            isTeamLeaderUser(data.id_equipo, data.id_destinatario) &&
+            !exists(relationPath)
+          ) ||
+          (
+            data.tipo == 'desvincular' &&
+            requestId == 'desvincular_' + data.id_proyecto + "_" + data.id_equipo &&
+            exists(relationPath) &&
+            (
+              (
+                isProjectCreator(data.id_proyecto, request.auth.uid) &&
+                isTeamLeaderUser(data.id_equipo, data.id_destinatario)
+              ) ||
+              (
+                isTeamLeader(data.id_equipo) &&
+                isProjectCreator(data.id_proyecto, data.id_destinatario)
+              )
+            )
+          )
+        );
+    }
+
+    function isValidTeamRole(roleId) {
+      return roleId == null ||
+        exists(/databases/$(database)/documents/roles/$(roleId));
+    }
+
+    function isAllowedMemberCreate(memberId) {
+      let teamPath = /databases/$(database)/documents/equipo/$(request.resource.data.id_equipo);
+      let invitationPath = /databases/$(database)/documents/invitaciones_equipo/$(request.resource.data.id_equipo + "_" + request.auth.uid);
+      return isAuthenticated() &&
+        memberId == request.resource.data.id_equipo + "_" + request.resource.data.id_usuario &&
+        request.resource.data.id_usuario == request.auth.uid &&
+        (
+          (
+            existsAfter(teamPath) &&
+            getAfter(teamPath).data.id_creador == request.auth.uid &&
+            isLeaderRole(request.resource.data.id_rol)
+          ) ||
+          (
+            existsAfter(invitationPath) &&
+            getAfter(invitationPath).data.id_invitado == request.auth.uid &&
+            getAfter(invitationPath).data.id_equipo == request.resource.data.id_equipo &&
+            getAfter(invitationPath).data.id_rol == request.resource.data.id_rol &&
+            getAfter(invitationPath).data.estado == 'aceptada'
+          )
+        );
+    }
+
     // 1. Perfiles de usuario
     match /perfil_usuario/{userId} {
       // Cualquier usuario autenticado puede leer perfiles (necesario para listas de miembros, autores, etc.)
@@ -34,7 +162,16 @@ service cloud.firestore {
     }
     match /roles/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly(['nombre_rol']) &&
+        request.resource.data.nombre_rol in [
+          'Líder de Equipo',
+          'Analista de Requisitos',
+          'Desarrollador',
+          'Tester QA',
+          'Product Owner'
+        ];
+      allow update, delete: if false;
     }
     match /estados/{docId} {
       allow read: if isAuthenticated();
@@ -68,24 +205,173 @@ service cloud.firestore {
     // en app/). No endurecer aquí sin backend: se rompería el flujo actual
     // (incluidos proyectos legacy sin `id_creador`).
     match /proyecto/{proyectoId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.id_creador == request.auth.uid;
+      allow update: if isAuthenticated() &&
+        (
+          (
+            !resource.data.keys().hasAny(['id_creador']) &&
+            !request.resource.data.keys().hasAny(['id_creador'])
+          ) ||
+          request.resource.data.id_creador == resource.data.id_creador
+        );
+      allow delete: if isAuthenticated();
     }
 
     // 4. Equipos y vinculaciones
-    // TODO(control-acceso): mismo caso que proyectos. La gestión de miembros
-    // y la edición del equipo están reservadas a líderes
-    // (roles.nombre_rol ~ líder), enforced en cliente+servicio
-    // (isLiderDeEquipo/getEquiposLideradosPor + gating en
-    // app/equipos-global/). Mover a Cloud Functions con verificación de
-    // membresía+rol antes de restringir en rules.
+    // Los vínculos proyecto-equipo solo se crean o eliminan al aceptar una
+    // solicitud en la misma transacción. Las membresías iniciales se crean
+    // junto al equipo; las demás, al aceptar una invitación de membresía.
+    // La edición y eliminación de equipos y miembros queda reservada al líder.
     match /equipo/{equipoId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.id_creador == request.auth.uid;
+      allow update: if isAuthenticated() &&
+        isTeamLeader(equipoId) &&
+        (
+          (
+            !resource.data.keys().hasAny(['id_creador']) &&
+            !request.resource.data.keys().hasAny(['id_creador'])
+          ) ||
+          request.resource.data.id_creador == resource.data.id_creador
+        );
+      allow delete: if isAuthenticated() && isTeamLeader(equipoId);
     }
     match /proyecto_equipos/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly(['id_proyecto', 'id_equipo', 'id_solicitud']) &&
+        docId == request.resource.data.id_proyecto + "_" + request.resource.data.id_equipo &&
+        request.resource.data.id_solicitud == "vincular_" + request.resource.data.id_proyecto + "_" + request.resource.data.id_equipo &&
+        isAcceptedLinkRequest(
+          request.resource.data.id_solicitud,
+          request.resource.data.id_proyecto,
+          request.resource.data.id_equipo
+        ) &&
+        isTeamLeader(request.resource.data.id_equipo);
+      allow update: if false;
+      allow delete: if isAuthenticated() && (
+        !exists(/databases/$(database)/documents/proyecto/$(resource.data.id_proyecto)) ||
+        !exists(/databases/$(database)/documents/equipo/$(resource.data.id_equipo)) ||
+        isAcceptedUnlinkRequest(resource.data.id_proyecto, resource.data.id_equipo)
+      );
     }
     match /miembros_equipo/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if isAllowedMemberCreate(docId);
+      // Solo el líder cambia los roles de un miembro (KAN-13). `id_rol` es el
+      // primero de `id_roles` (el de líder, si lo tiene) y es el que usan
+      // estas reglas para reconocer al líder.
+      allow update: if isAuthenticated() &&
+        isTeamLeader(resource.data.id_equipo) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['id_rol', 'id_roles']) &&
+        request.resource.data.id_roles is list &&
+        (
+          (request.resource.data.id_roles.size() == 0 && request.resource.data.id_rol == null) ||
+          (request.resource.data.id_roles.size() > 0 && request.resource.data.id_rol == request.resource.data.id_roles[0])
+        ) &&
+        isValidTeamRole(request.resource.data.id_rol);
+      allow delete: if isAuthenticated() && (
+        !exists(/databases/$(database)/documents/equipo/$(resource.data.id_equipo)) ||
+        (
+          isTeamLeader(resource.data.id_equipo) &&
+          resource.data.id_usuario != request.auth.uid
+        )
+      );
+    }
+    match /invitaciones_equipo/{invitationId} {
+      allow get: if isAuthenticated() && (
+        resource == null ||
+        resource.data.id_invitado == request.auth.uid ||
+        resource.data.id_invitador == request.auth.uid ||
+        isTeamLeader(resource.data.id_equipo)
+      );
+      allow list: if isAuthenticated() && (
+        resource.data.id_invitado == request.auth.uid ||
+        resource.data.id_invitador == request.auth.uid ||
+        isTeamLeader(resource.data.id_equipo)
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.id_invitador == request.auth.uid &&
+        request.resource.data.estado == 'pendiente' &&
+        request.resource.data.id_invitado != request.auth.uid &&
+        invitationId == request.resource.data.id_equipo + "_" + request.resource.data.id_invitado &&
+        isTeamLeader(request.resource.data.id_equipo) &&
+        isValidTeamRole(request.resource.data.id_rol) &&
+        !exists(/databases/$(database)/documents/miembros_equipo/$(request.resource.data.id_equipo + "_" + request.resource.data.id_invitado));
+      allow update: if isAuthenticated() && (
+        (
+          resource.data.id_invitado == request.auth.uid &&
+          resource.data.estado == 'pendiente' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado']) &&
+          request.resource.data.estado in ['aceptada', 'rechazada']
+        ) ||
+        (
+          resource.data.estado != 'pendiente' &&
+          isTeamLeader(resource.data.id_equipo) &&
+          request.resource.data.id_invitador == request.auth.uid &&
+          request.resource.data.id_equipo == resource.data.id_equipo &&
+          request.resource.data.id_invitado == resource.data.id_invitado &&
+          request.resource.data.estado == 'pendiente' &&
+          isValidTeamRole(request.resource.data.id_rol) &&
+          !exists(/databases/$(database)/documents/miembros_equipo/$(resource.data.id_equipo + "_" + resource.data.id_invitado))
+        )
+      );
+      allow delete: if isAuthenticated() && isTeamLeader(resource.data.id_equipo);
+    }
+    match /solicitudes_proyecto_equipo/{requestId} {
+      allow get: if isAuthenticated() && (
+        resource == null ||
+        resource.data.id_destinatario == request.auth.uid ||
+        resource.data.id_solicitante == request.auth.uid ||
+        !exists(/databases/$(database)/documents/proyecto/$(resource.data.id_proyecto)) ||
+        !exists(/databases/$(database)/documents/equipo/$(resource.data.id_equipo))
+      );
+      allow list: if isAuthenticated() && (
+        resource.data.id_destinatario == request.auth.uid ||
+        resource.data.id_solicitante == request.auth.uid ||
+        !exists(/databases/$(database)/documents/proyecto/$(resource.data.id_proyecto)) ||
+        !exists(/databases/$(database)/documents/equipo/$(resource.data.id_equipo))
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly([
+          'id_proyecto', 'id_equipo', 'id_solicitante', 'id_destinatario',
+          'tipo', 'estado', 'nombre_proyecto', 'nombre_equipo',
+          'nombre_solicitante', 'created_at'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'id_proyecto', 'id_equipo', 'id_solicitante', 'id_destinatario',
+          'tipo', 'estado', 'nombre_proyecto', 'nombre_equipo',
+          'nombre_solicitante', 'created_at'
+        ]) &&
+        isValidProjectTeamRequest(request.resource.data, requestId);
+      allow update: if isAuthenticated() && (
+        (
+          resource.data.id_destinatario == request.auth.uid &&
+          resource.data.estado == 'pendiente' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado']) &&
+          request.resource.data.estado in ['aceptada', 'rechazada'] &&
+          isValidProjectTeamResponse(requestId, request.resource.data)
+        ) ||
+        (
+          resource.data.estado != 'pendiente' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'id_solicitante', 'id_destinatario', 'estado',
+            'nombre_solicitante', 'nombre_proyecto', 'nombre_equipo', 'created_at'
+          ]) &&
+          request.resource.data.id_proyecto == resource.data.id_proyecto &&
+          request.resource.data.id_equipo == resource.data.id_equipo &&
+          request.resource.data.tipo == resource.data.tipo &&
+          isValidProjectTeamRequest(request.resource.data, requestId)
+        )
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.id_solicitante == request.auth.uid ||
+        !exists(/databases/$(database)/documents/proyecto/$(resource.data.id_proyecto)) ||
+        !exists(/databases/$(database)/documents/equipo/$(resource.data.id_equipo))
+      );
     }
 
     // 5. Requerimientos

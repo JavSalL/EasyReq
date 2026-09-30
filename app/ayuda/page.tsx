@@ -15,7 +15,8 @@ const SECCIONES = [
     puntos: [
       'Cualquier usuario puede crear un proyecto; quien lo crea puede editarlo y eliminarlo.',
       'Haz clic en la tarjeta de un proyecto para ver sus requerimientos.',
-      'Usa el filtro "Mis proyectos" para ver solo los proyectos donde participas.',
+      'Arriba ves "Mis proyectos" (los que puedes editar) y abajo los de la comunidad.',
+      'Las solicitudes de equipos que recibas aparecen en el botón "Solicitudes de equipos".',
     ],
   },
   {
@@ -41,9 +42,9 @@ const SECCIONES = [
     href: '/equipos-global/',
     puntos: [
       'Quien crea un equipo queda como su líder.',
-      'Un miembro puede tener varios roles a la vez (por ejemplo, Desarrollador y Tester QA).',
-      'Solo el líder gestiona el equipo, y el equipo siempre debe conservar al menos un líder.',
-      'Vincula equipos a un proyecto desde el botón "Equipos" dentro del proyecto.',
+      'El líder invita a los usuarios con uno o varios roles; se unen al aceptar la invitación en "Invitaciones".',
+      'El líder puede cambiar los roles de un miembro. El equipo siempre debe conservar al menos un líder.',
+      'Para vincular un equipo a un proyecto, el creador del proyecto lo invita desde el botón "Equipos" y el líder del equipo acepta.',
     ],
   },
   {
@@ -62,7 +63,9 @@ const PERMISOS: Array<[string, string]> = [
   ['Crear proyectos y equipos', 'Cualquier usuario con sesión'],
   ['Editar o eliminar un proyecto', 'Su creador o miembros de un equipo vinculado'],
   ['Crear, editar o aprobar requerimientos', 'Su creador o miembros de un equipo vinculado'],
-  ['Editar un equipo y gestionar sus miembros', 'Los líderes del equipo'],
+  ['Invitar un equipo a un proyecto', 'El creador del proyecto (el líder del equipo acepta)'],
+  ['Pedir desvincular un equipo de un proyecto', 'El creador del proyecto o el líder del equipo'],
+  ['Editar un equipo, invitar miembros y cambiar roles', 'Los líderes del equipo'],
 ];
 
 export default function AyudaPage() {

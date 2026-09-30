@@ -22,6 +22,7 @@ import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import ProjectTeamRequestInbox from '@/components/ProjectTeamRequestInbox';
 import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
@@ -42,7 +43,6 @@ export default function Home() {
   const [tiposSistema, setTiposSistema] = useState<Array<TipoSistema>>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [soloMios, setSoloMios] = useState(false);
 
   // Control de acceso: todo proyecto es visible para autenticados;
   // cualquier autenticado puede crear; editar/eliminar solo relacionados
@@ -238,13 +238,27 @@ export default function Home() {
 
   const termino = searchTerm.trim().toLowerCase();
   const filteredProjects = projects.filter(p => {
-    if (soloMios && !puedeEditarProyecto(p.proyecto_id)) return false;
     if (!termino) return true;
     return p.nombre.toLowerCase().includes(termino) ||
       (p.descripcion || '').toLowerCase().includes(termino) ||
       (p.tipos_sistema?.nombre || '').toLowerCase().includes(termino);
   });
-  const hayFiltros = termino !== '' || soloMios;
+  const gruposProyectos = [
+    {
+      titulo: 'Mis proyectos',
+      proyectos: filteredProjects.filter(p => puedeEditarProyecto(p.proyecto_id)),
+      mensajeVacio: termino
+        ? 'Ninguno de tus proyectos coincide con la búsqueda.'
+        : 'Aún no participas en ningún proyecto. Crea uno o pide que inviten a tu equipo.'
+    },
+    {
+      titulo: 'Proyectos de la comunidad',
+      proyectos: filteredProjects.filter(p => !puedeEditarProyecto(p.proyecto_id)),
+      mensajeVacio: termino
+        ? 'Ningún otro proyecto coincide con la búsqueda.'
+        : 'No hay otros proyectos.'
+    }
+  ];
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -259,52 +273,37 @@ export default function Home() {
             Sistemas de software y la especificación de sus requerimientos.
           </p>
         </div>
-        <button onClick={openCreateModal} className={btnPrimario}>
-          <Plus size={15} />
-          Nuevo Proyecto
-        </button>
+        <div className="flex items-center gap-2">
+          <ProjectTeamRequestInbox
+            userId={uid}
+            onResponded={async () => {
+              await Promise.all([fetchProjects(), cargarPermisos()]);
+            }}
+          />
+          <button onClick={openCreateModal} className={btnPrimario}>
+            <Plus size={15} />
+            Nuevo Proyecto
+          </button>
+        </div>
       </div>
 
-      {/* Búsqueda y filtro */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
-            <Search size={14} />
-          </div>
-          <input
-            type="search"
-            placeholder="Buscar por nombre, descripción o tipo de sistema..."
-            aria-label="Buscar proyectos"
-            className={buscador}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      {/* Búsqueda */}
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+          <Search size={14} />
         </div>
-        <div role="group" aria-label="Filtrar proyectos" className="inline-flex p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl self-start">
-          {[
-            { valor: false, texto: 'Todos' },
-            { valor: true, texto: 'Mis proyectos' }
-          ].map(op => (
-            <button
-              key={op.texto}
-              type="button"
-              onClick={() => setSoloMios(op.valor)}
-              aria-pressed={soloMios === op.valor}
-              disabled={op.valor && loadingPermisos}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 ${
-                soloMios === op.valor
-                  ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-xs'
-                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
-              }`}
-            >
-              {op.texto}
-            </button>
-          ))}
-        </div>
+        <input
+          type="search"
+          placeholder="Buscar por nombre, descripción o tipo de sistema..."
+          aria-label="Buscar proyectos"
+          className={buscador}
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
       </div>
 
       {/* Grid Projects */}
-      {loading ? (
+      {loading || loadingPermisos ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-48 rounded-2xl bg-zinc-100 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 animate-pulse" />
@@ -316,22 +315,19 @@ export default function Home() {
             <FolderGit2 size={22} />
           </div>
           <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-            {hayFiltros ? 'Sin resultados' : 'Todavía no hay proyectos'}
+            {termino ? 'Sin resultados' : 'Todavía no hay proyectos'}
           </h3>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-sm mx-auto">
             {termino
               ? 'Ningún proyecto coincide con tu búsqueda.'
-              : soloMios
-                ? 'Aún no participas en ningún proyecto. Crea uno o pide que vinculen a tu equipo.'
-                : 'Crea tu primer proyecto para empezar a registrar requerimientos.'}
+              : 'Crea tu primer proyecto para empezar a registrar requerimientos.'}
           </p>
           <div className="mt-4 flex justify-center gap-2">
-            {hayFiltros && (
-              <button onClick={() => { setSearchTerm(''); setSoloMios(false); }} className={btnSecundario}>
-                Quitar filtros
+            {termino ? (
+              <button onClick={() => setSearchTerm('')} className={btnSecundario}>
+                Limpiar búsqueda
               </button>
-            )}
-            {!termino && (
+            ) : (
               <button onClick={openCreateModal} className={btnPrimario}>
                 <Plus size={15} />
                 Crear Proyecto
@@ -340,101 +336,115 @@ export default function Home() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProjects.map((proj) => {
-            const editable = puedeEditarProyecto(proj.proyecto_id);
-            const reqs = proj.requerimientos_count || 0;
-            const eqs = proj.equipos_count || 0;
-            return (
-              <div
-                key={proj.proyecto_id}
-                role="link"
-                tabIndex={0}
-                onClick={() => abrirProyecto(proj.proyecto_id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && e.target === e.currentTarget) abrirProyecto(proj.proyecto_id);
-                }}
-                aria-label={`Abrir requerimientos de ${proj.nombre}`}
-                className={`group ${tarjeta} p-5 hover:border-blue-300 dark:hover:border-blue-800 hover:shadow-sm transition-all duration-200 flex flex-col justify-between cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40`}
-              >
-                <div>
-                  {/* Header Card */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-200">
-                      <FolderGit2 size={18} />
-                    </div>
+        <div className="space-y-8">
+          {gruposProyectos.map(({ titulo, proyectos, mensajeVacio }) => (
+            <section key={titulo} className="space-y-3">
+              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                {titulo}
+                <span className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">({proyectos.length})</span>
+              </h2>
+              {proyectos.length === 0 ? (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">{mensajeVacio}</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {proyectos.map((proj) => {
+                    const editable = puedeEditarProyecto(proj.proyecto_id);
+                    const reqs = proj.requerimientos_count || 0;
+                    const eqs = proj.equipos_count || 0;
+                    return (
+                      <div
+                        key={proj.proyecto_id}
+                        role="link"
+                        tabIndex={0}
+                        onClick={() => abrirProyecto(proj.proyecto_id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && e.target === e.currentTarget) abrirProyecto(proj.proyecto_id);
+                        }}
+                        aria-label={`Abrir requerimientos de ${proj.nombre}`}
+                        className={`group ${tarjeta} p-5 hover:border-blue-300 dark:hover:border-blue-800 hover:shadow-sm transition-all duration-200 flex flex-col justify-between cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40`}
+                      >
+                        <div>
+                          {/* Header Card */}
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-200">
+                              <FolderGit2 size={18} />
+                            </div>
 
-                    <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
-                      {editable ? (
-                        <>
-                          <button
-                            onClick={() => openEditModal(proj)}
-                            title="Editar proyecto"
-                            aria-label={`Editar ${proj.nombre}`}
-                            className={btnIcono}
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            onClick={() => deleteProject(proj)}
-                            title="Eliminar proyecto"
-                            aria-label={`Eliminar ${proj.nombre}`}
-                            className={btnIconoPeligro}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </>
-                      ) : !loadingPermisos && (
-                        <span
-                          title="Solo el creador o miembros de un equipo vinculado pueden editar este proyecto"
-                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
-                        >
-                          <Lock size={12} />
-                          Solo lectura
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                            <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                              {editable ? (
+                                <>
+                                  <button
+                                    onClick={() => openEditModal(proj)}
+                                    title="Editar proyecto"
+                                    aria-label={`Editar ${proj.nombre}`}
+                                    className={btnIcono}
+                                  >
+                                    <Edit2 size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => deleteProject(proj)}
+                                    title="Eliminar proyecto"
+                                    aria-label={`Eliminar ${proj.nombre}`}
+                                    className={btnIconoPeligro}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </>
+                              ) : !loadingPermisos && (
+                                <span
+                                  title="Solo el creador o miembros de un equipo vinculado pueden editar este proyecto"
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
+                                >
+                                  <Lock size={12} />
+                                  Solo lectura
+                                </span>
+                              )}
+                            </div>
+                          </div>
 
-                  {/* Badges */}
-                  <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
-                    {proj.tipos_sistema && (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
-                        {getTipoSistemaIcon(proj.tipos_sistema.nombre)}
-                        {proj.tipos_sistema.nombre}
-                      </span>
-                    )}
-                    {uid !== null && proj.id_creador === uid && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[10px] font-medium border border-blue-200/60 dark:border-blue-800/60">
-                        Creado por ti
-                      </span>
-                    )}
-                  </div>
+                          {/* Badges */}
+                          <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+                            {proj.tipos_sistema && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
+                                {getTipoSistemaIcon(proj.tipos_sistema.nombre)}
+                                {proj.tipos_sistema.nombre}
+                              </span>
+                            )}
+                            {uid !== null && proj.id_creador === uid && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[10px] font-medium border border-blue-200/60 dark:border-blue-800/60">
+                                Creado por ti
+                              </span>
+                            )}
+                          </div>
 
-                  <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                    {proj.nombre}
-                  </h3>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
-                    {proj.descripcion || "Sin descripción."}
-                  </p>
+                          <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                            {proj.nombre}
+                          </h3>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
+                            {proj.descripcion || "Sin descripción."}
+                          </p>
+                        </div>
+
+                        <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between">
+                          <div className="flex items-center gap-3 text-[11px] text-zinc-500">
+                            <span className="flex items-center gap-1" title="Requerimientos">
+                              <Layers size={13} className="text-zinc-400" />
+                              {plural(reqs, 'requerimiento', 'requerimientos')}
+                            </span>
+                            <span className="flex items-center gap-1" title="Equipos vinculados">
+                              <Users size={13} className="text-zinc-400" />
+                              {plural(eqs, 'equipo', 'equipos')}
+                            </span>
+                          </div>
+                          <ChevronRight size={16} className="text-zinc-300 dark:text-zinc-600 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-
-                <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between">
-                  <div className="flex items-center gap-3 text-[11px] text-zinc-500">
-                    <span className="flex items-center gap-1" title="Requerimientos">
-                      <Layers size={13} className="text-zinc-400" />
-                      {plural(reqs, 'requerimiento', 'requerimientos')}
-                    </span>
-                    <span className="flex items-center gap-1" title="Equipos vinculados">
-                      <Users size={13} className="text-zinc-400" />
-                      {plural(eqs, 'equipo', 'equipos')}
-                    </span>
-                  </div>
-                  <ChevronRight size={16} className="text-zinc-300 dark:text-zinc-600 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
-                </div>
-              </div>
-            );
-          })}
+              )}
+            </section>
+          ))}
         </div>
       )}
 
