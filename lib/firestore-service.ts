@@ -35,6 +35,7 @@ import {
   LogRequerimiento,
   UUID
 } from './database.types';
+import { MENSAJE_SIN_PERMISOS, puedeEditarCatalogos } from './permisos';
 
 // ==========================================
 // SEEDING DE CATÁLOGOS BASE
@@ -1181,10 +1182,28 @@ export async function createPatron(data: { nombre: string; promt: string; id_mod
   };
 }
 
-export async function updatePatron(id: string, data: { nombre: string; promt: string; id_modelo: string | null }): Promise<void> {
+// KAN-17: `patron` y `modelo` son catálogos congelados. Estas dos operaciones
+// siguen exportadas para que el sistema de roles pueda rehabilitarlas, pero ahora
+// cortan antes de escribir. La denegación que de verdad manda es la de
+// `puedeEditarCatalogos()` en `firestore.rules`; este corte existe para no gastar
+// la escritura y para devolver un mensaje claro en lugar de un error opaco.
+//
+// Para devolver el permiso a un rol hay que cambiar `lib/permisos.ts` Y el helper
+// del mismo nombre en `firestore.rules`. Cambiar solo uno deja la UI y el backend
+// discrepando.
+export async function updatePatron(
+  id: string,
+  data: { nombre: string; promt: string; id_modelo: string | null }
+): Promise<void> {
+  if (!puedeEditarCatalogos()) {
+    throw new Error(MENSAJE_SIN_PERMISOS);
+  }
   await updateDoc(doc(db, 'patron', id), data);
 }
 
 export async function deletePatron(id: string): Promise<void> {
+  if (!puedeEditarCatalogos()) {
+    throw new Error(MENSAJE_SIN_PERMISOS);
+  }
   await deleteDoc(doc(db, 'patron', id));
 }

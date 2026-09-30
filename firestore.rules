@@ -141,6 +141,24 @@ service cloud.firestore {
         );
     }
 
+    // Catálogos de autoría compartida: `patron` y `modelo`.
+    //
+    // KAN-17: están congelados. Se leen y se copian, pero no se editan ni se
+    // borran. `create` sigue abierta a propósito, por dos razones:
+    //   1. `seedCatalogsIfEmpty()` siembra desde el cliente y necesita poder
+    //      escribir; si se cierra, un entorno nuevo se queda sin catálogos.
+    //   2. Es el mismo trato que recibe `match /roles`, donde el seed es lo
+    //      único que crea y `update, delete` están negados.
+    //
+    // Punto de extensión para el sistema de roles. Todas las reglas de estos dos
+    // catálogos pasan por aquí, así que conceder la edición a un rol es cambiar
+    // un solo sitio, no perseguir reglas. Ojo: hay que replicarlo en
+    // `puedeEditarCatalogos` de `lib/permisos.ts` para la interfaz, o al revés:
+    // si solo cambia uno de los dos, la UI y el backend discreparán.
+    function puedeEditarCatalogos() {
+      return false;
+    }
+
     // 1. Perfiles de usuario
     match /perfil_usuario/{userId} {
       // Cualquier usuario autenticado puede leer perfiles (necesario para listas de miembros, autores, etc.)
@@ -187,7 +205,9 @@ service cloud.firestore {
     }
     match /modelo/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      // El seed necesita crear. Editar y borrar, no: ver `puedeEditarCatalogos`.
+      allow create: if isAuthenticated();
+      allow update, delete: if puedeEditarCatalogos();
     }
 
     // 3. Proyectos
@@ -390,8 +410,15 @@ service cloud.firestore {
     }
 
     // 7. Patrones de Prompting / IA
+    // Catálogo congelado (KAN-17): se lee y se copia, no se edita ni se borra.
+    // `create` sigue abierta porque `seedCatalogsIfEmpty()` siembra desde el
+    // cliente. Al ser la regla de este catálogo, también cubre las copias que se
+    // creen en el futuro: una copia no es más editable ni más borrable que el
+    // original.
     match /patron/{patronId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if puedeEditarCatalogos();
     }
 
     // Regla por defecto: denegar cualquier otra colección no especificada

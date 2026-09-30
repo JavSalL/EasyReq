@@ -13,6 +13,7 @@ import {
   updatePatron,
   deletePatron
 } from '@/lib/firestore-service';
+import { puedeEditarCatalogos } from '@/lib/permisos';
 import { mensajeError } from '@/lib/errores';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -22,6 +23,12 @@ import {
 
 export default function PatronesPage() {
   const confirmar = useConfirm();
+  // KAN-17: `false` para todos los usuarios por ahora, así que los botones de
+  // editar y eliminar no se renderizan. El JSX sigue aquí detrás de la condición
+  // a propósito: cuando exista el sistema de roles, `puedeEditarCatalogos` empezará
+  // a devolver `true` para los perfiles autorizados y aparecerán solos, sin
+  // reescribir esta página.
+  const puedeEditar = puedeEditarCatalogos();
   const [modelos, setModelos] = useState<Array<Modelo>>([]);
   const [patrones, setPatrones] = useState<Array<Patron>>([]);
   const [loading, setLoading] = useState(true);
@@ -284,22 +291,26 @@ export default function PatronesPage() {
                   >
                     {copiadoId === pat.patron_id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                   </button>
-                  <button
-                    onClick={() => openModal(pat)}
-                    title="Editar patrón"
-                    aria-label={`Editar ${pat.nombre}`}
-                    className={btnIcono}
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(pat)}
-                    title="Eliminar patrón"
-                    aria-label={`Eliminar ${pat.nombre}`}
-                    className={btnIconoPeligro}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {puedeEditar && (
+                    <button
+                      onClick={() => openModal(pat)}
+                      title="Editar patrón"
+                      aria-label={`Editar ${pat.nombre}`}
+                      className={btnIcono}
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                  )}
+                  {puedeEditar && (
+                    <button
+                      onClick={() => handleDelete(pat)}
+                      title="Eliminar patrón"
+                      aria-label={`Eliminar ${pat.nombre}`}
+                      className={btnIconoPeligro}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
 
