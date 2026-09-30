@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FolderGit2, Users, BookOpen, HelpCircle, LogOut } from 'lucide-react';
+import { FolderGit2, Users, BookOpen, HelpCircle, LogOut, X } from 'lucide-react';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { getProfesionesLabel } from '@/lib/firestore-service';
 import { toast } from 'react-hot-toast';
@@ -22,17 +22,20 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
       await logout();
       toast.success('Sesión finalizada');
       window.location.href = '/login/';
-    } catch (err: any) {
-      toast.error('Error al cerrar sesión');
+    } catch {
+      toast.error('No se pudo cerrar la sesión. Inténtalo de nuevo.');
     }
   };
 
   const menuItems = [
-    { name: 'Proyectos', href: '/', icon: FolderGit2 },
-    { name: 'Equipos', href: '/equipos-global/', icon: Users },
-    { name: 'Patrones & Modelos', href: '/patrones/', icon: BookOpen },
-    { name: 'Ayuda', href: '#', icon: HelpCircle },
+    // `rutas`: pantallas que marcan activa la opción (p. ej. los requerimientos
+    // son una subpantalla de Proyectos)
+    { name: 'Proyectos', href: '/', icon: FolderGit2, rutas: ['/', '/requerimientos'] },
+    { name: 'Equipos', href: '/equipos-global/', icon: Users, rutas: ['/equipos-global'] },
+    { name: 'Patrones y Modelos', href: '/patrones/', icon: BookOpen, rutas: ['/patrones'] },
+    { name: 'Ayuda', href: '/ayuda/', icon: HelpCircle, rutas: ['/ayuda'] },
   ];
+  const cleanPath = pathname && pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname || '/';
 
   const displayName = profile?.nombre || user?.displayName || user?.email?.split('@')[0] || 'Usuario';
   const displaySubtitle = getProfesionesLabel(profile, profile?.correo || user?.email || 'Miembro');
@@ -57,9 +60,10 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
         {onClose && (
           <button
             onClick={onClose}
-            className="lg:hidden p-1.5 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+            aria-label="Cerrar menú"
+            className="lg:hidden p-1.5 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer"
           >
-            <LogOut size={16} className="rotate-180" />
+            <X size={16} />
           </button>
         )}
       </div>
@@ -71,13 +75,13 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
         </div>
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const cleanPath = pathname ? (pathname.endsWith('/') && pathname.length > 1 ? pathname.slice(0, -1) : pathname) : '';
-          const isActive = cleanPath === item.href;
+          const isActive = item.rutas.includes(cleanPath);
           return (
             <Link
               key={item.name}
               href={item.href}
               onClick={onClose}
+              aria-current={isActive ? 'page' : undefined}
               className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-all duration-150 group ${
                 isActive
                   ? 'bg-zinc-900/5 dark:bg-zinc-100/10 text-zinc-900 dark:text-zinc-100 font-semibold'
@@ -113,6 +117,7 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
           <button
             onClick={handleSignOut}
             title="Cerrar sesión"
+            aria-label="Cerrar sesión"
             className="p-1.5 shrink-0 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors cursor-pointer"
           >
             <LogOut size={14} />

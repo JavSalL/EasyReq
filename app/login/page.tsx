@@ -7,13 +7,14 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   signInWithPopup,
+  sendPasswordResetEmail,
   GoogleAuthProvider,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { getProfesiones, saveUserProfile, getUserProfile } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { toast } from 'react-hot-toast';
-import { Lock, Mail, User, Briefcase, ChevronDown, X, ArrowRight, Sparkles, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, User, Briefcase, ChevronDown, X, ArrowRight, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
 import { Profesion } from '@/lib/database.types';
 
 // Mensaje para API key inválida. El env NEXT_PUBLIC_* se congela en build,
@@ -90,14 +91,15 @@ export default function LoginPage() {
   const passHasUpper = /[A-Z]/.test(password);
   const passHasNumber = /[0-9]/.test(password);
   const passHasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
-  const isPasswordValid = passMinLength && passHasUpper && passHasNumber;
 
   useEffect(() => {
     // Si ya hay sesión activa, redirigir al dashboard
     if (!authLoading && authUser) {
       router.replace('/');
     }
+  }, [authUser, authLoading, router]);
 
+  useEffect(() => {
     // Cargar catálogo de profesiones
     async function fetchProfesiones() {
       const data = await getProfesiones();
@@ -117,7 +119,33 @@ export default function LoginPage() {
       }
     }
     fetchProfesiones();
-  }, [authUser, authLoading, router]);
+  }, []);
+
+  const [enviandoReset, setEnviandoReset] = useState(false);
+  const handleResetPassword = async () => {
+    const correo = email.trim();
+    if (!correo) {
+      toast.error('Escribe tu correo arriba para enviarte el enlace de recuperación');
+      return;
+    }
+    setEnviandoReset(true);
+    try {
+      await sendPasswordResetEmail(auth, correo);
+      toast.success('Si existe una cuenta con ese correo, te enviamos un enlace para restablecer la contraseña.');
+    } catch (err: unknown) {
+      const code = getFirebaseErrorCode(err);
+      if (code === 'auth/invalid-email') {
+        toast.error('El formato del correo no es válido (ej. usuario@correo.com).');
+      } else if (code === 'auth/too-many-requests') {
+        toast.error('Límite de solicitudes superado. Por favor espera unos minutos.');
+      } else {
+        // No se revela si el correo existe o no
+        toast.success('Si existe una cuenta con ese correo, te enviamos un enlace para restablecer la contraseña.');
+      }
+    } finally {
+      setEnviandoReset(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -246,8 +274,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo y Encabezado */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 text-white font-bold text-2xl shadow-xl shadow-blue-500/25 mb-4">
-            R
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 text-white font-bold text-2xl shadow-xl shadow-blue-500/25 mb-4 tracking-wider">
+            ER
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-zinc-900 dark:text-white">
             EasyReq
@@ -289,7 +317,7 @@ export default function LoginPage() {
             {/* Campo Nombre (Solo en Registro) */}
             {!isLogin && (
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
+                <label htmlFor="login-nombre" className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
                   Nombre Completo
                 </label>
                 <div className="relative">
@@ -297,7 +325,9 @@ export default function LoginPage() {
                     <User size={18} />
                   </div>
                   <input
+                    id="login-nombre"
                     type="text"
+                    autoComplete="name"
                     required={!isLogin}
                     value={nombre}
                     onChange={(e) => setNombre(e.target.value)}
@@ -419,7 +449,7 @@ export default function LoginPage() {
 
             {/* Campo Correo Electrónico */}
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
+              <label htmlFor="login-correo" className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
                 Correo Electrónico
               </label>
               <div className="relative">
@@ -427,7 +457,9 @@ export default function LoginPage() {
                   <Mail size={18} />
                 </div>
                 <input
+                  id="login-correo"
                   type="email"
+                  autoComplete="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -439,15 +471,29 @@ export default function LoginPage() {
 
             {/* Campo Contraseña */}
             <div>
-              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider mb-1.5">
-                Contraseña
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="login-contrasena" className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">
+                  Contraseña
+                </label>
+                {isLogin && (
+                  <button
+                    type="button"
+                    onClick={handleResetPassword}
+                    disabled={enviandoReset}
+                    className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer disabled:opacity-50"
+                  >
+                    {enviandoReset ? 'Enviando...' : '¿Olvidaste tu contraseña?'}
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
                   <Lock size={18} />
                 </div>
                 <input
+                  id="login-contrasena"
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete={isLogin ? 'current-password' : 'new-password'}
                   required
                   minLength={isLogin ? 1 : 8}
                   value={password}
@@ -461,6 +507,7 @@ export default function LoginPage() {
                   className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
                   tabIndex={-1}
                   title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -604,7 +651,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setIsLogin(!isLogin)}
-                className="font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                className="font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
               >
                 {isLogin ? 'Regístrate aquí' : 'Inicia sesión'}
               </button>
