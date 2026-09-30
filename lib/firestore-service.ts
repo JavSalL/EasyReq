@@ -1169,6 +1169,11 @@ export async function getPatrones(): Promise<Patron[]> {
 }
 
 export async function createPatron(data: { nombre: string; promt: string; id_modelo: string | null }): Promise<Patron> {
+  
+  if (!puedeEditarCatalogos()) {
+    throw new Error(MENSAJE_SIN_PERMISOS);
+  }
+  
   const docRef = await addDoc(collection(db, 'patron'), {
     ...data,
     created_at: new Date().toISOString()

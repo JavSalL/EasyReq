@@ -186,10 +186,13 @@ export default function PatronesPage() {
           </p>
         </div>
 
-        <button onClick={() => openModal()} className={btnPrimario}>
-          <Plus size={15} />
-          Nuevo Patrón
-        </button>
+        {puedeEditar&&(
+          <button onClick={() => openModal()} className={btnPrimario}>
+            <Plus size={15} />
+            Nuevo Patrón
+          </button>
+        )}
+
       </div>
 
       {/* Filtros por Modelo */}
@@ -255,7 +258,7 @@ export default function PatronesPage() {
             {termino && (
               <button onClick={() => setSearchTerm('')} className={btnSecundario}>Limpiar búsqueda</button>
             )}
-            {!termino && (
+            {!termino && puedeEditar && (
               <button onClick={() => openModal()} className={btnPrimario}>
                 <Plus size={15} />
                 Nuevo Patrón
