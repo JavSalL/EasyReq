@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Users, Clock, Save,
-  Sparkles, CheckCheck, FileText, History, Lock, Wand2, ArrowRight, Copy
+  Sparkles, CheckCheck, History, Lock, Wand2, ArrowRight, Copy
 } from 'lucide-react';
 import { generateSingleRequirement } from '@/lib/ai-actions';
 import type {
@@ -39,7 +39,7 @@ import { usePageTitle } from '@/lib/use-page-title';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import {
-  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
+  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
@@ -733,20 +733,17 @@ export default function RequerimientosPage() {
 
       {/* Lista de Requerimientos */}
       {loading ? (
-        <div className="space-y-3" role="status" aria-label="Cargando">
+        <div className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden" role="status" aria-label="Cargando">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-28 bg-sunken border border-line rounded-ui animate-pulse" />
+            <div key={i} className="h-32 bg-sunken animate-pulse" />
           ))}
         </div>
       ) : filteredRequerimientos.length === 0 ? (
-        <div className="text-center py-16 bg-surface rounded-ui border border-dashed border-line">
-          <div className="w-12 h-12 bg-sunken text-ink-subtle rounded-ui flex items-center justify-center mx-auto mb-3">
-            <FileText size={22} />
-          </div>
-          <h3 className="text-sm font-semibold text-ink">
+        <div className="text-center py-20">
+          <h3 className="text-lg font-semibold text-ink">
             {hayFiltros ? 'Sin resultados' : 'Todavía no hay requerimientos'}
           </h3>
-          <p className="text-ink-subtle text-xs mt-1 max-w-sm mx-auto">
+          <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
             {hayFiltros
               ? 'Ningún requerimiento coincide con los filtros seleccionados.'
               : puedeEditar
@@ -766,11 +763,11 @@ export default function RequerimientosPage() {
           </div>
         </div>
       ) : (
-        <div className="space-y-3">
+        <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
           {requerimientosOrdenados.map((req) => (
-            <div
+            <li
               key={req.id}
-              className={`${tarjeta} p-4 hover:border-line-strong transition-colors flex flex-col md:flex-row md:items-start justify-between gap-4`}
+              className="px-5 py-5 hover:bg-sunken/60 transition-colors flex flex-col md:flex-row md:items-start justify-between gap-4"
             >
               <div className="space-y-2.5 flex-1 min-w-0">
                 {/* Badges de clasificación */}
@@ -879,9 +876,9 @@ export default function RequerimientosPage() {
                   </>
                 )}
               </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {/* Modal Redactar / Editar Requerimiento */}

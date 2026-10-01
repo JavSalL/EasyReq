@@ -17,7 +17,7 @@ import { mensajeError } from '@/lib/errores';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import {
-  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
+  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
@@ -228,17 +228,17 @@ export default function PatronesPage() {
 
       {/* Grid de Patrones */}
       {loading ? (
-        <div role="status" aria-label="Cargando" className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div role="status" aria-label="Cargando" className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-36 bg-sunken border border-line rounded-ui animate-pulse" />
+            <div key={i} className="h-32 bg-sunken animate-pulse" />
           ))}
         </div>
       ) : filteredPatrones.length === 0 ? (
-        <div className="text-center py-14 bg-surface rounded-ui border border-dashed border-line">
-          <p className="text-sm font-semibold text-ink">
+        <div className="text-center py-20">
+          <p className="text-lg font-semibold text-ink">
             {termino ? 'Sin resultados' : 'No hay patrones en este modelo'}
           </p>
-          <p className="text-ink-subtle text-xs mt-1">
+          <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
             {termino ? 'Ningún patrón coincide con tu búsqueda.' : 'Agrega el primero para poder usarlo al redactar requerimientos.'}
           </p>
           <div className="mt-4 flex justify-center gap-2">
@@ -254,32 +254,27 @@ export default function PatronesPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
           {filteredPatrones.map((pat) => (
-            <div
-              key={pat.patron_id}
-              className={`${tarjeta} p-4 hover:border-line-strong transition-colors flex flex-col`}
-            >
-              <div className="flex items-start justify-between gap-3 mb-2.5">
-                <div className="min-w-0">
-                  <h3 className="text-sm font-bold text-ink">
-                    {pat.nombre}
-                  </h3>
+            <li key={pat.patron_id} className="px-5 py-5">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h3 className="text-base font-semibold text-ink">{pat.nombre}</h3>
                   {pat.modelo && (
-                    <span className="inline-block mt-1 text-xs font-medium text-ink-muted bg-sunken px-2 py-0.5 rounded-ui border border-line">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sunken border border-line text-xs font-medium text-ink-muted">
                       {pat.modelo.nombre}
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-0.5 shrink-0">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => copyPrompt(pat)}
                     title="Copiar sintaxis"
                     aria-label={`Copiar sintaxis de ${pat.nombre}`}
                     className={btnIcono}
                   >
-                    {copiadoId === pat.patron_id ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                    {copiadoId === pat.patron_id ? <Check size={16} className="text-success" /> : <Copy size={16} />}
                   </button>
                   <button
                     onClick={() => openModal(pat)}
@@ -287,7 +282,7 @@ export default function PatronesPage() {
                     aria-label={`Editar ${pat.nombre}`}
                     className={btnIcono}
                   >
-                    <Edit2 size={14} />
+                    <Edit2 size={16} />
                   </button>
                   <button
                     onClick={() => handleDelete(pat)}
@@ -295,18 +290,18 @@ export default function PatronesPage() {
                     aria-label={`Eliminar ${pat.nombre}`}
                     className={btnIconoPeligro}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={16} />
                   </button>
                 </div>
               </div>
 
-              {/* Caja de Sintaxis */}
-              <div className="flex-1 bg-sunken p-3 rounded-ui border border-line font-mono text-xs text-ink leading-relaxed overflow-x-auto whitespace-pre-wrap">
+              {/* Sintaxis del patrón */}
+              <div className="bg-sunken p-3 rounded-ui border border-line font-mono text-sm text-ink leading-relaxed overflow-x-auto whitespace-pre-wrap">
                 {pat.promt}
               </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {/* Modal Crear / Editar Patrón */}

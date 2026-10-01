@@ -611,7 +611,7 @@ export default function EquiposGlobalPage() {
           </div>
         ) : (
           <div className={`${tarjeta} p-5`}>
-            <h3 className="text-sm font-semibold text-ink mb-1 flex items-center gap-2">
+            <h3 className="text-base font-semibold text-ink mb-1 flex items-center gap-2">
               <UserPlus size={16} className="text-brand-text" />
               {editandoMiembro ? 'Editar roles del miembro' : 'Invitar a un usuario'}
             </h3>
@@ -709,7 +709,7 @@ export default function EquiposGlobalPage() {
         {equipoAbierto.proyectos.length > 0 && (
           <div className={`${tarjeta} overflow-hidden`}>
             <div className="px-5 py-4 border-b border-line">
-              <h3 className="text-sm font-semibold text-ink">
+              <h3 className="text-base font-semibold text-ink">
                 Proyectos vinculados ({equipoAbierto.proyectos.length})
               </h3>
             </div>
@@ -746,7 +746,7 @@ export default function EquiposGlobalPage() {
         {/* Lista de Miembros Actuales */}
         <div className={`${tarjeta} overflow-hidden`}>
           <div className="px-5 py-4 border-b border-line">
-            <h3 className="text-sm font-semibold text-ink">
+            <h3 className="text-base font-semibold text-ink">
               Integrantes ({equipoAbierto.miembros.length})
             </h3>
           </div>
@@ -774,7 +774,7 @@ export default function EquiposGlobalPage() {
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold text-ink truncate">
+                      <p className="text-sm font-semibold text-ink truncate">
                         {m.usuario.nombre || 'Usuario'}
                         {m.usuario.id === uid && <span className="font-normal text-ink-subtle"> (tú)</span>}
                       </p>
@@ -948,20 +948,17 @@ export default function EquiposGlobalPage() {
 
       {/* Grid de Equipos */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" role="status" aria-label="Cargando">
+        <div className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden" role="status" aria-label="Cargando">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-48 bg-sunken border border-line rounded-ui animate-pulse" />
+            <div key={i} className="h-28 bg-sunken animate-pulse" />
           ))}
         </div>
       ) : filteredTeams.length === 0 ? (
-        <div className="text-center py-16 bg-surface rounded-ui border border-dashed border-line">
-          <div className="w-12 h-12 bg-sunken text-ink-subtle rounded-ui flex items-center justify-center mx-auto mb-3">
-            <Users size={22} />
-          </div>
-          <h3 className="text-sm font-semibold text-ink">
+        <div className="text-center py-20">
+          <h3 className="text-lg font-semibold text-ink">
             {termino ? 'Sin resultados' : 'Todavía no hay equipos'}
           </h3>
-          <p className="text-ink-subtle text-xs mt-1">
+          <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
             {termino ? 'Ningún equipo coincide con tu búsqueda.' : 'Crea tu primer equipo para organizar miembros y proyectos.'}
           </p>
           <div className="mt-4 flex justify-center">
@@ -976,128 +973,120 @@ export default function EquiposGlobalPage() {
           </div>
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-12">
           {gruposEquipos.map(({ titulo, equipos: equiposGrupo, mensajeVacio }) => (
-            <section key={titulo} className="space-y-3">
-              <h2 className="text-base font-semibold text-ink flex items-center gap-2">
+            <section key={titulo}>
+              <h2 className="text-lg font-semibold text-ink mb-3">
                 {titulo}
-                <span className="text-xs font-normal text-ink-subtle">({equiposGrupo.length})</span>
+                <span className="ml-2 text-sm font-normal text-ink-subtle">{equiposGrupo.length}</span>
               </h2>
               {equiposGrupo.length === 0 ? (
-                <p className="text-xs text-ink-subtle">{mensajeVacio}</p>
+                <p className="text-sm text-ink-subtle">{mensajeVacio}</p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
                   {equiposGrupo.map((team) => {
                     const gestionable = puedeGestionarEquipo(team.equipo_id);
                     const lideres = team.miembros.filter(m => m.esLider);
                     return (
-                      <div
-                        key={team.equipo_id}
-                        role="link"
-                        tabIndex={0}
-                        onClick={() => abrirMiembros(team)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && e.target === e.currentTarget) abrirMiembros(team);
-                        }}
-                        aria-label={`Ver miembros de ${team.nombre}`}
-                        className={`group ${tarjeta} p-5 hover:border-brand-line transition-all duration-200 flex flex-col justify-between cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-text/40`}
-                      >
-                        <div>
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="w-9 h-9 bg-sunken rounded-ui flex items-center justify-center text-ink-muted group-hover:bg-brand-solid group-hover:text-on-solid transition-colors">
-                              <Users size={18} />
-                            </div>
-                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                              {gestionable ? (
-                                <>
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 mr-1 rounded-ui bg-warning-subtle text-warning text-xs font-medium border border-warning-line">
-                                    <Crown size={10} />
-                                    Líder
-                                  </span>
-                                  <button
-                                    onClick={() => openModal(team)}
-                                    title="Editar equipo"
-                                    aria-label={`Editar ${team.nombre}`}
-                                    className={btnIcono}
-                                  >
-                                    <Edit2 size={14} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteTeam(team)}
-                                    title="Eliminar equipo"
-                                    aria-label={`Eliminar ${team.nombre}`}
-                                    className={btnIconoPeligro}
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </>
-                              ) : !esMiembro(team) && (
-                                <span
-                                  title="Solo el líder del equipo puede editarlo"
-                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-ink-subtle"
-                                >
-                                  <Lock size={12} />
-                                  Solo lectura
+                      <li key={team.equipo_id}>
+                        <div
+                          role="link"
+                          tabIndex={0}
+                          onClick={() => abrirMiembros(team)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && e.target === e.currentTarget) abrirMiembros(team);
+                          }}
+                          aria-label={`Ver miembros de ${team.nombre}`}
+                          className="group flex items-center gap-4 px-5 py-5 cursor-pointer hover:bg-sunken focus-visible:bg-sunken"
+                        >
+                          <span className="hidden sm:flex size-10 shrink-0 items-center justify-center rounded-ui bg-brand-solid text-on-solid">
+                            <Users size={20} aria-hidden />
+                          </span>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <h3 className="text-base font-semibold text-ink">{team.nombre}</h3>
+                              {gestionable && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning-subtle text-warning text-xs font-medium border border-warning-line">
+                                  <Crown size={12} aria-hidden />
+                                  Líder
                                 </span>
                               )}
                             </div>
-                          </div>
-
-                          <h3 className="text-base font-semibold text-ink  group-hover:text-brand-text transition-colors">
-                            {team.nombre}
-                          </h3>
-                          <p className="text-xs text-ink-subtle mt-1 line-clamp-2">
-                            {team.descripcion || "Sin descripción."}
-                          </p>
-
-                          {lideres.length > 0 && (
-                            <p className="mt-2 text-xs text-ink-subtle flex items-center gap-1 truncate">
-                              <Crown size={11} className="text-warning shrink-0" />
-                              {lideres.map(l => nombreDe(l.usuario)).join(', ')}
+                            <p className="text-sm text-ink-muted mt-1 line-clamp-1">
+                              {team.descripcion || 'Sin descripción.'}
                             </p>
-                          )}
-
-                          {/* Proyectos Vinculados */}
-                          <div className="mt-3 flex flex-wrap gap-1">
-                            {team.proyectos.length > 0 ? (
-                              team.proyectos.map(p => (
-                                <span key={p.proyecto_id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-ui bg-sunken text-ink-muted text-xs font-medium border border-line">
-                                  <FolderGit2 size={10} />
-                                  {p.nombre}
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-subtle">
+                              {lideres.length > 0 && (
+                                <span className="flex items-center gap-1 min-w-0">
+                                  <Crown size={12} aria-hidden className="text-warning shrink-0" />
+                                  <span className="truncate">{lideres.map(l => nombreDe(l.usuario)).join(', ')}</span>
                                 </span>
-                              ))
-                            ) : (
-                              <span className="text-xs text-ink-subtle italic">Sin proyectos vinculados</span>
-                            )}
+                              )}
+                              <span className="flex items-center gap-1 min-w-0">
+                                <FolderGit2 size={12} aria-hidden className="shrink-0" />
+                                <span className="truncate">
+                                  {team.proyectos.length > 0
+                                    ? team.proyectos.map(p => p.nombre).join(', ')
+                                    : 'Sin proyectos vinculados'}
+                                </span>
+                              </span>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="mt-5 pt-4 border-t border-line flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
+                          <div className="hidden md:flex items-center gap-3 shrink-0 text-sm text-ink-muted">
                             <div className="flex -space-x-1.5">
                               {team.miembros.slice(0, 4).map(m => (
                                 <span
                                   key={m.usuario.id}
                                   title={nombreDe(m.usuario)}
-                                  className="w-6 h-6 rounded-full bg-brand-subtle text-brand-text ring-2 ring-surface flex items-center justify-center text-xs font-bold"
+                                  className="size-7 rounded-full bg-brand-subtle text-brand-text ring-2 ring-surface flex items-center justify-center text-xs font-bold"
                                 >
                                   {iniciales(m.usuario)}
                                 </span>
                               ))}
                             </div>
-                            <span className="text-ink-subtle text-xs">
+                            <span>
                               {team.miembros.length} {team.miembros.length === 1 ? 'integrante' : 'integrantes'}
                             </span>
                           </div>
-                          <span className="font-semibold text-brand-text flex items-center gap-0.5">
-                            Miembros
-                            <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
-                          </span>
+
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            {gestionable ? (
+                              <>
+                                <button
+                                  onClick={() => openModal(team)}
+                                  title="Editar equipo"
+                                  aria-label={`Editar ${team.nombre}`}
+                                  className={btnIcono}
+                                >
+                                  <Edit2 size={16} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteTeam(team)}
+                                  title="Eliminar equipo"
+                                  aria-label={`Eliminar ${team.nombre}`}
+                                  className={btnIconoPeligro}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </>
+                            ) : !esMiembro(team) && (
+                              <span
+                                title="Solo el líder del equipo puede editarlo"
+                                className="inline-flex items-center gap-1 px-2 text-xs font-medium text-ink-subtle"
+                              >
+                                <Lock size={14} aria-hidden />
+                                Solo lectura
+                              </span>
+                            )}
+                          </div>
+                          <ChevronRight size={18} aria-hidden className="text-ink-muted group-hover:text-ink shrink-0" />
                         </div>
-                      </div>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               )}
             </section>
           ))}
