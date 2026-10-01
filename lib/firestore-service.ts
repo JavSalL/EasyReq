@@ -1055,6 +1055,7 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
         id_modalidad: data.id_modalidad || null,
         id_estado: data.id_estado || null,
         id_modelo: data.id_modelo || null,
+        numero: typeof data.numero === 'number' ? data.numero : null,
         created_at: data.created_at || new Date().toISOString(),
 
         tipo_requerimiento: data.id_tipo_requerimiento ? tipoMap.get(data.id_tipo_requerimiento) || null : null,
@@ -1071,16 +1072,73 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
   }
 }
 
+// Campo del documento `proyecto` con el último número de requerimiento asignado.
+// Solo crece: el número de un requerimiento borrado no se reutiliza.
+const CONTADOR_REQUERIMIENTOS = 'contador_requerimientos';
+
+/**
+ * Crea el requerimiento con el siguiente número consecutivo de su proyecto. El
+ * contador y el requerimiento se escriben en una sola transacción, así dos
+ * personas que guardan a la vez nunca obtienen el mismo número.
+ */
 export async function createRequerimiento(data: Partial<Requerimiento>): Promise<Requerimiento> {
-  const docRef = await addDoc(collection(db, 'requerimiento'), {
-    ...data,
-    created_at: new Date().toISOString()
+  const created_at = new Date().toISOString();
+  const reqRef = doc(collection(db, 'requerimiento'));
+  const proyectoRef = data.id_proyecto ? doc(db, 'proyecto', data.id_proyecto) : null;
+
+  const numero = await runTransaction(db, async transaction => {
+    let siguiente: number | null = null;
+    if (proyectoRef) {
+      const proyecto = await transaction.get(proyectoRef);
+      if (proyecto.exists()) {
+        siguiente = ((proyecto.data()[CONTADOR_REQUERIMIENTOS] as number | undefined) ?? 0) + 1;
+        transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: siguiente });
+      }
+    }
+    transaction.set(reqRef, { ...data, ...(siguiente !== null ? { numero: siguiente } : {}), created_at });
+    return siguiente;
   });
+
   return {
-    id: docRef.id,
+    id: reqRef.id,
     ...(data as any),
-    created_at: new Date().toISOString()
+    numero,
+    created_at
   };
+}
+
+/**
+ * Numera los requerimientos que se crearon antes de existir los identificadores,
+ * en orden de creación y a continuación del contador del proyecto. Es seguro
+ * llamarlo desde varias sesiones a la vez: cada lote se revisa dentro de una
+ * transacción y se omiten los que ya tienen número.
+ */
+export async function asignarNumerosRequerimientos(
+  id_proyecto: string,
+  pendientes: Array<{ id: string; created_at?: string }>
+): Promise<void> {
+  const ordenados = [...pendientes].sort(
+    (a, b) => (a.created_at || '').localeCompare(b.created_at || '') || a.id.localeCompare(b.id)
+  );
+  const proyectoRef = doc(db, 'proyecto', id_proyecto);
+
+  for (let i = 0; i < ordenados.length; i += 100) {
+    const lote = ordenados.slice(i, i + 100);
+    await runTransaction(db, async transaction => {
+      const proyecto = await transaction.get(proyectoRef);
+      if (!proyecto.exists()) return;
+      const refs = lote.map(r => doc(db, 'requerimiento', r.id));
+      const snaps = await Promise.all(refs.map(ref => transaction.get(ref)));
+
+      let contador = (proyecto.data()[CONTADOR_REQUERIMIENTOS] as number | undefined) ?? 0;
+      snaps.forEach((snap, idx) => {
+        if (!snap.exists() || typeof snap.data().numero === 'number') return;
+        contador += 1;
+        transaction.update(refs[idx], { numero: contador });
+      });
+      transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: contador });
+    });
+  }
 }
 
 export async function updateRequerimiento(id: string, data: Partial<Requerimiento>): Promise<void> {

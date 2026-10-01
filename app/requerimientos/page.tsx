@@ -23,6 +23,7 @@ import {
   getAllUsers,
   getRequerimientos,
   createRequerimiento,
+  asignarNumerosRequerimientos,
   updateRequerimiento,
   deleteRequerimiento,
   addLogRequerimiento,
@@ -45,6 +46,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
+import { codigoRequerimiento, numeroDesdeBusqueda } from '@/lib/requerimientos';
 
 const FORM_VACIO = {
   enunciado: '',
@@ -68,7 +70,7 @@ const CAMPOS_EDITABLES: Array<[keyof typeof FORM_VACIO & keyof Requerimiento, st
   ['id_aprobador', 'aprobador']
 ];
 
-type Orden = 'recientes' | 'antiguos' | 'estado';
+type Orden = 'recientes' | 'antiguos' | 'estado' | 'numero';
 type Agrupar = 'ninguno' | 'tipo' | 'modelo';
 
 const FILTROS_INICIALES = {
@@ -261,12 +263,36 @@ export default function RequerimientosPage() {
     cargarTodo();
   }, [cargarTodo]);
 
+  // Los requerimientos anteriores a los identificadores reciben su número (en orden de creación)
+  const numerandoRef = useRef(false);
+  useEffect(() => {
+    if (loading || !puedeEditar || !proyectoId || numerandoRef.current) return;
+    const pendientes = requerimientos.filter(r => r.numero == null);
+    if (pendientes.length === 0) return;
+    numerandoRef.current = true;
+    asignarNumerosRequerimientos(proyectoId, pendientes)
+      .then(fetchRequerimientos)
+      .catch(e => console.error('No se pudieron numerar los requerimientos:', e))
+      .finally(() => {
+        numerandoRef.current = false;
+      });
+  }, [loading, puedeEditar, proyectoId, requerimientos, fetchRequerimientos]);
+
   // Filtrar patrones según el modelo seleccionado
   const patronesFiltrados = patrones.filter(p => p.id_modelo === formData.id_modelo);
   const patronSeleccionado = patrones.find(p => p.patron_id === formData.id_patron_seleccionado);
   const nombreUsuario = (id: string | null | undefined) => {
     const u = usuarios.find(x => x.id === id);
     return u ? (u.nombre || u.correo) : null;
+  };
+
+  const copiarCodigo = async (numero: number) => {
+    try {
+      await navigator.clipboard.writeText(codigoRequerimiento(numero));
+      toast.success(`${codigoRequerimiento(numero)} copiado`);
+    } catch {
+      toast.error('No se pudo copiar el identificador.');
+    }
   };
 
   const copiarEnunciado = async (req: Requerimiento) => {
@@ -577,8 +603,11 @@ export default function RequerimientosPage() {
   const hayFiltros = termino !== '' || filterEstado !== 'todos' || filterTipo !== 'todos' || filterModelo !== 'todos';
   const limpiarFiltros = () => setFiltros(f => ({ ...FILTROS_INICIALES, orden: f.orden, agrupar: f.agrupar }));
   // Coincidencia con todo salvo el estado: sirve para contar cuántos hay en cada pestaña de estado
+  const numeroBuscado = numeroDesdeBusqueda(termino);
   const coincideSinEstado = (r: Requerimiento) =>
-    (!termino || r.enunciado.toLowerCase().includes(termino)) &&
+    (!termino ||
+      r.enunciado.toLowerCase().includes(termino) ||
+      (r.numero != null && (r.numero === numeroBuscado || codigoRequerimiento(r.numero).toLowerCase().includes(termino)))) &&
     (filterTipo === 'todos' || r.id_tipo_requerimiento === filterTipo) &&
     (filterModelo === 'todos' || r.id_modelo === filterModelo);
   const esDelEstado = (r: Requerimiento, id: string) =>
@@ -594,6 +623,10 @@ export default function RequerimientosPage() {
   // La carga ya viene del más nuevo al más antiguo
   const requerimientosOrdenados = [...filteredRequerimientos].sort((a, b) => {
     if (orden === 'antiguos') return (a.created_at || '').localeCompare(b.created_at || '');
+    if (orden === 'numero') {
+      const sinNumero = Number.MAX_SAFE_INTEGER;
+      return (a.numero ?? sinNumero) - (b.numero ?? sinNumero);
+    }
     if (orden === 'estado') {
       const porEstado = (a.estado?.nombre_estado || 'zzz').localeCompare(b.estado?.nombre_estado || 'zzz', 'es');
       return porEstado || (b.created_at || '').localeCompare(a.created_at || '');
@@ -644,6 +677,17 @@ export default function RequerimientosPage() {
               <div className="space-y-2.5 flex-1 min-w-0">
                 {/* Badges de clasificación */}
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  {req.numero != null && (
+                    <button
+                      type="button"
+                      onClick={() => copiarCodigo(req.numero!)}
+                      title="Copiar identificador"
+                      aria-label={`Copiar identificador ${codigoRequerimiento(req.numero)}`}
+                      className="px-2 py-0.5 rounded-ui border border-line-strong bg-surface font-mono font-semibold text-ink hover:bg-sunken transition-colors cursor-pointer"
+                    >
+                      {codigoRequerimiento(req.numero)}
+                    </button>
+                  )}
                   {puedeEditar ? (
                     <select
                       value={req.id_estado || ''}
@@ -844,7 +888,7 @@ export default function RequerimientosPage() {
             </div>
             <input
               type="search"
-              placeholder="Buscar enunciado..."
+              placeholder="Buscar enunciado o número (REQ-014)..."
               aria-label="Buscar requerimientos"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -902,6 +946,7 @@ export default function RequerimientosPage() {
                 >
                   <option value="recientes">Más recientes</option>
                   <option value="antiguos">Más antiguos</option>
+                  <option value="numero">Por número</option>
                   <option value="estado">Por estado</option>
                 </select>
               </label>
@@ -1193,7 +1238,11 @@ export default function RequerimientosPage() {
       <Modal
         open={currentReqForLogs !== null}
         onClose={() => setCurrentReqForLogs(null)}
-        title="Historial de Cambios"
+        title={
+          currentReqForLogs?.numero != null
+            ? `Historial de ${codigoRequerimiento(currentReqForLogs.numero)}`
+            : 'Historial de Cambios'
+        }
         description="Quién modificó el requerimiento y cuándo."
         size="lg"
       >

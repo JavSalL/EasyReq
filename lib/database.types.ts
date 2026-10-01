@@ -98,6 +98,8 @@ export interface Requerimiento {
   id_modalidad: UUID | null;
   id_estado: UUID | null;
   id_modelo: UUID | null;
+  /** Número consecutivo dentro del proyecto (REQ-001...). Null en requerimientos que aún no se numeran. */
+  numero?: number | null;
   created_at?: string;
 
   // Joins relacionales

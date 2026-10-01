@@ -25,7 +25,8 @@ const SECCIONES = [
     titulo: 'Requerimientos',
     puntos: [
       'Elige un modelo (EARS, Sistemas Embebidos, Dr. Reyes) y un patrón; con "Usar plantilla" se copia su estructura al enunciado.',
-      'Cambia el estado de un requerimiento directamente desde su tarjeta.',
+      'Cada requerimiento tiene un identificador dentro de su proyecto (REQ-001, REQ-002...). No cambia ni se reutiliza aunque borres otro; haz clic en él para copiarlo y búscalo escribiendo su número.',
+      'Cambia el estado de un requerimiento directamente desde su fila.',
       'El botón de historial muestra quién hizo cada cambio y cuándo.',
     ],
   },
