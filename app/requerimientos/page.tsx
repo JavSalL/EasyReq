@@ -263,20 +263,27 @@ export default function RequerimientosPage() {
     cargarTodo();
   }, [cargarTodo]);
 
-  // Los requerimientos anteriores a los identificadores reciben su número (en orden de creación)
+  // Los requerimientos anteriores a los identificadores reciben su número (en orden de creación).
+  // Lo inicia cualquier sesión que abra el proyecto, también las de solo lectura: es una
+  // asignación mecánica (solo escribe `numero` y `codigo`) y es segura si dos sesiones coinciden.
   const numerandoRef = useRef(false);
+  const numeracionFallidaRef = useRef(false);
   useEffect(() => {
-    if (loading || !puedeEditar || !proyectoId || numerandoRef.current) return;
+    if (loading || !proyectoId || numerandoRef.current || numeracionFallidaRef.current) return;
     const pendientes = requerimientos.filter(r => r.numero == null || !r.codigo);
     if (pendientes.length === 0) return;
     numerandoRef.current = true;
     asignarNumerosRequerimientos(proyectoId, pendientes)
       .then(fetchRequerimientos)
-      .catch(e => console.error('No se pudieron numerar los requerimientos:', e))
+      .catch(e => {
+        console.error('No se pudieron numerar los requerimientos:', e);
+        numeracionFallidaRef.current = true;
+        toast.error('No se pudieron asignar los identificadores de los requerimientos. Recarga la página para reintentar.');
+      })
       .finally(() => {
         numerandoRef.current = false;
       });
-  }, [loading, puedeEditar, proyectoId, requerimientos, fetchRequerimientos]);
+  }, [loading, proyectoId, requerimientos, fetchRequerimientos]);
 
   // Filtrar patrones según el modelo seleccionado
   const patronesFiltrados = patrones.filter(p => p.id_modelo === formData.id_modelo);
