@@ -25,7 +25,8 @@ const SECCIONES = [
     titulo: 'Requerimientos',
     puntos: [
       'Elige un modelo (EARS, Sistemas Embebidos, Dr. Reyes) y un patrón; con "Usar plantilla" se copia su estructura al enunciado.',
-      'Cada requerimiento tiene un identificador dentro de su proyecto (REQ-001, REQ-002...). No cambia ni se reutiliza aunque borres otro; haz clic en él para copiarlo y búscalo escribiendo su número.',
+      'Cada requerimiento tiene un identificador dentro de su proyecto (REQ-001, REQ-002...). Van en orden y, si borras uno, su número no se reutiliza. Haz clic en el identificador para copiarlo, o búscalo escribiendo su número.',
+      'Con «Insertar después» (el icono de lista con un +, en cada fila) añades un requerimiento entre dos: se registra con el número siguiente y todos los que venían después suben un número.',
       'Cambia el estado de un requerimiento directamente desde su fila.',
       'El botón de historial muestra quién hizo cada cambio y cuándo.',
     ],

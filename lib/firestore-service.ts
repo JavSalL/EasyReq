@@ -1114,6 +1114,105 @@ export async function createRequerimiento(data: Partial<Requerimiento>): Promise
   };
 }
 
+// Tope de requerimientos que se pueden renumerar en una sola transacción (Firestore admite 500 escrituras).
+const MAX_RENUMERADOS = 450;
+
+/**
+ * Inserta un requerimiento justo después del número `despuesDeNumero` y sube un
+ * número a todos los que venían después (REQ-004 pasa a REQ-005, etc.). Todo
+ * ocurre en una sola transacción: el requerimiento nuevo, los renumerados y el
+ * contador del proyecto cambian juntos o no cambia nada.
+ *
+ * Una transacción de cliente no puede hacer consultas, así que antes se lee el
+ * contador del proyecto y la lista de requerimientos, y dentro de la
+ * transacción se comprueba que nadie los cambió mientras tanto (crear uno
+ * mueve el contador; renumerar o borrar cambia los números leídos). Si hubo un
+ * cambio se cancela con un mensaje para reintentar, en vez de arriesgarse a
+ * duplicar números.
+ */
+export async function insertarRequerimientoDespuesDe(
+  id_proyecto: string,
+  despuesDeNumero: number,
+  data: Partial<Requerimiento>,
+  id_autor: string | null
+): Promise<{ requerimiento: Requerimiento; renumerados: number }> {
+  const MENSAJE_CONFLICTO = 'Otra persona cambió los requerimientos mientras guardabas. Recarga la página e inténtalo de nuevo.';
+  const proyectoRef = doc(db, 'proyecto', id_proyecto);
+
+  // El contador se lee ANTES que la lista: una alta posterior moverá el contador y se detectará
+  const proyectoSnap = await getDoc(proyectoRef);
+  if (!proyectoSnap.exists()) throw new Error('El proyecto ya no existe. Recarga la página.');
+  const contador = (proyectoSnap.data()[CONTADOR_REQUERIMIENTOS] as number | undefined) ?? 0;
+
+  const lista = await getDocs(query(collection(db, 'requerimiento'), where('id_proyecto', '==', id_proyecto)));
+  const existentes = lista.docs.map(d => ({ ref: d.ref, numero: d.data().numero as unknown }));
+  if (existentes.some(e => typeof e.numero !== 'number')) {
+    throw new Error('Los requerimientos del proyecto todavía se están numerando. Espera unos segundos e inténtalo de nuevo.');
+  }
+
+  const siguientes = existentes
+    .map(e => ({ ref: e.ref, numero: e.numero as number }))
+    .filter(e => e.numero > despuesDeNumero);
+  if (siguientes.length > MAX_RENUMERADOS) {
+    throw new Error(
+      `Hay ${siguientes.length} requerimientos después de ${codigoRequerimiento(despuesDeNumero)}; ` +
+      `no se pueden renumerar más de ${MAX_RENUMERADOS} a la vez.`
+    );
+  }
+
+  const nuevoNumero = despuesDeNumero + 1;
+  const reqRef = doc(collection(db, 'requerimiento'));
+  const created_at = new Date().toISOString();
+
+  await runTransaction(db, async transaction => {
+    const actual = await transaction.get(proyectoRef);
+    if (!actual.exists() || ((actual.data()[CONTADOR_REQUERIMIENTOS] as number | undefined) ?? 0) !== contador) {
+      throw new Error(MENSAJE_CONFLICTO);
+    }
+    const snaps = await Promise.all(siguientes.map(s => transaction.get(s.ref)));
+    snaps.forEach((snap, i) => {
+      if (!snap.exists() || snap.data().numero !== siguientes[i].numero) throw new Error(MENSAJE_CONFLICTO);
+    });
+
+    siguientes.forEach(s => {
+      transaction.update(s.ref, { numero: s.numero + 1, codigo: codigoRequerimiento(s.numero + 1) });
+    });
+    transaction.set(reqRef, { ...data, numero: nuevoNumero, codigo: codigoRequerimiento(nuevoNumero), created_at });
+    transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: contador + 1 });
+  });
+
+  // Auditoría de los renumerados (sin esperar: si falla alguno, el cambio ya quedó guardado)
+  void (async () => {
+    for (let i = 0; i < siguientes.length; i += 25) {
+      await Promise.all(
+        siguientes.slice(i, i + 25).map(s =>
+          addLogRequerimiento({
+            id_requerimiento: s.ref.id,
+            accion: 'Renumeración',
+            id_autor,
+            detalles: {
+              de: codigoRequerimiento(s.numero),
+              a: codigoRequerimiento(s.numero + 1),
+              motivo: `Se insertó ${codigoRequerimiento(nuevoNumero)}`
+            }
+          })
+        )
+      );
+    }
+  })();
+
+  return {
+    requerimiento: {
+      ...data,
+      id: reqRef.id,
+      numero: nuevoNumero,
+      codigo: codigoRequerimiento(nuevoNumero),
+      created_at
+    } as Requerimiento,
+    renumerados: siguientes.length
+  };
+}
+
 /**
  * Completa el identificador de los requerimientos que no lo tienen guardado:
  * los creados antes de existir los identificadores reciben el siguiente número

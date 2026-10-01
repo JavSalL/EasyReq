@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Users, Clock, Save,
-  Sparkles, CheckCheck, History, Lock, Wand2, ArrowRight, Copy
+  Sparkles, CheckCheck, History, Lock, Wand2, ArrowRight, Copy, ListPlus, ListOrdered
 } from 'lucide-react';
 import { generateSingleRequirement } from '@/lib/ai-actions';
 import type {
@@ -23,6 +23,7 @@ import {
   getAllUsers,
   getRequerimientos,
   createRequerimiento,
+  insertarRequerimientoDespuesDe,
   asignarNumerosRequerimientos,
   updateRequerimiento,
   deleteRequerimiento,
@@ -46,7 +47,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
-import { codigoDe, numeroDesdeBusqueda } from '@/lib/requerimientos';
+import { codigoDe, codigoRequerimiento, numeroDesdeBusqueda } from '@/lib/requerimientos';
 
 const FORM_VACIO = {
   enunciado: '',
@@ -78,7 +79,7 @@ const FILTROS_INICIALES = {
   estado: 'todos',
   tipo: 'todos',
   modelo: 'todos',
-  orden: 'recientes' as Orden,
+  orden: 'numero' as Orden,
   agrupar: 'ninguno' as Agrupar
 };
 
@@ -124,7 +125,7 @@ export default function RequerimientosPage() {
 
   // Filtros
   // Se recuerdan por proyecto mientras dure la sesión del navegador
-  const [filtros, setFiltros] = useEstadoSesion(proyectoId ? `easyreq:req:${proyectoId}` : null, FILTROS_INICIALES);
+  const [filtros, setFiltros] = useEstadoSesion(proyectoId ? `easyreq:req:v2:${proyectoId}` : null, FILTROS_INICIALES);
   const { q: searchTerm, estado: filterEstado, tipo: filterTipo, modelo: filterModelo, orden } = filtros;
   const setSearchTerm = (q: string) => setFiltros(f => ({ ...f, q }));
   const setFilterEstado = (estado: string) => setFiltros(f => ({ ...f, estado }));
@@ -195,6 +196,8 @@ export default function RequerimientosPage() {
   // Al registrar varios requerimientos seguidos: "guardar y añadir otro" y
   // recordar la clasificación del último para no volver a elegirla.
   const crearOtroRef = useRef(false);
+  // Si no es null, el requerimiento nuevo se inserta justo después de este y los siguientes suben un número
+  const [insertarDespuesDe, setInsertarDespuesDe] = useState<{ numero: number; codigo: string } | null>(null);
   const ultimaClasificacionRef = useRef<Partial<typeof FORM_VACIO> | null>(null);
 
   // Cambios sin guardar: el enunciado, el texto de la IA y, al editar, el resto de campos
@@ -312,12 +315,14 @@ export default function RequerimientosPage() {
   };
 
   // Apertura de modal nuevo
-  const openCreateModal = () => {
+  const abrirNuevo = (despuesDe: Requerimiento | null) => {
     if (!puedeEditar) {
       toast.error('Solo el creador o miembros de un equipo vinculado pueden crear requerimientos');
       return;
     }
     setEditingReq(null);
+    const codigoBase = despuesDe ? codigoDe(despuesDe) : null;
+    setInsertarDespuesDe(despuesDe && codigoBase && despuesDe.numero != null ? { numero: despuesDe.numero, codigo: codigoBase } : null);
     const primerModelo = modelos[0]?.id || '';
     const primerPatron = patrones.find(p => p.id_modelo === primerModelo);
 
@@ -346,6 +351,9 @@ export default function RequerimientosPage() {
     setIsModalOpen(true);
   };
 
+  const openCreateModal = () => abrirNuevo(null);
+  const openInsertModal = (req: Requerimiento) => abrirNuevo(req);
+
   // Apertura de modal editar
   const openEditModal = (req: Requerimiento) => {
     if (!puedeEditar) {
@@ -353,6 +361,7 @@ export default function RequerimientosPage() {
       return;
     }
     setEditingReq(req);
+    setInsertarDespuesDe(null);
     setFormData({
       enunciado: req.enunciado,
       id_tipo_requerimiento: req.id_tipo_requerimiento || '',
@@ -415,6 +424,7 @@ export default function RequerimientosPage() {
     };
 
     setSaving(true);
+    let siguientePosicion: { numero: number; codigo: string } | null = null;
     try {
       if (editingReq) {
         const cambios = CAMPOS_EDITABLES
@@ -435,16 +445,38 @@ export default function RequerimientosPage() {
         });
         toast.success('Requerimiento actualizado');
       } else {
-        const newReq = await createRequerimiento({ ...datos, id_proyecto: proyectoId! });
+        let newReq: Requerimiento;
+        let renumerados = 0;
+        if (insertarDespuesDe) {
+          const resultado = await insertarRequerimientoDespuesDe(
+            proyectoId!,
+            insertarDespuesDe.numero,
+            { ...datos, id_proyecto: proyectoId! },
+            uid
+          );
+          newReq = resultado.requerimiento;
+          renumerados = resultado.renumerados;
+          // Para "insertar y añadir otro": el siguiente va justo después del que se acaba de insertar
+          siguientePosicion = { numero: newReq.numero!, codigo: codigoDe(newReq)! };
+        } else {
+          newReq = await createRequerimiento({ ...datos, id_proyecto: proyectoId! });
+        }
         if (newReq?.id) {
           await addLogRequerimiento({
             id_requerimiento: newReq.id,
             accion: 'Creación de requerimiento',
             id_autor: uid,
-            detalles: { inicio: 'Creación inicial' }
+            detalles: insertarDespuesDe
+              ? { inicio: `Insertado después de ${insertarDespuesDe.codigo}`, renumerados }
+              : { inicio: 'Creación inicial' }
           });
         }
-        toast.success('Requerimiento registrado');
+        toast.success(
+          insertarDespuesDe
+            ? `Registrado como ${codigoDe(newReq)}.` +
+              (renumerados > 0 ? ` Los ${renumerados} siguientes subieron un número.` : '')
+            : 'Requerimiento registrado'
+        );
         ultimaClasificacionRef.current = {
           id_tipo_requerimiento: formData.id_tipo_requerimiento,
           id_modalidad: formData.id_modalidad,
@@ -458,6 +490,7 @@ export default function RequerimientosPage() {
         // Se queda abierto con la misma clasificación para redactar el siguiente
         setFormData(prev => ({ ...prev, enunciado: '' }));
         setAiPrompt('');
+        if (siguientePosicion) setInsertarDespuesDe(siguientePosicion);
         requestAnimationFrame(() => document.getElementById('req-enunciado')?.focus());
       } else {
         setIsModalOpen(false);
@@ -781,6 +814,16 @@ export default function RequerimientosPage() {
                 </button>
                 {puedeEditar && (
                   <>
+                    {req.numero != null && (
+                      <button
+                        onClick={() => openInsertModal(req)}
+                        title={`Insertar un requerimiento después de ${codigoDe(req)}`}
+                        aria-label={`Insertar un requerimiento después de ${codigoDe(req)}`}
+                        className={btnIcono}
+                      >
+                        <ListPlus size={16} />
+                      </button>
+                    )}
                     <button
                       onClick={() => openEditModal(req)}
                       title="Editar requerimiento"
@@ -952,9 +995,9 @@ export default function RequerimientosPage() {
                   aria-label="Ordenar requerimientos"
                   className="bg-transparent text-ink font-medium text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
                 >
+                  <option value="numero">Por número</option>
                   <option value="recientes">Más recientes</option>
                   <option value="antiguos">Más antiguos</option>
-                  <option value="numero">Por número</option>
                   <option value="estado">Por estado</option>
                 </select>
               </label>
@@ -1024,12 +1067,30 @@ export default function RequerimientosPage() {
         open={isModalOpen}
         onClose={intentarCerrar}
         cerrarConFondo={!hayCambios}
-        title={editingReq ? 'Editar Requerimiento' : 'Nuevo Requerimiento'}
+        title={
+          editingReq
+            ? 'Editar Requerimiento'
+            : insertarDespuesDe
+              ? `Nuevo requerimiento después de ${insertarDespuesDe.codigo}`
+              : 'Nuevo Requerimiento'
+        }
         description="Elige el modelo de especificación y redacta respetando la estructura del patrón."
         size="xl"
       >
         <form ref={formRef} onSubmit={handleSaveReq} noValidate className="flex flex-col flex-1 min-h-0">
           <ModalBody className="space-y-5">
+            {insertarDespuesDe && !editingReq && (
+              <div className="flex items-start gap-3 rounded-ui border border-warning-line bg-warning-subtle p-3 text-sm text-warning">
+                <ListOrdered size={18} aria-hidden className="mt-0.5 shrink-0" />
+                <p>
+                  Se registrará como <strong>{codigoRequerimiento(insertarDespuesDe.numero + 1)}</strong>.{' '}
+                  {requerimientos.filter(r => (r.numero ?? 0) > insertarDespuesDe.numero).length > 0
+                    ? `Los ${requerimientos.filter(r => (r.numero ?? 0) > insertarDespuesDe.numero).length} requerimientos que van después subirán un número.`
+                    : 'No hay requerimientos posteriores que renumerar.'}
+                </p>
+              </div>
+            )}
+
             {/* Selector de Modelo y Patrón */}
             <div className="bg-sunken p-4 rounded-ui border border-line space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1231,12 +1292,12 @@ export default function RequerimientosPage() {
                 }}
                 className={btnSecundario}
               >
-                Guardar y añadir otro
+                {insertarDespuesDe ? 'Insertar y añadir otro' : 'Guardar y añadir otro'}
               </button>
             )}
             <button type="submit" disabled={saving} className={btnPrimario}>
               <Save size={16} />
-              {saving ? 'Guardando...' : editingReq ? 'Guardar cambios' : 'Registrar requerimiento'}
+              {saving ? 'Guardando...' : editingReq ? 'Guardar cambios' : insertarDespuesDe ? 'Insertar requerimiento' : 'Registrar requerimiento'}
             </button>
           </ModalFooter>
         </form>
