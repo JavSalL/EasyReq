@@ -15,6 +15,7 @@ import {
   runTransaction
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { codigoRequerimiento } from './requerimientos';
 import { 
   PerfilUsuario, 
   Proyecto, 
@@ -1056,6 +1057,7 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
         id_estado: data.id_estado || null,
         id_modelo: data.id_modelo || null,
         numero: typeof data.numero === 'number' ? data.numero : null,
+        codigo: typeof data.codigo === 'string' ? data.codigo : null,
         created_at: data.created_at || new Date().toISOString(),
 
         tipo_requerimiento: data.id_tipo_requerimiento ? tipoMap.get(data.id_tipo_requerimiento) || null : null,
@@ -1095,7 +1097,11 @@ export async function createRequerimiento(data: Partial<Requerimiento>): Promise
         transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: siguiente });
       }
     }
-    transaction.set(reqRef, { ...data, ...(siguiente !== null ? { numero: siguiente } : {}), created_at });
+    transaction.set(reqRef, {
+      ...data,
+      ...(siguiente !== null ? { numero: siguiente, codigo: codigoRequerimiento(siguiente) } : {}),
+      created_at
+    });
     return siguiente;
   });
 
@@ -1103,15 +1109,17 @@ export async function createRequerimiento(data: Partial<Requerimiento>): Promise
     id: reqRef.id,
     ...(data as any),
     numero,
+    codigo: numero !== null ? codigoRequerimiento(numero) : null,
     created_at
   };
 }
 
 /**
- * Numera los requerimientos que se crearon antes de existir los identificadores,
- * en orden de creación y a continuación del contador del proyecto. Es seguro
- * llamarlo desde varias sesiones a la vez: cada lote se revisa dentro de una
- * transacción y se omiten los que ya tienen número.
+ * Completa el identificador de los requerimientos que no lo tienen guardado:
+ * los creados antes de existir los identificadores reciben el siguiente número
+ * del proyecto (en orden de creación) y los que ya tienen número solo reciben
+ * su `codigo`. Es seguro llamarlo desde varias sesiones a la vez: cada lote se
+ * revisa dentro de una transacción y se omiten los que ya están completos.
  */
 export async function asignarNumerosRequerimientos(
   id_proyecto: string,
@@ -1132,9 +1140,16 @@ export async function asignarNumerosRequerimientos(
 
       let contador = (proyecto.data()[CONTADOR_REQUERIMIENTOS] as number | undefined) ?? 0;
       snaps.forEach((snap, idx) => {
-        if (!snap.exists() || typeof snap.data().numero === 'number') return;
+        if (!snap.exists()) return;
+        const actual = snap.data();
+        if (typeof actual.numero === 'number') {
+          if (typeof actual.codigo !== 'string') {
+            transaction.update(refs[idx], { codigo: codigoRequerimiento(actual.numero) });
+          }
+          return;
+        }
         contador += 1;
-        transaction.update(refs[idx], { numero: contador });
+        transaction.update(refs[idx], { numero: contador, codigo: codigoRequerimiento(contador) });
       });
       transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: contador });
     });

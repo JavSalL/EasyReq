@@ -46,7 +46,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
-import { codigoRequerimiento, numeroDesdeBusqueda } from '@/lib/requerimientos';
+import { codigoDe, numeroDesdeBusqueda } from '@/lib/requerimientos';
 
 const FORM_VACIO = {
   enunciado: '',
@@ -267,7 +267,7 @@ export default function RequerimientosPage() {
   const numerandoRef = useRef(false);
   useEffect(() => {
     if (loading || !puedeEditar || !proyectoId || numerandoRef.current) return;
-    const pendientes = requerimientos.filter(r => r.numero == null);
+    const pendientes = requerimientos.filter(r => r.numero == null || !r.codigo);
     if (pendientes.length === 0) return;
     numerandoRef.current = true;
     asignarNumerosRequerimientos(proyectoId, pendientes)
@@ -286,10 +286,10 @@ export default function RequerimientosPage() {
     return u ? (u.nombre || u.correo) : null;
   };
 
-  const copiarCodigo = async (numero: number) => {
+  const copiarCodigo = async (codigo: string) => {
     try {
-      await navigator.clipboard.writeText(codigoRequerimiento(numero));
-      toast.success(`${codigoRequerimiento(numero)} copiado`);
+      await navigator.clipboard.writeText(codigo);
+      toast.success(`${codigo} copiado`);
     } catch {
       toast.error('No se pudo copiar el identificador.');
     }
@@ -607,7 +607,8 @@ export default function RequerimientosPage() {
   const coincideSinEstado = (r: Requerimiento) =>
     (!termino ||
       r.enunciado.toLowerCase().includes(termino) ||
-      (r.numero != null && (r.numero === numeroBuscado || codigoRequerimiento(r.numero).toLowerCase().includes(termino)))) &&
+      (numeroBuscado !== null && r.numero === numeroBuscado) ||
+      !!codigoDe(r)?.toLowerCase().includes(termino)) &&
     (filterTipo === 'todos' || r.id_tipo_requerimiento === filterTipo) &&
     (filterModelo === 'todos' || r.id_modelo === filterModelo);
   const esDelEstado = (r: Requerimiento, id: string) =>
@@ -677,15 +678,15 @@ export default function RequerimientosPage() {
               <div className="space-y-2.5 flex-1 min-w-0">
                 {/* Badges de clasificación */}
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                  {req.numero != null && (
+                  {codigoDe(req) && (
                     <button
                       type="button"
-                      onClick={() => copiarCodigo(req.numero!)}
+                      onClick={() => copiarCodigo(codigoDe(req)!)}
                       title="Copiar identificador"
-                      aria-label={`Copiar identificador ${codigoRequerimiento(req.numero)}`}
+                      aria-label={`Copiar identificador ${codigoDe(req)}`}
                       className="px-2 py-0.5 rounded-ui border border-line-strong bg-surface font-mono font-semibold text-ink hover:bg-sunken transition-colors cursor-pointer"
                     >
-                      {codigoRequerimiento(req.numero)}
+                      {codigoDe(req)}
                     </button>
                   )}
                   {puedeEditar ? (
@@ -1239,8 +1240,8 @@ export default function RequerimientosPage() {
         open={currentReqForLogs !== null}
         onClose={() => setCurrentReqForLogs(null)}
         title={
-          currentReqForLogs?.numero != null
-            ? `Historial de ${codigoRequerimiento(currentReqForLogs.numero)}`
+          currentReqForLogs && codigoDe(currentReqForLogs)
+            ? `Historial de ${codigoDe(currentReqForLogs)}`
             : 'Historial de Cambios'
         }
         description="Quién modificó el requerimiento y cuándo."

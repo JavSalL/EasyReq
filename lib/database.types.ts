@@ -100,6 +100,8 @@ export interface Requerimiento {
   id_modelo: UUID | null;
   /** Número consecutivo dentro del proyecto (REQ-001...). Null en requerimientos que aún no se numeran. */
   numero?: number | null;
+  /** Identificador guardado en la base de datos ("REQ-014"), único dentro del proyecto. */
+  codigo?: string | null;
   created_at?: string;
 
   // Joins relacionales
