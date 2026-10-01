@@ -21,14 +21,15 @@ import {
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
+import { useEstadoSesion } from '@/lib/use-estado-sesion';
 
 export default function PatronesPage() {
   const confirmar = useConfirm();
   const [modelos, setModelos] = useState<Array<Modelo>>([]);
   const [patrones, setPatrones] = useState<Array<Patron>>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedModeloFilter, setSelectedModeloFilter] = useState<string>("todos");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedModeloFilter, setSelectedModeloFilter] = useEstadoSesion<string>("easyreq:patrones:modelo", "todos");
+  const [searchTerm, setSearchTerm] = useEstadoSesion("easyreq:patrones:buscar", "");
   const [copiadoId, setCopiadoId] = useState<string | null>(null);
 
   // Modal State
@@ -227,7 +228,7 @@ export default function PatronesPage() {
 
       {/* Grid de Patrones */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div role="status" aria-label="Cargando" className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-36 bg-sunken border border-line rounded-ui animate-pulse" />
           ))}

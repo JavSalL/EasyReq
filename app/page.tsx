@@ -23,6 +23,7 @@ import { mensajeError } from '@/lib/errores';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
+import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import ProjectTeamRequestInbox from '@/components/ProjectTeamRequestInbox';
 import {
@@ -44,7 +45,7 @@ export default function Home() {
   const [projects, setProjects] = useState<Array<ProyectoConStats>>([]);
   const [tiposSistema, setTiposSistema] = useState<Array<TipoSistema>>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useEstadoSesion("easyreq:proyectos:buscar", "");
 
   // Control de acceso: todo proyecto es visible para autenticados;
   // cualquier autenticado puede crear; editar/eliminar solo relacionados
@@ -300,7 +301,7 @@ export default function Home() {
       </div>
 
       {loading || loadingPermisos ? (
-        <div className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+        <div className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden" role="status" aria-label="Cargando">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-24 animate-pulse bg-sunken" />
           ))}

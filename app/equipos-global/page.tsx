@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
+import { useEstadoSesion } from '@/lib/use-estado-sesion';
 
 interface MiembroDetallado {
   usuario: PerfilUsuario;
@@ -69,7 +70,7 @@ export default function EquiposGlobalPage() {
   const [usuarios, setUsuarios] = useState<Array<PerfilUsuario>>([]);
   const [roles, setRoles] = useState<Array<Rol>>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useEstadoSesion("easyreq:equipos:buscar", "");
 
   // Control de acceso: lectura total; solo el líder de cada equipo puede
   // editarlo y gestionar sus miembros.
@@ -113,6 +114,8 @@ export default function EquiposGlobalPage() {
     id_roles: [] as string[]
   });
   const [guardandoMiembro, setGuardandoMiembro] = useState(false);
+  // Texto para encontrar rápido a un usuario en la lista de invitación
+  const [filtroUsuario, setFiltroUsuario] = useState('');
 
   useEffect(() => {
     const leerUrl = () => {
@@ -214,6 +217,7 @@ export default function EquiposGlobalPage() {
     window.history.pushState(null, '', `?equipo=${team.equipo_id}`);
     setEquipoAbiertoId(team.equipo_id);
     setMemberForm({ id_usuario: '', id_roles: [] });
+    setFiltroUsuario('');
     window.scrollTo({ top: 0 });
   };
 
@@ -388,6 +392,7 @@ export default function EquiposGlobalPage() {
         toast.success('Invitación enviada. El usuario se unirá cuando la acepte.');
       }
       setMemberForm({ id_usuario: '', id_roles: [] });
+      setFiltroUsuario('');
     } catch (e) {
       console.error('Error al guardar miembro del equipo:', e);
       toast.error(mensajeError(e, esMiembroExistente ? 'No se pudieron actualizar los roles' : 'No se pudo enviar la invitación'));
@@ -620,6 +625,16 @@ export default function EquiposGlobalPage() {
                 <label htmlFor="miembro-usuario" className={etiqueta}>
                   Usuario <span className="text-danger">*</span>
                 </label>
+                {!editandoMiembro && usuarios.length > 8 && (
+                  <input
+                    type="search"
+                    value={filtroUsuario}
+                    onChange={(e) => setFiltroUsuario(e.target.value)}
+                    placeholder="Filtrar por nombre o correo..."
+                    aria-label="Filtrar usuarios por nombre o correo"
+                    className={`${campo} mb-2`}
+                  />
+                )}
                 <select
                   id="miembro-usuario"
                   value={memberForm.id_usuario}
@@ -630,6 +645,10 @@ export default function EquiposGlobalPage() {
                   {usuarios
                     // Uno mismo solo aparece si ya es miembro (para editar sus roles)
                     .filter(u => u.id !== uid || idsMiembros.has(u.id))
+                    .filter(u => {
+                      const filtro = filtroUsuario.trim().toLowerCase();
+                      return !filtro || u.id === memberForm.id_usuario || `${nombreDe(u)} ${u.correo}`.toLowerCase().includes(filtro);
+                    })
                     .map(u => (
                       <option key={u.id} value={u.id}>
                         {nombreDe(u)} ({u.correo}){idsMiembros.has(u.id) ? ' · ya es miembro' : ''}
@@ -929,7 +948,7 @@ export default function EquiposGlobalPage() {
 
       {/* Grid de Equipos */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" role="status" aria-label="Cargando">
           {[1, 2, 3].map(i => (
             <div key={i} className="h-48 bg-sunken border border-line rounded-ui animate-pulse" />
           ))}

@@ -43,6 +43,8 @@ import {
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
+import { useEstadoSesion } from '@/lib/use-estado-sesion';
+import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
 
 const FORM_VACIO = {
   enunciado: '',
@@ -65,6 +67,16 @@ const CAMPOS_EDITABLES: Array<[keyof typeof FORM_VACIO & keyof Requerimiento, st
   ['id_autor', 'autor'],
   ['id_aprobador', 'aprobador']
 ];
+
+type Orden = 'recientes' | 'antiguos' | 'estado';
+
+const FILTROS_INICIALES = {
+  q: '',
+  estado: 'todos',
+  tipo: 'todos',
+  modelo: 'todos',
+  orden: 'recientes' as Orden
+};
 
 const getBadgeColorEstado = (nombre?: string) => {
   const n = (nombre || '').toLowerCase();
@@ -107,10 +119,14 @@ export default function RequerimientosPage() {
   const [usuarios, setUsuarios] = useState<Array<PerfilUsuario>>([]);
 
   // Filtros
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterEstado, setFilterEstado] = useState<string>("todos");
-  const [filterTipo, setFilterTipo] = useState<string>("todos");
-  const [filterModelo, setFilterModelo] = useState<string>("todos");
+  // Se recuerdan por proyecto mientras dure la sesión del navegador
+  const [filtros, setFiltros] = useEstadoSesion(proyectoId ? `easyreq:req:${proyectoId}` : null, FILTROS_INICIALES);
+  const { q: searchTerm, estado: filterEstado, tipo: filterTipo, modelo: filterModelo, orden } = filtros;
+  const setSearchTerm = (q: string) => setFiltros(f => ({ ...f, q }));
+  const setFilterEstado = (estado: string) => setFiltros(f => ({ ...f, estado }));
+  const setFilterTipo = (tipo: string) => setFiltros(f => ({ ...f, tipo }));
+  const setFilterModelo = (modelo: string) => setFiltros(f => ({ ...f, modelo }));
+  const setOrden = (nuevo: Orden) => setFiltros(f => ({ ...f, orden: nuevo }));
 
   // Modal State Requerimiento
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -554,18 +570,22 @@ export default function RequerimientosPage() {
   // Filtrado de lista
   const termino = searchTerm.trim().toLowerCase();
   const hayFiltros = termino !== '' || filterEstado !== 'todos' || filterTipo !== 'todos' || filterModelo !== 'todos';
-  const limpiarFiltros = () => {
-    setSearchTerm('');
-    setFilterEstado('todos');
-    setFilterTipo('todos');
-    setFilterModelo('todos');
-  };
+  const limpiarFiltros = () => setFiltros(f => ({ ...FILTROS_INICIALES, orden: f.orden }));
   const filteredRequerimientos = requerimientos.filter((r) => {
     const matchSearch = !termino || r.enunciado.toLowerCase().includes(termino);
     const matchEstado = filterEstado === 'todos' || r.id_estado === filterEstado;
     const matchTipo = filterTipo === 'todos' || r.id_tipo_requerimiento === filterTipo;
     const matchModelo = filterModelo === 'todos' || r.id_modelo === filterModelo;
     return matchSearch && matchEstado && matchTipo && matchModelo;
+  });
+  // La carga ya viene del más nuevo al más antiguo
+  const requerimientosOrdenados = [...filteredRequerimientos].sort((a, b) => {
+    if (orden === 'antiguos') return (a.created_at || '').localeCompare(b.created_at || '');
+    if (orden === 'estado') {
+      const porEstado = (a.estado?.nombre_estado || 'zzz').localeCompare(b.estado?.nombre_estado || 'zzz', 'es');
+      return porEstado || (b.created_at || '').localeCompare(a.created_at || '');
+    }
+    return (b.created_at || '').localeCompare(a.created_at || '');
   });
 
   // Equipos vinculados primero en el modal
@@ -585,7 +605,7 @@ export default function RequerimientosPage() {
     );
   }
 
-  const selectFiltro = `${campo} !text-xs bg-surface border-line`;
+  const selectFiltro = campo;
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -681,24 +701,39 @@ export default function RequerimientosPage() {
           </select>
         </div>
         {!loading && requerimientos.length > 0 && (
-          <div className="flex items-center justify-between text-xs text-ink-subtle px-1">
-            <span>
+          <div className="flex items-center justify-between gap-3 text-sm text-ink-subtle px-1">
+            <span aria-live="polite">
               {hayFiltros
                 ? `Mostrando ${filteredRequerimientos.length} de ${requerimientos.length} requerimientos`
                 : `${requerimientos.length} ${requerimientos.length === 1 ? 'requerimiento' : 'requerimientos'}`}
             </span>
-            {hayFiltros && (
-              <button onClick={limpiarFiltros} className="font-semibold text-brand-text hover:underline cursor-pointer">
-                Quitar filtros
-              </button>
-            )}
+            <div className="flex items-center gap-4">
+              {hayFiltros && (
+                <button onClick={limpiarFiltros} className="font-semibold text-brand-text hover:underline cursor-pointer">
+                  Quitar filtros
+                </button>
+              )}
+              <label className="flex items-center gap-2">
+                <span>Ordenar</span>
+                <select
+                  value={orden}
+                  onChange={(e) => setOrden(e.target.value as Orden)}
+                  aria-label="Ordenar requerimientos"
+                  className="bg-transparent text-ink font-medium text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
+                >
+                  <option value="recientes">Más recientes</option>
+                  <option value="antiguos">Más antiguos</option>
+                  <option value="estado">Por estado</option>
+                </select>
+              </label>
+            </div>
           </div>
         )}
       </div>
 
       {/* Lista de Requerimientos */}
       {loading ? (
-        <div className="space-y-3">
+        <div className="space-y-3" role="status" aria-label="Cargando">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-28 bg-sunken border border-line rounded-ui animate-pulse" />
           ))}
@@ -732,7 +767,7 @@ export default function RequerimientosPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredRequerimientos.map((req) => (
+          {requerimientosOrdenados.map((req) => (
             <div
               key={req.id}
               className={`${tarjeta} p-4 hover:border-line-strong transition-colors flex flex-col md:flex-row md:items-start justify-between gap-4`}
@@ -797,10 +832,10 @@ export default function RequerimientosPage() {
                     </span>
                   )}
                   {req.created_at && (
-                    <span className="flex items-center gap-1" title={new Date(req.created_at).toLocaleString()}>
+                    <time dateTime={req.created_at} title={fechaCompleta(req.created_at)} className="flex items-center gap-1">
                       <Clock size={12} />
-                      {new Date(req.created_at).toLocaleDateString()}
-                    </span>
+                      {fechaRelativa(req.created_at)}
+                    </time>
                   )}
                 </div>
               </div>
@@ -1102,7 +1137,7 @@ export default function RequerimientosPage() {
                     <div className="flex items-start justify-between gap-3">
                       <span className="font-semibold text-ink">{log.accion}</span>
                       <time className="text-xs text-ink-subtle shrink-0" dateTime={log.fecha_hora}>
-                        {new Date(log.fecha_hora).toLocaleString()}
+                        {fechaCompleta(log.fecha_hora)}
                       </time>
                     </div>
                     {log.detalles?.estado_anterior !== undefined && log.detalles?.estado_nuevo && (
