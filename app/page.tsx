@@ -22,6 +22,7 @@ import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import PageHeader from '@/components/ui/PageHeader';
+import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import ProjectTeamRequestInbox from '@/components/ProjectTeamRequestInbox';
 import {
@@ -79,6 +80,7 @@ export default function Home() {
     id_tipo_sistema: ''
   });
   const [saving, setSaving] = useState(false);
+  const { hayCambios, intentarCerrar } = useCierreSeguro(isModalOpen, formData, () => setIsModalOpen(false));
 
   // Cargar Proyectos con su tipo y contadores
   const fetchProjects = useCallback(async () => {
@@ -433,7 +435,8 @@ export default function Home() {
       {/* Modal Crear / Editar Proyecto */}
       <Modal
         open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={intentarCerrar}
+        cerrarConFondo={!hayCambios}
         title={editingProject ? 'Editar Proyecto' : 'Nuevo Proyecto'}
       >
         <form onSubmit={handleSave} noValidate className="flex flex-col flex-1 min-h-0">
@@ -481,7 +484,7 @@ export default function Home() {
             </div>
           </ModalBody>
           <ModalFooter>
-            <button type="button" onClick={() => setIsModalOpen(false)} className={btnSecundario}>
+            <button type="button" onClick={intentarCerrar} className={btnSecundario}>
               Cancelar
             </button>
             <button type="submit" disabled={saving} className={btnPrimario}>

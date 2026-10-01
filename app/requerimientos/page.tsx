@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Users, Clock, Save,
-  Sparkles, CheckCheck, FileText, History, Lock, Wand2, ArrowRight
+  Sparkles, CheckCheck, FileText, History, Lock, Wand2, ArrowRight, Copy
 } from 'lucide-react';
 import { generateSingleRequirement } from '@/lib/ai-actions';
 import type {
@@ -42,6 +42,7 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
+import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 
 const FORM_VACIO = {
   enunciado: '',
@@ -168,6 +169,24 @@ export default function RequerimientosPage() {
   const [isAILoading, setIsAILoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
 
+  // Al registrar varios requerimientos seguidos: "guardar y añadir otro" y
+  // recordar la clasificación del último para no volver a elegirla.
+  const crearOtroRef = useRef(false);
+  const ultimaClasificacionRef = useRef<Partial<typeof FORM_VACIO> | null>(null);
+
+  // Cambios sin guardar: el enunciado, el texto de la IA y, al editar, el resto de campos
+  const { hayCambios, intentarCerrar } = useCierreSeguro(
+    isModalOpen,
+    {
+      enunciado: formData.enunciado,
+      ia: aiPrompt,
+      resto: editingReq
+        ? [formData.id_tipo_requerimiento, formData.id_estado, formData.id_modalidad, formData.id_modelo, formData.id_autor, formData.id_aprobador]
+        : null
+    },
+    () => setIsModalOpen(false)
+  );
+
   // Cargar lista de requerimientos (más recientes primero)
   const fetchRequerimientos = useCallback(async () => {
     if (!proyectoId) return;
@@ -229,6 +248,15 @@ export default function RequerimientosPage() {
     return u ? (u.nombre || u.correo) : null;
   };
 
+  const copiarEnunciado = async (req: Requerimiento) => {
+    try {
+      await navigator.clipboard.writeText(req.enunciado);
+      toast.success('Enunciado copiado');
+    } catch {
+      toast.error('No se pudo copiar. Selecciona el texto y cópialo manualmente.');
+    }
+  };
+
   // Apertura de modal nuevo
   const openCreateModal = () => {
     if (!puedeEditar) {
@@ -239,15 +267,26 @@ export default function RequerimientosPage() {
     const primerModelo = modelos[0]?.id || '';
     const primerPatron = patrones.find(p => p.id_modelo === primerModelo);
 
+    const previa = ultimaClasificacionRef.current;
+    const sigueExistiendo = (lista: Array<string>, id?: string) => !!id && lista.includes(id);
+    const modeloInicial = sigueExistiendo(modelos.map(m => m.id), previa?.id_modelo) ? previa!.id_modelo! : primerModelo;
+    const patronPrevio = patrones.find(p => p.patron_id === previa?.id_patron_seleccionado && p.id_modelo === modeloInicial);
+    const patronInicial = patronPrevio ?? patrones.find(p => p.id_modelo === modeloInicial) ?? primerPatron;
+
     setFormData({
       ...FORM_VACIO,
-      id_tipo_requerimiento: tiposReq[0]?.tipo_req || '',
+      id_tipo_requerimiento: sigueExistiendo(tiposReq.map(t => t.tipo_req), previa?.id_tipo_requerimiento)
+        ? previa!.id_tipo_requerimiento!
+        : tiposReq[0]?.tipo_req || '',
       id_estado: estados.find(e => e.nombre_estado === 'Borrador')?.id || estados[0]?.id || '',
-      id_modalidad: modalidades[0]?.id || '',
-      id_modelo: primerModelo,
-      id_patron_seleccionado: primerPatron?.patron_id || '',
+      id_modalidad: sigueExistiendo(modalidades.map(m => m.id), previa?.id_modalidad)
+        ? previa!.id_modalidad!
+        : modalidades[0]?.id || '',
+      id_modelo: modeloInicial,
+      id_patron_seleccionado: patronInicial?.patron_id || '',
       // Por defecto el autor es quien lo redacta
-      id_autor: usuarios.some(u => u.id === uid) ? uid! : ''
+      id_autor: usuarios.some(u => u.id === uid) ? uid! : '',
+      id_aprobador: sigueExistiendo(usuarios.map(u => u.id), previa?.id_aprobador) ? previa!.id_aprobador! : ''
     });
     setAiPrompt('');
     setIsModalOpen(true);
@@ -300,6 +339,8 @@ export default function RequerimientosPage() {
   // Guardar Requerimiento (Crear o Editar)
   const handleSaveReq = async (e: React.FormEvent) => {
     e.preventDefault();
+    const crearOtro = crearOtroRef.current;
+    crearOtroRef.current = false;
     if (!puedeEditar) {
       toast.error('No tienes permiso para modificar requerimientos de este proyecto');
       return;
@@ -350,9 +391,23 @@ export default function RequerimientosPage() {
           });
         }
         toast.success('Requerimiento registrado');
+        ultimaClasificacionRef.current = {
+          id_tipo_requerimiento: formData.id_tipo_requerimiento,
+          id_modalidad: formData.id_modalidad,
+          id_modelo: formData.id_modelo,
+          id_patron_seleccionado: formData.id_patron_seleccionado,
+          id_aprobador: formData.id_aprobador
+        };
       }
 
-      setIsModalOpen(false);
+      if (crearOtro && !editingReq) {
+        // Se queda abierto con la misma clasificación para redactar el siguiente
+        setFormData(prev => ({ ...prev, enunciado: '' }));
+        setAiPrompt('');
+        requestAnimationFrame(() => document.getElementById('req-enunciado')?.focus());
+      } else {
+        setIsModalOpen(false);
+      }
       fetchRequerimientos();
     } catch (err) {
       console.error(err);
@@ -723,7 +778,7 @@ export default function RequerimientosPage() {
                 </div>
 
                 <div className="border-l-2 border-line-strong pl-3 py-0.5">
-                  <p className="text-ink font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
+                  <p className="text-ink font-mono text-sm leading-relaxed whitespace-pre-wrap break-words">
                     {req.enunciado}
                   </p>
                 </div>
@@ -752,6 +807,14 @@ export default function RequerimientosPage() {
 
               {/* Acciones */}
               <div className="flex items-center gap-1 border-t md:border-t-0 pt-3 md:pt-0 border-line">
+                <button
+                  onClick={() => copiarEnunciado(req)}
+                  title="Copiar enunciado"
+                  aria-label="Copiar enunciado"
+                  className={btnIcono}
+                >
+                  <Copy size={16} />
+                </button>
                 <button
                   onClick={() => handleViewLogs(req)}
                   title="Ver historial de cambios"
@@ -789,7 +852,8 @@ export default function RequerimientosPage() {
       {/* Modal Redactar / Editar Requerimiento */}
       <Modal
         open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={intentarCerrar}
+        cerrarConFondo={!hayCambios}
         title={editingReq ? 'Editar Requerimiento' : 'Nuevo Requerimiento'}
         description="Elige el modelo de especificación y redacta respetando la estructura del patrón."
         size="xl"
@@ -860,7 +924,7 @@ export default function RequerimientosPage() {
                   placeholder="Describe la funcionalidad brevemente..."
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  className="flex-1 px-3.5 py-2 bg-surface border border-brand-line rounded-ui text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-text text-ink placeholder:text-ink-subtle"
+                  className="flex-1 px-3 min-h-10 pointer-coarse:min-h-11 py-2 bg-surface border border-line-strong rounded-ui text-base focus:outline-none focus:border-brand-text focus:ring-1 focus:ring-brand-text text-ink placeholder:text-ink-subtle"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
@@ -896,12 +960,6 @@ export default function RequerimientosPage() {
                 placeholder={patronSeleccionado?.promt || "Escribe el enunciado siguiendo la estructura del patrón..."}
                 value={formData.enunciado}
                 onChange={(e) => setFormData({ ...formData, enunciado: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                    e.preventDefault();
-                    formRef.current?.requestSubmit();
-                  }
-                }}
                 className={`${campo} font-mono leading-relaxed`}
               />
               <p className="text-xs text-ink-subtle mt-1">Ctrl + Enter para guardar.</p>
@@ -990,12 +1048,25 @@ export default function RequerimientosPage() {
           </ModalBody>
 
           <ModalFooter>
-            <button type="button" onClick={() => setIsModalOpen(false)} className={btnSecundario}>
+            <button type="button" onClick={intentarCerrar} className={btnSecundario}>
               Cancelar
             </button>
+            {!editingReq && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => {
+                  crearOtroRef.current = true;
+                  formRef.current?.requestSubmit();
+                }}
+                className={btnSecundario}
+              >
+                Guardar y añadir otro
+              </button>
+            )}
             <button type="submit" disabled={saving} className={btnPrimario}>
-              <Save size={14} />
-              {saving ? 'Guardando...' : editingReq ? 'Guardar cambios' : 'Registrar Requerimiento'}
+              <Save size={16} />
+              {saving ? 'Guardando...' : editingReq ? 'Guardar cambios' : 'Registrar requerimiento'}
             </button>
           </ModalFooter>
         </form>

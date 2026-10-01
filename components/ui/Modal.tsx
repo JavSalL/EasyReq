@@ -19,6 +19,8 @@ interface ModalProps {
   title: React.ReactNode;
   description?: React.ReactNode;
   size?: keyof typeof ANCHOS;
+  /** Si es false, un clic en el fondo no cierra el modal (formularios con cambios sin guardar). */
+  cerrarConFondo?: boolean;
   children: React.ReactNode;
 }
 
@@ -27,7 +29,7 @@ interface ModalProps {
  * la X. El contenido va en `ModalBody` (con scroll) y `ModalFooter`; si hay un
  * formulario, debe envolver a ambos para que el botón de enviar funcione.
  */
-export function Modal({ open, onClose, title, description, size = 'md', children }: ModalProps) {
+export function Modal({ open, onClose, title, description, size = 'md', cerrarConFondo = true, children }: ModalProps) {
   const id = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -42,9 +44,17 @@ export function Modal({ open, onClose, title, description, size = 'md', children
     document.body.style.overflow = 'hidden';
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && pilaModales[pilaModales.length - 1] === id) {
+      if (pilaModales[pilaModales.length - 1] !== id) return;
+      if (e.key === 'Escape') {
         e.stopPropagation();
         onCloseRef.current();
+      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        // Ctrl/Cmd + Enter envía el formulario del modal desde cualquier campo
+        const formulario = panelRef.current?.querySelector('form');
+        if (formulario) {
+          e.preventDefault();
+          formulario.requestSubmit();
+        }
       }
     };
     document.addEventListener('keydown', onKeyDown);
@@ -69,7 +79,7 @@ export function Modal({ open, onClose, title, description, size = 'md', children
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-scrim animate-in fade-in"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (cerrarConFondo && e.target === e.currentTarget) onClose();
       }}
     >
       <div

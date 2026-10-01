@@ -122,14 +122,22 @@ export default function AyudaPage() {
         </h2>
         <ul className="space-y-1.5 text-xs text-ink-muted">
           <li>
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">/</kbd>
+            {' '}lleva el cursor al buscador de la pantalla.
+          </li>
+          <li>
             <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Esc</kbd>
-            {' '}cierra cualquier ventana abierta.
+            {' '}cierra cualquier ventana abierta. Si tienes cambios sin guardar, te pregunta antes de descartarlos.
           </li>
           <li>
             <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Ctrl</kbd>
             {' + '}
             <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Enter</kbd>
-            {' '}guarda el requerimiento que estás redactando.
+            {' '}guarda el formulario abierto (proyecto, equipo, patrón o requerimiento).
+          </li>
+          <li>
+            Al registrar varios requerimientos seguidos, usa «Guardar y añadir otro»: la ventana se queda abierta
+            con el mismo modelo y tipo para que solo escribas el siguiente enunciado.
           </li>
         </ul>
       </section>

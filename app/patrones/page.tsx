@@ -20,6 +20,7 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
+import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 
 export default function PatronesPage() {
   const confirmar = useConfirm();
@@ -39,6 +40,7 @@ export default function PatronesPage() {
     id_modelo: ''
   });
   const [saving, setSaving] = useState(false);
+  const { hayCambios, intentarCerrar } = useCierreSeguro(isModalOpen, formData, () => setIsModalOpen(false));
 
   const fetchData = useCallback(async () => {
     try {
@@ -309,7 +311,8 @@ export default function PatronesPage() {
       {/* Modal Crear / Editar Patrón */}
       <Modal
         open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={intentarCerrar}
+        cerrarConFondo={!hayCambios}
         title={editingPattern ? 'Editar Patrón' : 'Nuevo Patrón'}
         size="lg"
       >
@@ -362,7 +365,7 @@ export default function PatronesPage() {
             </div>
           </ModalBody>
           <ModalFooter>
-            <button type="button" onClick={() => setIsModalOpen(false)} className={btnSecundario}>
+            <button type="button" onClick={intentarCerrar} className={btnSecundario}>
               Cancelar
             </button>
             <button type="submit" disabled={saving} className={btnPrimario}>

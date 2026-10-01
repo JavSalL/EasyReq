@@ -25,6 +25,24 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, isLoginPage, router]);
 
+  // Atajo "/": lleva el cursor al buscador de la pantalla (si hay uno)
+  useEffect(() => {
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      const buscador = document.querySelector<HTMLInputElement>('input[type="search"]');
+      if (buscador) {
+        e.preventDefault();
+        buscador.focus();
+        buscador.select();
+      }
+    };
+    document.addEventListener('keydown', alTeclear);
+    return () => document.removeEventListener('keydown', alTeclear);
+  }, []);
+
   // Si estamos en la página de login, renderizamos a pantalla completa sin barra de navegación
   if (isLoginPage) {
     return <main className="min-h-dvh w-full">{children}</main>;

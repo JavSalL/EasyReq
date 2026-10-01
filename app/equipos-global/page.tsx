@@ -39,6 +39,7 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
+import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 
 interface MiembroDetallado {
   usuario: PerfilUsuario;
@@ -102,6 +103,7 @@ export default function EquiposGlobalPage() {
   const [editingEquipo, setEditingEquipo] = useState<Equipo | null>(null);
   const [formData, setFormData] = useState({ nombre: '', descripcion: '' });
   const [saving, setSaving] = useState(false);
+  const { hayCambios, intentarCerrar } = useCierreSeguro(isModalOpen, formData, () => setIsModalOpen(false));
 
   // Vista de miembros (se refleja en la URL como ?equipo=ID para que el botón
   // "atrás" del navegador regrese a la lista)
@@ -499,7 +501,8 @@ export default function EquiposGlobalPage() {
   const modalEquipo = (
     <Modal
       open={isModalOpen}
-      onClose={() => setIsModalOpen(false)}
+      onClose={intentarCerrar}
+      cerrarConFondo={!hayCambios}
       title={editingEquipo ? 'Editar Equipo' : 'Nuevo Equipo'}
       description={editingEquipo ? undefined : 'Quedarás como líder del equipo.'}
     >
@@ -538,7 +541,7 @@ export default function EquiposGlobalPage() {
           </p>
         </ModalBody>
         <ModalFooter>
-          <button type="button" onClick={() => setIsModalOpen(false)} className={btnSecundario}>
+          <button type="button" onClick={intentarCerrar} className={btnSecundario}>
             Cancelar
           </button>
           <button type="submit" disabled={saving} className={btnPrimario}>
