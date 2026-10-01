@@ -69,13 +69,15 @@ const CAMPOS_EDITABLES: Array<[keyof typeof FORM_VACIO & keyof Requerimiento, st
 ];
 
 type Orden = 'recientes' | 'antiguos' | 'estado';
+type Agrupar = 'ninguno' | 'tipo' | 'modelo';
 
 const FILTROS_INICIALES = {
   q: '',
   estado: 'todos',
   tipo: 'todos',
   modelo: 'todos',
-  orden: 'recientes' as Orden
+  orden: 'recientes' as Orden,
+  agrupar: 'ninguno' as Agrupar
 };
 
 const getBadgeColorEstado = (nombre?: string) => {
@@ -127,6 +129,9 @@ export default function RequerimientosPage() {
   const setFilterTipo = (tipo: string) => setFiltros(f => ({ ...f, tipo }));
   const setFilterModelo = (modelo: string) => setFiltros(f => ({ ...f, modelo }));
   const setOrden = (nuevo: Orden) => setFiltros(f => ({ ...f, orden: nuevo }));
+  // Los filtros guardados antes de existir "agrupar" no lo traen
+  const agrupar: Agrupar = filtros.agrupar ?? 'ninguno';
+  const setAgrupar = (nuevo: Agrupar) => setFiltros(f => ({ ...f, agrupar: nuevo }));
 
   // Modal State Requerimiento
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -570,14 +575,22 @@ export default function RequerimientosPage() {
   // Filtrado de lista
   const termino = searchTerm.trim().toLowerCase();
   const hayFiltros = termino !== '' || filterEstado !== 'todos' || filterTipo !== 'todos' || filterModelo !== 'todos';
-  const limpiarFiltros = () => setFiltros(f => ({ ...FILTROS_INICIALES, orden: f.orden }));
-  const filteredRequerimientos = requerimientos.filter((r) => {
-    const matchSearch = !termino || r.enunciado.toLowerCase().includes(termino);
-    const matchEstado = filterEstado === 'todos' || r.id_estado === filterEstado;
-    const matchTipo = filterTipo === 'todos' || r.id_tipo_requerimiento === filterTipo;
-    const matchModelo = filterModelo === 'todos' || r.id_modelo === filterModelo;
-    return matchSearch && matchEstado && matchTipo && matchModelo;
-  });
+  const limpiarFiltros = () => setFiltros(f => ({ ...FILTROS_INICIALES, orden: f.orden, agrupar: f.agrupar }));
+  // Coincidencia con todo salvo el estado: sirve para contar cuántos hay en cada pestaña de estado
+  const coincideSinEstado = (r: Requerimiento) =>
+    (!termino || r.enunciado.toLowerCase().includes(termino)) &&
+    (filterTipo === 'todos' || r.id_tipo_requerimiento === filterTipo) &&
+    (filterModelo === 'todos' || r.id_modelo === filterModelo);
+  const esDelEstado = (r: Requerimiento, id: string) =>
+    id === 'todos' || (id === 'sin-estado' ? !r.id_estado : r.id_estado === id);
+  const requerimientosBase = requerimientos.filter(coincideSinEstado);
+  const conteoEstado = (id: string) => requerimientosBase.filter(r => esDelEstado(r, id)).length;
+  const filteredRequerimientos = requerimientosBase.filter(r => esDelEstado(r, filterEstado));
+  const pestanasEstado = [
+    { id: 'todos', nombre: 'Todos' },
+    ...estados.map(e => ({ id: e.id, nombre: e.nombre_estado })),
+    ...(requerimientos.some(r => !r.id_estado) ? [{ id: 'sin-estado', nombre: 'Sin estado' }] : [])
+  ];
   // La carga ya viene del más nuevo al más antiguo
   const requerimientosOrdenados = [...filteredRequerimientos].sort((a, b) => {
     if (orden === 'antiguos') return (a.created_at || '').localeCompare(b.created_at || '');
@@ -587,6 +600,21 @@ export default function RequerimientosPage() {
     }
     return (b.created_at || '').localeCompare(a.created_at || '');
   });
+
+  // Secciones cuando se agrupa por tipo o por modelo (en el orden del catálogo)
+  const gruposRequerimientos = (() => {
+    if (agrupar === 'ninguno') return [];
+    const catalogo = agrupar === 'tipo'
+      ? tiposReq.map(t => ({ id: t.tipo_req, nombre: t.nombre }))
+      : modelos.map(m => ({ id: m.id, nombre: m.nombre }));
+    const idDe = (r: Requerimiento) => (agrupar === 'tipo' ? r.id_tipo_requerimiento : r.id_modelo);
+    const grupos = catalogo.map(c => ({ ...c, items: requerimientosOrdenados.filter(r => idDe(r) === c.id) }));
+    const resto = requerimientosOrdenados.filter(r => !catalogo.some(c => c.id === idDe(r)));
+    return [
+      ...grupos,
+      { id: 'sin-clasificar', nombre: agrupar === 'tipo' ? 'Sin tipo' : 'Sin modelo', items: resto }
+    ].filter(g => g.items.length > 0);
+  })();
 
   // Equipos vinculados primero en el modal
   const equiposOrdenados = [...equipos].sort(
@@ -607,165 +635,9 @@ export default function RequerimientosPage() {
 
   const selectFiltro = campo;
 
-  return (
-    <div className="space-y-6 animate-in fade-in">
-      <PageHeader
-        back={
-          <Link
-            href="/"
-            className="inline-flex items-center text-sm font-medium text-ink-subtle hover:text-ink transition-colors group"
-          >
-            <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
-            Proyectos
-          </Link>
-        }
-        title={
-          proyecto ? (
-            <span className="flex flex-wrap items-center gap-3">
-              {proyecto.nombre}
-              {proyecto.tipos_sistema?.nombre && (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-sunken text-ink-muted border border-line">
-                  {proyecto.tipos_sistema.nombre}
-                </span>
-              )}
-            </span>
-          ) : (
-            <span className="block h-8 w-64 max-w-full bg-sunken-strong rounded-ui animate-pulse" />
-          )
-        }
-        description={proyecto ? proyecto.descripcion || 'Sin descripción' : undefined}
-        actions={
-          <>
-            <button onClick={() => setShowEquiposModal(true)} className={btnSecundario}>
-              <Users size={16} className="text-ink-subtle" />
-              Equipos ({equiposAsignados.length})
-            </button>
-
-            {puedeEditar && (
-              <button onClick={openCreateModal} className={btnPrimario}>
-                <Plus size={16} />
-                Nuevo requerimiento
-              </button>
-            )}
-          </>
-        }
-      />
-
-      {/* Aviso de solo lectura para no relacionados */}
-      {permisoCargado && !puedeEditar && (
-        <div className="bg-warning-subtle border border-warning-line rounded-ui p-3.5 flex items-center gap-2.5 text-xs text-warning">
-          <Lock size={15} className="shrink-0" />
-          <span>
-            Tienes acceso de lectura. Solo el creador del proyecto o miembros de un equipo vinculado pueden
-            crear o editar requerimientos; el creador administra las invitaciones de equipos.
-          </span>
-        </div>
-      )}
-
-      {/* Barra de Búsqueda y Filtros */}
-      <div className="space-y-2">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
-              <Search size={14} />
-            </div>
-            <input
-              type="search"
-              placeholder="Buscar enunciado..."
-              aria-label="Buscar requerimientos"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className={buscador}
-            />
-          </div>
-
-          <select value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} aria-label="Filtrar por estado" className={selectFiltro}>
-            <option value="todos">Todos los estados</option>
-            {estados.map((e) => (
-              <option key={e.id} value={e.id}>{e.nombre_estado}</option>
-            ))}
-          </select>
-
-          <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} aria-label="Filtrar por tipo" className={selectFiltro}>
-            <option value="todos">Todos los tipos</option>
-            {tiposReq.map((t) => (
-              <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
-            ))}
-          </select>
-
-          <select value={filterModelo} onChange={(e) => setFilterModelo(e.target.value)} aria-label="Filtrar por modelo" className={selectFiltro}>
-            <option value="todos">Todos los modelos</option>
-            {modelos.map((m) => (
-              <option key={m.id} value={m.id}>{m.nombre}</option>
-            ))}
-          </select>
-        </div>
-        {!loading && requerimientos.length > 0 && (
-          <div className="flex items-center justify-between gap-3 text-sm text-ink-subtle px-1">
-            <span aria-live="polite">
-              {hayFiltros
-                ? `Mostrando ${filteredRequerimientos.length} de ${requerimientos.length} requerimientos`
-                : `${requerimientos.length} ${requerimientos.length === 1 ? 'requerimiento' : 'requerimientos'}`}
-            </span>
-            <div className="flex items-center gap-4">
-              {hayFiltros && (
-                <button onClick={limpiarFiltros} className="font-semibold text-brand-text hover:underline cursor-pointer">
-                  Quitar filtros
-                </button>
-              )}
-              <label className="flex items-center gap-2">
-                <span>Ordenar</span>
-                <select
-                  value={orden}
-                  onChange={(e) => setOrden(e.target.value as Orden)}
-                  aria-label="Ordenar requerimientos"
-                  className="bg-transparent text-ink font-medium text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
-                >
-                  <option value="recientes">Más recientes</option>
-                  <option value="antiguos">Más antiguos</option>
-                  <option value="estado">Por estado</option>
-                </select>
-              </label>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Lista de Requerimientos */}
-      {loading ? (
-        <div className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden" role="status" aria-label="Cargando">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 bg-sunken animate-pulse" />
-          ))}
-        </div>
-      ) : filteredRequerimientos.length === 0 ? (
-        <div className="text-center py-20">
-          <h3 className="text-lg font-semibold text-ink">
-            {hayFiltros ? 'Sin resultados' : 'Todavía no hay requerimientos'}
-          </h3>
-          <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
-            {hayFiltros
-              ? 'Ningún requerimiento coincide con los filtros seleccionados.'
-              : puedeEditar
-                ? 'Redacta el primero usando las sintaxis de los modelos o genéralo con IA.'
-                : 'Cuando el equipo redacte requerimientos, aparecerán aquí.'}
-          </p>
-          <div className="mt-4 flex justify-center gap-2">
-            {hayFiltros && (
-              <button onClick={limpiarFiltros} className={btnSecundario}>Quitar filtros</button>
-            )}
-            {!hayFiltros && puedeEditar && (
-              <button onClick={openCreateModal} className={btnPrimario}>
-                <Plus size={15} />
-                Redactar Requerimiento
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
-          {requerimientosOrdenados.map((req) => (
-            <li
+  // Una fila de la lista de requerimientos
+  const filaRequerimiento = (req: Requerimiento) => (
+    <li
               key={req.id}
               className="px-5 py-5 hover:bg-sunken/60 transition-colors flex flex-col md:flex-row md:items-start justify-between gap-4"
             >
@@ -877,8 +749,221 @@ export default function RequerimientosPage() {
                 )}
               </div>
             </li>
+  );
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      <PageHeader
+        back={
+          <Link
+            href="/"
+            className="inline-flex items-center text-sm font-medium text-ink-subtle hover:text-ink transition-colors group"
+          >
+            <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
+            Proyectos
+          </Link>
+        }
+        title={
+          proyecto ? (
+            <span className="flex flex-wrap items-center gap-3">
+              {proyecto.nombre}
+              {proyecto.tipos_sistema?.nombre && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-sunken text-ink-muted border border-line">
+                  {proyecto.tipos_sistema.nombre}
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="block h-8 w-64 max-w-full bg-sunken-strong rounded-ui animate-pulse" />
+          )
+        }
+        description={proyecto ? proyecto.descripcion || 'Sin descripción' : undefined}
+        actions={
+          <>
+            <button onClick={() => setShowEquiposModal(true)} className={btnSecundario}>
+              <Users size={16} className="text-ink-subtle" />
+              Equipos ({equiposAsignados.length})
+            </button>
+
+            {puedeEditar && (
+              <button onClick={openCreateModal} className={btnPrimario}>
+                <Plus size={16} />
+                Nuevo requerimiento
+              </button>
+            )}
+          </>
+        }
+      />
+
+      {/* Aviso de solo lectura para no relacionados */}
+      {permisoCargado && !puedeEditar && (
+        <div className="bg-warning-subtle border border-warning-line rounded-ui p-3.5 flex items-center gap-2.5 text-xs text-warning">
+          <Lock size={15} className="shrink-0" />
+          <span>
+            Tienes acceso de lectura. Solo el creador del proyecto o miembros de un equipo vinculado pueden
+            crear o editar requerimientos; el creador administra las invitaciones de equipos.
+          </span>
+        </div>
+      )}
+
+      {/* Navegación por estado: un clic muestra solo los requerimientos de ese estado */}
+      {!loading && requerimientos.length > 0 && (
+        <div
+          role="group"
+          aria-label="Filtrar por estado"
+          className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line custom-scrollbar"
+        >
+          {pestanasEstado.map((p) => {
+            const activa = filterEstado === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setFilterEstado(p.id)}
+                aria-pressed={activa}
+                className={`shrink-0 px-4 min-h-11 text-sm whitespace-nowrap border-b-2 transition-colors cursor-pointer ${
+                  activa
+                    ? 'border-ink text-ink font-semibold'
+                    : 'border-transparent text-ink-muted font-medium hover:text-ink'
+                }`}
+              >
+                {p.nombre}
+                <span className="ml-2 text-xs tabular-nums text-ink-subtle">{conteoEstado(p.id)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Barra de Búsqueda y Filtros */}
+      <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
+              <Search size={14} />
+            </div>
+            <input
+              type="search"
+              placeholder="Buscar enunciado..."
+              aria-label="Buscar requerimientos"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className={buscador}
+            />
+          </div>
+
+          <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} aria-label="Filtrar por tipo" className={selectFiltro}>
+            <option value="todos">Todos los tipos</option>
+            {tiposReq.map((t) => (
+              <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
+            ))}
+          </select>
+
+          <select value={filterModelo} onChange={(e) => setFilterModelo(e.target.value)} aria-label="Filtrar por modelo" className={selectFiltro}>
+            <option value="todos">Todos los modelos</option>
+            {modelos.map((m) => (
+              <option key={m.id} value={m.id}>{m.nombre}</option>
+            ))}
+          </select>
+        </div>
+        {!loading && requerimientos.length > 0 && (
+          <div className="flex items-center justify-between gap-3 text-sm text-ink-subtle px-1">
+            <span aria-live="polite">
+              {hayFiltros
+                ? `Mostrando ${filteredRequerimientos.length} de ${requerimientos.length} requerimientos`
+                : `${requerimientos.length} ${requerimientos.length === 1 ? 'requerimiento' : 'requerimientos'}`}
+            </span>
+            <div className="flex items-center gap-4">
+              {hayFiltros && (
+                <button onClick={limpiarFiltros} className="font-semibold text-brand-text hover:underline cursor-pointer">
+                  Quitar filtros
+                </button>
+              )}
+              <label className="flex items-center gap-2">
+                <span>Agrupar</span>
+                <select
+                  value={agrupar}
+                  onChange={(e) => setAgrupar(e.target.value as Agrupar)}
+                  aria-label="Agrupar requerimientos"
+                  className="bg-transparent text-ink font-medium text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
+                >
+                  <option value="ninguno">Sin agrupar</option>
+                  <option value="tipo">Por tipo</option>
+                  <option value="modelo">Por modelo</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2">
+                <span>Ordenar</span>
+                <select
+                  value={orden}
+                  onChange={(e) => setOrden(e.target.value as Orden)}
+                  aria-label="Ordenar requerimientos"
+                  className="bg-transparent text-ink font-medium text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
+                >
+                  <option value="recientes">Más recientes</option>
+                  <option value="antiguos">Más antiguos</option>
+                  <option value="estado">Por estado</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Lista de Requerimientos */}
+      {loading ? (
+        <div className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden" role="status" aria-label="Cargando">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-32 bg-sunken animate-pulse" />
           ))}
-        </ul>
+        </div>
+      ) : filteredRequerimientos.length === 0 ? (
+        <div className="text-center py-20">
+          <h3 className="text-lg font-semibold text-ink">
+            {hayFiltros ? 'Sin resultados' : 'Todavía no hay requerimientos'}
+          </h3>
+          <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
+            {hayFiltros
+              ? 'Ningún requerimiento coincide con los filtros seleccionados.'
+              : puedeEditar
+                ? 'Redacta el primero usando las sintaxis de los modelos o genéralo con IA.'
+                : 'Cuando el equipo redacte requerimientos, aparecerán aquí.'}
+          </p>
+          <div className="mt-4 flex justify-center gap-2">
+            {hayFiltros && (
+              <button onClick={limpiarFiltros} className={btnSecundario}>Quitar filtros</button>
+            )}
+            {!hayFiltros && puedeEditar && (
+              <button onClick={openCreateModal} className={btnPrimario}>
+                <Plus size={15} />
+                Redactar Requerimiento
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        agrupar === 'ninguno' ? (
+          <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+            {requerimientosOrdenados.map(filaRequerimiento)}
+          </ul>
+        ) : (
+          <div className="space-y-10">
+            {gruposRequerimientos.map((grupo) => (
+              <section key={grupo.id} aria-labelledby={`req-grupo-${grupo.id}`}>
+                <h2
+                  id={`req-grupo-${grupo.id}`}
+                  className="text-lg font-semibold text-ink pb-3 mb-4 border-b-2 border-line-strong"
+                >
+                  {grupo.nombre}
+                  <span className="ml-2 text-sm font-normal text-ink-subtle">{grupo.items.length}</span>
+                </h2>
+                <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+                  {grupo.items.map(filaRequerimiento)}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )
       )}
 
       {/* Modal Redactar / Editar Requerimiento */}
