@@ -1,29 +1,203 @@
 @import "tailwindcss";
 
+/*
+ * Tokens de diseño de EasyReq. Fuente: DESIGN.md (primario #8e8ea0, base de
+ * 8px, radio único de 5px, tipografía system-ui, sin sombras, movimiento de
+ * 400ms ease).
+ *
+ * DESIGN.md no define modo oscuro, colores de estado ni un tono de primario
+ * con contraste suficiente, así que aquí se derivan de su paleta:
+ *  - `brand` (#8e8ea0) es el color del DESIGN.md: acentos, iconos, avatares.
+ *    Sobre blanco da 3.2:1, por eso NO se usa para texto ni para relleno de
+ *    botones con texto blanco.
+ *  - `brand-solid` es el negro de DESIGN.md ("negro y blanco rotundos"): botones
+ *    primarios, logo e iconos de énfasis; en oscuro se invierte (`on-solid` es
+ *    el color del texto encima). El gris morado queda solo como acento.
+ *  - Las vistas consumen solo estas clases semánticas (bg-surface, text-ink,
+ *    border-line...), nunca zinc/blue directos. Los tokens cambian solos con
+ *    `data-theme` en <html>, así que no hace falta `dark:` para colores.
+ *  - El tema por defecto es claro. El botón de tema (ThemeToggle) guarda la
+ *    elección en localStorage y un script en <head> la aplica antes de pintar.
+ */
+
 :root {
-  --background: #fafafa;
-  --foreground: #09090b;
-  --sidebar-width: 256px;
+  color-scheme: light;
+
+  --canvas: #ffffff;
+  --surface: #ffffff;
+  --sunken: #f5f5f8;
+  --sunken-strong: #e9e9ef;
+  --line: #e2e2e9;
+  --line-strong: #8e8ea0;
+
+  --ink: #08080c;
+  --ink-muted: #3d3d4e;
+  --ink-subtle: #585870;
+
+  --brand: #8e8ea0;
+  --brand-solid: #0d0d12;
+  --brand-solid-hover: #2b2b38;
+  --on-solid: #ffffff;
+  --brand-text: #3f3f58;
+  --brand-subtle: #eeeef3;
+  --brand-line: #cfcfdb;
+
+  --danger: #b42318;
+  --danger-solid: #b42318;
+  --danger-solid-hover: #912018;
+  --danger-subtle: #fef0ee;
+  --danger-line: #f6c7c1;
+
+  --success: #067647;
+  --success-subtle: #e7f6ee;
+  --success-line: #b5e3cb;
+
+  --warning: #93370d;
+  --warning-subtle: #fef4e6;
+  --warning-line: #f5d9ab;
+
+  --scrim: rgb(13 13 18 / 0.55);
+  --scrollbar-thumb: #c4c4d0;
+  --scrollbar-thumb-hover: #8e8ea0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #09090b;
-    --foreground: #fafafa;
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --canvas: #09090c;
+  --surface: #121217;
+  --sunken: #1d1d26;
+  --sunken-strong: #2a2a35;
+  --line: #33333f;
+  --line-strong: #6b6b84;
+
+  --ink: #ececf1;
+  --ink-muted: #b3b3c2;
+  --ink-subtle: #9393a5;
+
+  --brand: #8e8ea0;
+  --brand-solid: #f2f2f6;
+  --brand-solid-hover: #d4d4de;
+  --on-solid: #0d0d12;
+  --brand-text: #c4c4d6;
+  --brand-subtle: #23232e;
+  --brand-line: #3f3f50;
+
+  --danger: #f97066;
+  --danger-solid: #b42318;
+  --danger-solid-hover: #d92d20;
+  --danger-subtle: #2b1614;
+  --danger-line: #5c2723;
+
+  --success: #47cd89;
+  --success-subtle: #10281c;
+  --success-line: #1f5c3b;
+
+  --warning: #fdb022;
+  --warning-subtle: #2b2010;
+  --warning-line: #5c4318;
+
+  --scrim: rgb(0 0 0 / 0.65);
+  --scrollbar-thumb: #2a2a35;
+  --scrollbar-thumb-hover: #40404f;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-sunken-strong: var(--sunken-strong);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+
+  --color-brand: var(--brand);
+  --color-brand-solid: var(--brand-solid);
+  --color-brand-solid-hover: var(--brand-solid-hover);
+  --color-on-solid: var(--on-solid);
+  --color-brand-text: var(--brand-text);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-brand-line: var(--brand-line);
+
+  --color-danger: var(--danger);
+  --color-danger-solid: var(--danger-solid);
+  --color-danger-solid-hover: var(--danger-solid-hover);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-danger-line: var(--danger-line);
+
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-success-line: var(--success-line);
+
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-warning-line: var(--warning-line);
+
+  --color-scrim: var(--scrim);
+
+  /* Radio único del sistema (DESIGN.md: 5px). `rounded-full` solo para
+     avatares, puntos de estado y spinners. */
+  --radius-ui: 5px;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Escala tipográfica: 16px de cuerpo como en DESIGN.md; 13px y 15px para
+     texto secundario y controles densos. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.5;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.4;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 1.33;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 1.25;
+
+  /* Movimiento: 400ms ease (DESIGN.md). */
+  --default-transition-duration: 400ms;
+  --default-transition-timing-function: ease;
+
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+
+  /* Foco visible y consistente en todo control interactivo */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--brand-text);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--brand-line);
+    color: var(--ink);
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
-  letter-spacing: -0.01em;
-}
-
-/* Custom scrollbars */
+/* Scrollbars */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -31,17 +205,17 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(161, 161, 170, 0.3);
+  background: var(--scrollbar-thumb);
   border-radius: 9999px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(161, 161, 170, 0.5);
+  background: var(--scrollbar-thumb-hover);
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -49,26 +223,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
+  background: var(--scrollbar-thumb);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1aa;
-}
-
-@media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-thumb {
-    background: #27272a;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #3f3f46;
-  }
-}
-
-/* Form input focus fixes */
-input, select, textarea {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Animaciones de entrada (`animate-in fade-in` / `animate-in zoom-in`).
@@ -79,7 +239,7 @@ input, select, textarea {
 }
 
 @keyframes easyreq-zoom-in {
-  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
 }
 
@@ -88,11 +248,15 @@ input, select, textarea {
 }
 
 .animate-in.zoom-in {
-  animation: easyreq-zoom-in 0.18s ease-out both;
+  animation: easyreq-zoom-in 0.2s ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-in {
-    animation: none !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

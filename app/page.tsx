@@ -21,10 +21,11 @@ import {
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import PageHeader from '@/components/ui/PageHeader';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import ProjectTeamRequestInbox from '@/components/ProjectTeamRequestInbox';
 import {
-  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
+  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
 } from '@/components/ui/estilos';
 
 interface ProyectoConStats extends Proyecto {
@@ -206,7 +207,7 @@ export default function Home() {
       titulo: '¿Eliminar proyecto?',
       mensaje: (
         <>
-          Se eliminará <strong className="text-zinc-900 dark:text-zinc-100">{proj.nombre}</strong>
+          Se eliminará <strong className="text-ink">{proj.nombre}</strong>
           {reqs > 0 ? <> junto con sus {plural(reqs, 'requerimiento', 'requerimientos')}</> : null}.
           Esta acción no se puede deshacer.
         </>
@@ -229,11 +230,11 @@ export default function Home() {
 
   const getTipoSistemaIcon = (nombre?: string) => {
     const n = (nombre || '').toLowerCase();
-    if (n.includes('móvil') || n.includes('movil')) return <Smartphone size={14} className="text-purple-500" />;
-    if (n.includes('embebido') || n.includes('iot')) return <Cpu size={14} className="text-amber-500" />;
-    if (n.includes('escritorio')) return <Laptop size={14} className="text-emerald-500" />;
-    if (n.includes('api') || n.includes('microservicio')) return <Server size={14} className="text-rose-500" />;
-    return <Globe size={14} className="text-blue-500" />;
+    if (n.includes('móvil') || n.includes('movil')) return <Smartphone size={14} className="text-brand-text" />;
+    if (n.includes('embebido') || n.includes('iot')) return <Cpu size={14} className="text-warning" />;
+    if (n.includes('escritorio')) return <Laptop size={14} className="text-success" />;
+    if (n.includes('api') || n.includes('microservicio')) return <Server size={14} className="text-danger" />;
+    return <Globe size={14} className="text-brand-text" />;
   };
 
   const termino = searchTerm.trim().toLowerCase();
@@ -261,36 +262,30 @@ export default function Home() {
   ];
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
-            <FolderGit2 className="text-zinc-700 dark:text-zinc-300" size={24} />
-            Proyectos
-          </h1>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-            Sistemas de software y la especificación de sus requerimientos.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <ProjectTeamRequestInbox
-            userId={uid}
-            onResponded={async () => {
-              await Promise.all([fetchProjects(), cargarPermisos()]);
-            }}
-          />
-          <button onClick={openCreateModal} className={btnPrimario}>
-            <Plus size={15} />
-            Nuevo Proyecto
-          </button>
-        </div>
-      </div>
+    <div className="animate-in fade-in">
+      <PageHeader
+        title="Proyectos"
+        description="Sistemas de software y la especificación de sus requerimientos."
+        actions={
+          <>
+            <ProjectTeamRequestInbox
+              userId={uid}
+              onResponded={async () => {
+                await Promise.all([fetchProjects(), cargarPermisos()]);
+              }}
+            />
+            <button onClick={openCreateModal} className={btnPrimario}>
+              <Plus size={16} />
+              Nuevo proyecto
+            </button>
+          </>
+        }
+      />
 
       {/* Búsqueda */}
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
-          <Search size={14} />
+      <div className="relative mb-10">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
+          <Search size={16} />
         </div>
         <input
           type="search"
@@ -302,146 +297,133 @@ export default function Home() {
         />
       </div>
 
-      {/* Grid Projects */}
       {loading || loadingPermisos ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-48 rounded-2xl bg-zinc-100 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 animate-pulse" />
+            <div key={i} className="h-24 animate-pulse bg-sunken" />
           ))}
         </div>
       ) : filteredProjects.length === 0 ? (
-        <div className="text-center py-16 bg-white dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
-          <div className="w-12 h-12 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl flex items-center justify-center mx-auto mb-3">
-            <FolderGit2 size={22} />
-          </div>
-          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+        <div className="text-center py-20">
+          <h3 className="text-lg font-semibold text-ink">
             {termino ? 'Sin resultados' : 'Todavía no hay proyectos'}
           </h3>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-sm mx-auto">
+          <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
             {termino
               ? 'Ningún proyecto coincide con tu búsqueda.'
               : 'Crea tu primer proyecto para empezar a registrar requerimientos.'}
           </p>
-          <div className="mt-4 flex justify-center gap-2">
+          <div className="mt-6 flex justify-center gap-2">
             {termino ? (
               <button onClick={() => setSearchTerm('')} className={btnSecundario}>
                 Limpiar búsqueda
               </button>
             ) : (
               <button onClick={openCreateModal} className={btnPrimario}>
-                <Plus size={15} />
-                Crear Proyecto
+                <Plus size={16} />
+                Crear proyecto
               </button>
             )}
           </div>
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-12">
           {gruposProyectos.map(({ titulo, proyectos, mensajeVacio }) => (
-            <section key={titulo} className="space-y-3">
-              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+            <section key={titulo}>
+              <h2 className="text-lg font-semibold text-ink mb-3">
                 {titulo}
-                <span className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">({proyectos.length})</span>
+                <span className="ml-2 text-sm font-normal text-ink-subtle">{proyectos.length}</span>
               </h2>
               {proyectos.length === 0 ? (
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">{mensajeVacio}</p>
+                <p className="text-sm text-ink-subtle">{mensajeVacio}</p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
                   {proyectos.map((proj) => {
                     const editable = puedeEditarProyecto(proj.proyecto_id);
                     const reqs = proj.requerimientos_count || 0;
                     const eqs = proj.equipos_count || 0;
                     return (
-                      <div
-                        key={proj.proyecto_id}
-                        role="link"
-                        tabIndex={0}
-                        onClick={() => abrirProyecto(proj.proyecto_id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && e.target === e.currentTarget) abrirProyecto(proj.proyecto_id);
-                        }}
-                        aria-label={`Abrir requerimientos de ${proj.nombre}`}
-                        className={`group ${tarjeta} p-5 hover:border-blue-300 dark:hover:border-blue-800 hover:shadow-sm transition-all duration-200 flex flex-col justify-between cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40`}
-                      >
-                        <div>
-                          {/* Header Card */}
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-200">
-                              <FolderGit2 size={18} />
-                            </div>
-
-                            <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
-                              {editable ? (
-                                <>
-                                  <button
-                                    onClick={() => openEditModal(proj)}
-                                    title="Editar proyecto"
-                                    aria-label={`Editar ${proj.nombre}`}
-                                    className={btnIcono}
-                                  >
-                                    <Edit2 size={14} />
-                                  </button>
-                                  <button
-                                    onClick={() => deleteProject(proj)}
-                                    title="Eliminar proyecto"
-                                    aria-label={`Eliminar ${proj.nombre}`}
-                                    className={btnIconoPeligro}
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </>
-                              ) : !loadingPermisos && (
-                                <span
-                                  title="Solo el creador o miembros de un equipo vinculado pueden editar este proyecto"
-                                  className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
-                                >
-                                  <Lock size={12} />
-                                  Solo lectura
+                      <li key={proj.proyecto_id}>
+                        <div
+                          role="link"
+                          tabIndex={0}
+                          onClick={() => abrirProyecto(proj.proyecto_id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && e.target === e.currentTarget) abrirProyecto(proj.proyecto_id);
+                          }}
+                          aria-label={`Abrir requerimientos de ${proj.nombre}`}
+                          className="group flex items-center gap-4 px-5 py-5 cursor-pointer hover:bg-sunken focus-visible:bg-sunken"
+                        >
+                          <span className="hidden sm:flex size-10 shrink-0 items-center justify-center rounded-ui bg-brand-solid text-on-solid">
+                            <FolderGit2 size={20} aria-hidden />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <h3 className="text-base font-semibold text-ink">{proj.nombre}</h3>
+                              {proj.tipos_sistema && (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-sunken border border-line text-xs font-medium text-ink-muted">
+                                  {getTipoSistemaIcon(proj.tipos_sistema.nombre)}
+                                  {proj.tipos_sistema.nombre}
+                                </span>
+                              )}
+                              {uid !== null && proj.id_creador === uid && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-brand-subtle text-brand-text text-xs font-medium border border-brand-line">
+                                  Creado por ti
                                 </span>
                               )}
                             </div>
+                            <p className="text-sm text-ink-muted mt-1 line-clamp-1">
+                              {proj.descripcion || 'Sin descripción.'}
+                            </p>
                           </div>
 
-                          {/* Badges */}
-                          <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
-                            {proj.tipos_sistema && (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
-                                {getTipoSistemaIcon(proj.tipos_sistema.nombre)}
-                                {proj.tipos_sistema.nombre}
-                              </span>
-                            )}
-                            {uid !== null && proj.id_creador === uid && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[10px] font-medium border border-blue-200/60 dark:border-blue-800/60">
-                                Creado por ti
-                              </span>
-                            )}
-                          </div>
-
-                          <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                            {proj.nombre}
-                          </h3>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
-                            {proj.descripcion || "Sin descripción."}
-                          </p>
-                        </div>
-
-                        <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between">
-                          <div className="flex items-center gap-3 text-[11px] text-zinc-500">
-                            <span className="flex items-center gap-1" title="Requerimientos">
-                              <Layers size={13} className="text-zinc-400" />
+                          <div className="hidden sm:flex items-center gap-6 text-sm text-ink-muted tabular-nums shrink-0">
+                            <span title="Requerimientos" className="flex items-center gap-1.5">
+                              <Layers size={16} aria-hidden />
                               {plural(reqs, 'requerimiento', 'requerimientos')}
                             </span>
-                            <span className="flex items-center gap-1" title="Equipos vinculados">
-                              <Users size={13} className="text-zinc-400" />
+                            <span title="Equipos vinculados" className="flex items-center gap-1.5">
+                              <Users size={16} aria-hidden />
                               {plural(eqs, 'equipo', 'equipos')}
                             </span>
                           </div>
-                          <ChevronRight size={16} className="text-zinc-300 dark:text-zinc-600 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
+
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            {editable ? (
+                              <>
+                                <button
+                                  onClick={() => openEditModal(proj)}
+                                  title="Editar proyecto"
+                                  aria-label={`Editar ${proj.nombre}`}
+                                  className={btnIcono}
+                                >
+                                  <Edit2 size={16} />
+                                </button>
+                                <button
+                                  onClick={() => deleteProject(proj)}
+                                  title="Eliminar proyecto"
+                                  aria-label={`Eliminar ${proj.nombre}`}
+                                  className={btnIconoPeligro}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </>
+                            ) : !loadingPermisos && (
+                              <span
+                                title="Solo el creador o miembros de un equipo vinculado pueden editar este proyecto"
+                                className="inline-flex items-center gap-1 px-2 text-xs font-medium text-ink-subtle"
+                              >
+                                <Lock size={14} aria-hidden />
+                                Solo lectura
+                              </span>
+                            )}
+                          </div>
+                          <ChevronRight size={18} aria-hidden className="text-ink-muted group-hover:text-ink shrink-0" />
                         </div>
-                      </div>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               )}
             </section>
           ))}
@@ -458,7 +440,7 @@ export default function Home() {
           <ModalBody className="space-y-4">
             <div>
               <label htmlFor="proyecto-nombre" className={etiqueta}>
-                Nombre del Proyecto <span className="text-rose-500">*</span>
+                Nombre del Proyecto <span className="text-danger">*</span>
               </label>
               <input
                 id="proyecto-nombre"

@@ -1,28 +1,27 @@
 // Clases de Tailwind compartidas para que botones y campos se vean igual en
-// todas las pantallas.
+// todas las pantallas. Solo usan los tokens de app/globals.css (DESIGN.md).
 
 const btnBase =
-  'inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40';
+  'inline-flex items-center justify-center gap-2 px-4 min-h-10 pointer-coarse:min-h-11 rounded-ui text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 
-export const btnPrimario = `${btnBase} bg-blue-600 hover:bg-blue-500 text-white shadow-xs`;
+export const btnPrimario = `${btnBase} bg-brand-solid hover:bg-brand-solid-hover text-on-solid`;
 
-export const btnSecundario = `${btnBase} bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800`;
+export const btnSecundario = `${btnBase} bg-surface border border-line-strong text-ink hover:bg-sunken`;
 
-export const btnPeligro = `${btnBase} bg-rose-600 hover:bg-rose-700 text-white`;
+export const btnPeligro = `${btnBase} bg-danger-solid hover:bg-danger-solid-hover text-white`;
 
 export const btnIcono =
-  'p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40';
+  'inline-flex items-center justify-center size-9 pointer-coarse:size-11 rounded-ui text-ink-subtle hover:text-ink hover:bg-sunken transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed';
 
 export const btnIconoPeligro =
-  'p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40';
+  'inline-flex items-center justify-center size-9 pointer-coarse:size-11 rounded-ui text-ink-subtle hover:text-danger hover:bg-danger-subtle transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed';
 
-export const etiqueta = 'block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5';
+export const etiqueta = 'block text-sm font-medium text-ink mb-2';
 
 export const campo =
-  'w-full px-3 py-2 text-xs sm:text-sm border border-zinc-200 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
+  'w-full px-3 min-h-10 pointer-coarse:min-h-11 py-2 text-base border border-line-strong rounded-ui bg-surface text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand-text focus:ring-1 focus:ring-brand-text disabled:bg-sunken disabled:text-ink-subtle';
 
 export const buscador =
-  'w-full pl-9 pr-3 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
+  'w-full pl-10 pr-3 min-h-10 pointer-coarse:min-h-11 py-2 bg-surface border border-line-strong rounded-ui text-base text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand-text focus:ring-1 focus:ring-brand-text';
 
-export const tarjeta =
-  'bg-white dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl';
+export const tarjeta = 'bg-surface border border-line rounded-ui';

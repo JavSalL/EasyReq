@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import { btnSecundario } from '@/components/ui/estilos';
 import { Bell, X } from 'lucide-react';
 import type { SolicitudProyectoEquipo } from '@/lib/database.types';
 import {
@@ -72,12 +73,12 @@ export default function ProjectTeamRequestInbox({
         }}
         aria-expanded={isOpen}
         aria-haspopup="dialog"
-        className="relative inline-flex items-center justify-center px-3.5 py-2 bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-200 rounded-xl transition-all font-medium text-xs gap-1.5 cursor-pointer"
+        className={`relative ${btnSecundario}`}
       >
         <Bell size={15} />
         Solicitudes de equipos
         {requests.length > 0 && (
-          <span className="min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center">
+          <span className="min-w-4 h-4 px-1 rounded-full bg-danger-solid text-white text-xs font-bold flex items-center justify-center">
             {requests.length}
           </span>
         )}
@@ -87,14 +88,14 @@ export default function ProjectTeamRequestInbox({
         <div
           role="dialog"
           aria-label="Solicitudes de proyectos y equipos"
-          className="absolute right-0 top-full mt-2 z-40 w-[min(24rem,calc(100vw-2rem))] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden"
+          className="absolute right-0 top-full mt-2 z-40 w-[min(24rem,calc(100vw-2rem))] bg-surface border border-line-strong rounded-ui overflow-hidden"
         >
-          <div className="px-4 py-3 border-b border-zinc-200/60 dark:border-zinc-800/60 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Solicitudes de equipos</h2>
+          <div className="px-4 py-3 border-b border-line flex items-center justify-between">
+            <h2 className="text-base font-semibold text-ink">Solicitudes de equipos</h2>
             <button
               onClick={() => setIsOpen(false)}
               aria-label="Cerrar solicitudes"
-              className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 cursor-pointer"
+              className="p-1 rounded-ui text-ink-subtle hover:text-ink-muted cursor-pointer"
             >
               <X size={15} />
             </button>
@@ -102,20 +103,20 @@ export default function ProjectTeamRequestInbox({
           <div className="max-h-[min(26rem,70vh)] overflow-y-auto">
             {isLoading ? (
               <div className="p-6 flex justify-center">
-                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-brand-text border-t-transparent rounded-full animate-spin" />
               </div>
             ) : requests.length === 0 ? (
-              <p className="p-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
+              <p className="p-6 text-center text-xs text-ink-subtle">
                 No tienes solicitudes pendientes.
               </p>
             ) : (
-              <ul className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
+              <ul className="divide-y divide-line">
                 {requests.map(request => {
                   const isProcessing = processingId === request.id;
                   const isLink = request.tipo === 'vincular';
                   return (
                     <li key={request.id} className="p-4">
-                      <p className="text-xs text-zinc-700 dark:text-zinc-200">
+                      <p className="text-xs text-ink-muted">
                         <span className="font-semibold">{request.nombre_solicitante}</span>
                         {isLink ? ' te invita a vincular el equipo ' : ' solicita desvincular el equipo '}
                         <span className="font-semibold">{request.nombre_equipo}</span>
@@ -126,14 +127,14 @@ export default function ProjectTeamRequestInbox({
                         <button
                           onClick={() => void respond(request, false)}
                           disabled={isProcessing}
-                          className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 cursor-pointer"
+                          className="px-3 py-1.5 border border-line rounded-ui text-xs font-medium text-ink-muted hover:bg-sunken disabled:opacity-50 cursor-pointer"
                         >
                           Rechazar
                         </button>
                         <button
                           onClick={() => void respond(request, true)}
                           disabled={isProcessing}
-                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-[11px] font-medium text-white disabled:opacity-50 cursor-pointer"
+                          className="px-3 py-1.5 bg-brand-solid hover:bg-brand-solid-hover rounded-ui text-xs font-medium text-on-solid disabled:opacity-50 cursor-pointer"
                         >
                           {isProcessing ? 'Procesando...' : 'Aceptar'}
                         </button>

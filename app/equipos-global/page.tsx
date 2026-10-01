@@ -38,6 +38,7 @@ import ProjectTeamRequestInbox from '@/components/ProjectTeamRequestInbox';
 import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
+import PageHeader from '@/components/ui/PageHeader';
 
 interface MiembroDetallado {
   usuario: PerfilUsuario;
@@ -299,7 +300,7 @@ export default function EquiposGlobalPage() {
       titulo: '¿Eliminar equipo?',
       mensaje: (
         <>
-          Se eliminará <strong className="text-zinc-900 dark:text-zinc-100">{team.nombre}</strong> con sus miembros,
+          Se eliminará <strong className="text-ink">{team.nombre}</strong> con sus miembros,
           invitaciones y vínculos con proyectos. Sus miembros podrían perder el permiso de editar esos proyectos.
         </>
       ),
@@ -406,7 +407,7 @@ export default function EquiposGlobalPage() {
     }
     const ok = await confirmar({
       titulo: '¿Remover miembro?',
-      mensaje: <><strong className="text-zinc-900 dark:text-zinc-100">{nombreDe(miembro.usuario)}</strong> dejará de ser miembro de {equipoAbierto.nombre}.</>,
+      mensaje: <><strong className="text-ink">{nombreDe(miembro.usuario)}</strong> dejará de ser miembro de {equipoAbierto.nombre}.</>,
       textoConfirmar: 'Remover',
       peligro: true
     });
@@ -432,7 +433,7 @@ export default function EquiposGlobalPage() {
       titulo: '¿Solicitar desvinculación?',
       mensaje: (
         <>
-          Se pedirá al creador de <strong className="text-zinc-900 dark:text-zinc-100">{proyecto.nombre}</strong> que
+          Se pedirá al creador de <strong className="text-ink">{proyecto.nombre}</strong> que
           acepte desvincular a {equipoAbierto.nombre}.
         </>
       ),
@@ -506,7 +507,7 @@ export default function EquiposGlobalPage() {
         <ModalBody className="space-y-4">
           <div>
             <label htmlFor="equipo-nombre" className={etiqueta}>
-              Nombre del Equipo <span className="text-rose-500">*</span>
+              Nombre del Equipo <span className="text-danger">*</span>
             </label>
             <input
               id="equipo-nombre"
@@ -521,7 +522,7 @@ export default function EquiposGlobalPage() {
 
           <div>
             <label htmlFor="equipo-descripcion" className={etiqueta}>
-              Descripción <span className="text-rose-500">*</span>
+              Descripción <span className="text-danger">*</span>
             </label>
             <textarea
               id="equipo-descripcion"
@@ -532,7 +533,7 @@ export default function EquiposGlobalPage() {
               className={`${campo} resize-none`}
             />
           </div>
-          <p className="text-[11px] text-zinc-400">
+          <p className="text-xs text-ink-subtle">
             Para vincular el equipo a un proyecto, el creador del proyecto lo invita desde la página del proyecto.
           </p>
         </ModalBody>
@@ -560,8 +561,8 @@ export default function EquiposGlobalPage() {
     if (!equipoAbierto) {
       return (
         <div className="space-y-4">
-          <div className="h-8 w-72 max-w-full bg-zinc-200 dark:bg-zinc-800 rounded-lg animate-pulse" />
-          <div className="h-40 bg-zinc-100 dark:bg-zinc-900/40 rounded-2xl animate-pulse" />
+          <div className="h-8 w-72 max-w-full bg-sunken-strong rounded-ui animate-pulse" />
+          <div className="h-40 bg-sunken rounded-ui animate-pulse" />
         </div>
       );
     }
@@ -572,44 +573,41 @@ export default function EquiposGlobalPage() {
 
     return (
       <div className="space-y-6 animate-in fade-in">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-5">
-          <div className="min-w-0">
+        <PageHeader
+          back={
             <button
               onClick={cerrarMiembros}
-              className="inline-flex items-center text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors mb-2 group cursor-pointer"
+              className="inline-flex items-center text-sm font-medium text-ink-subtle hover:text-ink transition-colors group cursor-pointer"
             >
-              <ChevronLeft size={14} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
+              <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
               Equipos
             </button>
-            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
-              <Users className="text-zinc-700 dark:text-zinc-300 shrink-0" size={24} />
-              {equipoAbierto.nombre}
-            </h1>
-            <p className="text-zinc-500 dark:text-zinc-400 mt-1 text-xs">
-              {equipoAbierto.descripcion || 'Sin descripción.'}
-            </p>
-          </div>
-          {puedeGestionar && (
-            <button onClick={() => openModal(equipoAbierto)} className={`${btnSecundario} shrink-0`}>
-              <Edit2 size={14} />
-              Editar equipo
-            </button>
-          )}
-        </div>
+          }
+          title={equipoAbierto.nombre}
+          description={equipoAbierto.descripcion || 'Sin descripción.'}
+          actions={
+            puedeGestionar && (
+              <button onClick={() => openModal(equipoAbierto)} className={btnSecundario}>
+                <Edit2 size={16} />
+                Editar equipo
+              </button>
+            )
+          }
+        />
 
         {/* Invitar miembros o cambiar roles (solo líder) */}
         {!puedeGestionar ? (
-          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-4 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+          <div className="bg-warning-subtle border border-warning-line rounded-ui p-4 flex items-center gap-2.5 text-xs text-warning">
             <Lock size={15} className="shrink-0" />
             <span>Solo los líderes de este equipo pueden invitar o remover miembros. Tienes acceso de lectura.</span>
           </div>
         ) : (
-          <div className={`${tarjeta} p-5 shadow-xs`}>
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1 flex items-center gap-2">
-              <UserPlus size={16} className="text-blue-600" />
+          <div className={`${tarjeta} p-5`}>
+            <h3 className="text-sm font-semibold text-ink mb-1 flex items-center gap-2">
+              <UserPlus size={16} className="text-brand-text" />
               {editandoMiembro ? 'Editar roles del miembro' : 'Invitar a un usuario'}
             </h3>
-            <p className="text-[11px] text-zinc-500 mb-3">
+            <p className="text-xs text-ink-subtle mb-3">
               {editandoMiembro
                 ? 'Los cambios se aplican de inmediato.'
                 : 'El usuario se unirá al equipo con estos roles cuando acepte la invitación.'}
@@ -617,7 +615,7 @@ export default function EquiposGlobalPage() {
             <form onSubmit={handleGuardarMiembro} noValidate className="space-y-3">
               <div>
                 <label htmlFor="miembro-usuario" className={etiqueta}>
-                  Usuario <span className="text-rose-500">*</span>
+                  Usuario <span className="text-danger">*</span>
                 </label>
                 <select
                   id="miembro-usuario"
@@ -640,7 +638,7 @@ export default function EquiposGlobalPage() {
               <div>
                 <span className={etiqueta}>Roles en el equipo</span>
                 {roles.length === 0 ? (
-                  <p className="text-[11px] text-zinc-400">No hay roles disponibles</p>
+                  <p className="text-xs text-ink-subtle">No hay roles disponibles</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5" role="group" aria-label="Roles en el equipo">
                     {roles.map(r => {
@@ -651,10 +649,10 @@ export default function EquiposGlobalPage() {
                           type="button"
                           onClick={() => toggleRolMiembro(r.id)}
                           aria-pressed={seleccionado}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
                             seleccionado
-                              ? 'bg-blue-600 border-blue-600 text-white'
-                              : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-blue-400'
+                              ? 'bg-brand-solid border-brand-text text-on-solid'
+                              : 'bg-sunken border-line text-ink-muted hover:border-brand-text'
                           }`}
                         >
                           {seleccionado ? <Check size={11} /> : esRolLider(r.nombre_rol) ? <Crown size={11} /> : null}
@@ -688,30 +686,30 @@ export default function EquiposGlobalPage() {
         {/* Proyectos vinculados */}
         {equipoAbierto.proyectos.length > 0 && (
           <div className={`${tarjeta} overflow-hidden`}>
-            <div className="px-5 py-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            <div className="px-5 py-4 border-b border-line">
+              <h3 className="text-sm font-semibold text-ink">
                 Proyectos vinculados ({equipoAbierto.proyectos.length})
               </h3>
             </div>
-            <div className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
+            <div className="divide-y divide-line">
               {equipoAbierto.proyectos.map(p => (
                 <div key={p.proyecto_id} className="px-5 py-3 flex items-center justify-between gap-3">
                   <Link
                     href={`/requerimientos/?id=${p.proyecto_id}`}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-ink hover:text-brand-text"
                   >
-                    <FolderGit2 size={13} className="text-zinc-400" />
+                    <FolderGit2 size={13} className="text-ink-subtle" />
                     {p.nombre}
                   </Link>
                   {puedeGestionar && (
                     p.solicitudDesvinculacionPendiente ? (
-                      <span className="px-2.5 py-1 rounded-lg text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40">
+                      <span className="px-2.5 py-1 rounded-ui text-xs font-medium text-warning bg-warning-subtle border border-warning-line">
                         Solicitud pendiente
                       </span>
                     ) : (
                       <button
                         onClick={() => solicitarDesvinculacion(p)}
-                        className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:text-rose-600 hover:border-rose-300 cursor-pointer"
+                        className="px-3 py-1.5 border border-line rounded-ui text-xs font-medium text-ink-muted hover:text-danger hover:border-danger-line cursor-pointer"
                       >
                         Solicitar desvinculación
                       </button>
@@ -725,15 +723,15 @@ export default function EquiposGlobalPage() {
 
         {/* Lista de Miembros Actuales */}
         <div className={`${tarjeta} overflow-hidden`}>
-          <div className="px-5 py-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+          <div className="px-5 py-4 border-b border-line">
+            <h3 className="text-sm font-semibold text-ink">
               Integrantes ({equipoAbierto.miembros.length})
             </h3>
           </div>
 
-          <div className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
+          <div className="divide-y divide-line">
             {equipoAbierto.miembros.length === 0 ? (
-              <div className="p-8 text-center text-xs text-zinc-500">
+              <div className="p-8 text-center text-xs text-ink-subtle">
                 Este equipo aún no tiene miembros.
               </div>
             ) : (
@@ -741,33 +739,33 @@ export default function EquiposGlobalPage() {
                 <div
                   key={m.usuario.id}
                   className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
-                    memberForm.id_usuario === m.usuario.id ? 'bg-blue-50/60 dark:bg-blue-950/20' : 'hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30'
+                    memberForm.id_usuario === m.usuario.id ? 'bg-brand-subtle' : 'hover:bg-sunken'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="relative w-8 h-8 shrink-0 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center justify-center text-xs font-bold">
+                    <div className="relative w-8 h-8 shrink-0 rounded-full bg-brand-subtle text-brand-text flex items-center justify-center text-xs font-bold">
                       {iniciales(m.usuario)}
                       {m.esLider && (
-                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-white flex items-center justify-center" title="Líder">
+                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-warning text-canvas flex items-center justify-center" title="Líder">
                           <Crown size={9} />
                         </span>
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                      <p className="text-xs font-semibold text-ink truncate">
                         {m.usuario.nombre || 'Usuario'}
-                        {m.usuario.id === uid && <span className="font-normal text-zinc-400"> (tú)</span>}
+                        {m.usuario.id === uid && <span className="font-normal text-ink-subtle"> (tú)</span>}
                       </p>
-                      <p className="text-[11px] text-zinc-500 truncate">{m.usuario.correo}</p>
+                      <p className="text-xs text-ink-subtle truncate">{m.usuario.correo}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 sm:justify-end">
                     <div className="flex flex-wrap gap-1 sm:justify-end">
                       {m.roles.length === 0 ? (
-                        <span className="text-[10px] text-zinc-400 italic">Sin rol</span>
+                        <span className="text-xs text-ink-subtle italic">Sin rol</span>
                       ) : m.roles.map(r => (
-                        <span key={r.id} className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
+                        <span key={r.id} className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-subtle text-brand-text border border-brand-line">
                           {r.nombre_rol}
                         </span>
                       ))}
@@ -813,18 +811,11 @@ export default function EquiposGlobalPage() {
   // ==========================================
   return (
     <div className="space-y-6 animate-in fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
-            <Users className="text-zinc-700 dark:text-zinc-300" size={24} />
-            Equipos
-          </h1>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-            Equipos multidisciplinarios, sus integrantes, roles y proyectos.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        title="Equipos"
+        description="Equipos multidisciplinarios, sus integrantes, roles y proyectos."
+        actions={
+          <>
           <ProjectTeamRequestInbox userId={uid} onResponded={recargar} />
 
           {/* Invitaciones recibidas */}
@@ -841,7 +832,7 @@ export default function EquiposGlobalPage() {
               <Bell size={15} />
               Invitaciones
               {invitaciones.length > 0 && (
-                <span className="min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center">
+                <span className="min-w-4 h-4 px-1 rounded-full bg-danger-solid text-white text-xs font-bold flex items-center justify-center">
                   {invitaciones.length}
                 </span>
               )}
@@ -850,22 +841,22 @@ export default function EquiposGlobalPage() {
               <div
                 role="dialog"
                 aria-label="Invitaciones recibidas"
-                className="absolute right-0 top-full mt-2 z-40 w-[min(22rem,calc(100vw-2rem))] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden animate-in zoom-in"
+                className="absolute right-0 top-full mt-2 z-40 w-[min(22rem,calc(100vw-2rem))] bg-surface border border-line-strong rounded-ui overflow-hidden animate-in zoom-in"
               >
-                <div className="px-4 py-3 border-b border-zinc-200/60 dark:border-zinc-800/60">
-                  <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Invitaciones recibidas</h2>
+                <div className="px-4 py-3 border-b border-line">
+                  <h2 className="text-base font-semibold text-ink">Invitaciones recibidas</h2>
                 </div>
                 <div className="max-h-[min(26rem,70vh)] overflow-y-auto">
                   {loadingInvitaciones ? (
                     <div className="p-6 flex justify-center">
-                      <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                      <div className="w-5 h-5 border-2 border-brand-text border-t-transparent rounded-full animate-spin" />
                     </div>
                   ) : invitaciones.length === 0 ? (
-                    <p className="p-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
+                    <p className="p-6 text-center text-xs text-ink-subtle">
                       No tienes invitaciones pendientes.
                     </p>
                   ) : (
-                    <ul className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
+                    <ul className="divide-y divide-line">
                       {invitaciones.map(invitacion => {
                         const equipo = equipos.find(item => item.equipo_id === invitacion.id_equipo);
                         const invitador = usuarios.find(item => item.id === invitacion.id_invitador);
@@ -874,13 +865,13 @@ export default function EquiposGlobalPage() {
                         const enProceso = invitacionEnProceso === invitacion.id;
                         return (
                           <li key={invitacion.id} className="p-4">
-                            <p className="text-xs text-zinc-700 dark:text-zinc-200">
+                            <p className="text-xs text-ink-muted">
                               <span className="font-semibold">{invitador ? nombreDe(invitador) : 'Un usuario'}</span>
                               {' te invita a unirte a '}
                               <span className="font-semibold">{equipo?.nombre || 'un equipo'}</span>.
                             </p>
                             {rolesPropuestos.length > 0 && (
-                              <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                              <p className="mt-1 text-xs text-ink-subtle">
                                 Roles: {rolesPropuestos.map(r => r.nombre_rol).join(', ')}
                               </p>
                             )}
@@ -888,14 +879,14 @@ export default function EquiposGlobalPage() {
                               <button
                                 onClick={() => responderInvitacion(invitacion, false)}
                                 disabled={enProceso}
-                                className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-[11px] font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 cursor-pointer"
+                                className="px-3 py-1.5 border border-line rounded-ui text-xs font-medium text-ink-muted hover:bg-sunken disabled:opacity-50 cursor-pointer"
                               >
                                 Rechazar
                               </button>
                               <button
                                 onClick={() => responderInvitacion(invitacion, true)}
                                 disabled={enProceso}
-                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-[11px] font-medium text-white disabled:opacity-50 cursor-pointer"
+                                className="px-3 py-1.5 bg-brand-solid hover:bg-brand-solid-hover rounded-ui text-xs font-medium text-on-solid disabled:opacity-50 cursor-pointer"
                               >
                                 {enProceso ? 'Procesando...' : 'Aceptar'}
                               </button>
@@ -911,15 +902,16 @@ export default function EquiposGlobalPage() {
           </div>
 
           <button onClick={() => openModal()} className={btnPrimario}>
-            <Plus size={15} />
-            Nuevo Equipo
+            <Plus size={16} />
+            Nuevo equipo
           </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Buscador */}
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
           <Search size={14} />
         </div>
         <input
@@ -936,18 +928,18 @@ export default function EquiposGlobalPage() {
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-48 bg-zinc-100 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 rounded-2xl animate-pulse" />
+            <div key={i} className="h-48 bg-sunken border border-line rounded-ui animate-pulse" />
           ))}
         </div>
       ) : filteredTeams.length === 0 ? (
-        <div className="text-center py-16 bg-white dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
-          <div className="w-12 h-12 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl flex items-center justify-center mx-auto mb-3">
+        <div className="text-center py-16 bg-surface rounded-ui border border-dashed border-line">
+          <div className="w-12 h-12 bg-sunken text-ink-subtle rounded-ui flex items-center justify-center mx-auto mb-3">
             <Users size={22} />
           </div>
-          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+          <h3 className="text-sm font-semibold text-ink">
             {termino ? 'Sin resultados' : 'Todavía no hay equipos'}
           </h3>
-          <p className="text-zinc-500 dark:text-zinc-400 text-xs mt-1">
+          <p className="text-ink-subtle text-xs mt-1">
             {termino ? 'Ningún equipo coincide con tu búsqueda.' : 'Crea tu primer equipo para organizar miembros y proyectos.'}
           </p>
           <div className="mt-4 flex justify-center">
@@ -965,12 +957,12 @@ export default function EquiposGlobalPage() {
         <div className="space-y-8">
           {gruposEquipos.map(({ titulo, equipos: equiposGrupo, mensajeVacio }) => (
             <section key={titulo} className="space-y-3">
-              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <h2 className="text-base font-semibold text-ink flex items-center gap-2">
                 {titulo}
-                <span className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">({equiposGrupo.length})</span>
+                <span className="text-xs font-normal text-ink-subtle">({equiposGrupo.length})</span>
               </h2>
               {equiposGrupo.length === 0 ? (
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">{mensajeVacio}</p>
+                <p className="text-xs text-ink-subtle">{mensajeVacio}</p>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {equiposGrupo.map((team) => {
@@ -986,17 +978,17 @@ export default function EquiposGlobalPage() {
                           if (e.key === 'Enter' && e.target === e.currentTarget) abrirMiembros(team);
                         }}
                         aria-label={`Ver miembros de ${team.nombre}`}
-                        className={`group ${tarjeta} p-5 hover:border-blue-300 dark:hover:border-blue-800 hover:shadow-sm transition-all duration-200 flex flex-col justify-between cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40`}
+                        className={`group ${tarjeta} p-5 hover:border-brand-line transition-all duration-200 flex flex-col justify-between cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-text/40`}
                       >
                         <div>
                           <div className="flex items-start justify-between mb-3">
-                            <div className="w-9 h-9 bg-zinc-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center text-zinc-700 dark:text-zinc-300 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                            <div className="w-9 h-9 bg-sunken rounded-ui flex items-center justify-center text-ink-muted group-hover:bg-brand-solid group-hover:text-on-solid transition-colors">
                               <Users size={18} />
                             </div>
                             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                               {gestionable ? (
                                 <>
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 mr-1 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium border border-amber-200/60 dark:border-amber-800/40">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 mr-1 rounded-ui bg-warning-subtle text-warning text-xs font-medium border border-warning-line">
                                     <Crown size={10} />
                                     Líder
                                   </span>
@@ -1020,7 +1012,7 @@ export default function EquiposGlobalPage() {
                               ) : !esMiembro(team) && (
                                 <span
                                   title="Solo el líder del equipo puede editarlo"
-                                  className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-zinc-400 dark:text-zinc-500"
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-ink-subtle"
                                 >
                                   <Lock size={12} />
                                   Solo lectura
@@ -1029,16 +1021,16 @@ export default function EquiposGlobalPage() {
                             </div>
                           </div>
 
-                          <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          <h3 className="text-base font-semibold text-ink  group-hover:text-brand-text transition-colors">
                             {team.nombre}
                           </h3>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 line-clamp-2">
+                          <p className="text-xs text-ink-subtle mt-1 line-clamp-2">
                             {team.descripcion || "Sin descripción."}
                           </p>
 
                           {lideres.length > 0 && (
-                            <p className="mt-2 text-[11px] text-zinc-500 flex items-center gap-1 truncate">
-                              <Crown size={11} className="text-amber-500 shrink-0" />
+                            <p className="mt-2 text-xs text-ink-subtle flex items-center gap-1 truncate">
+                              <Crown size={11} className="text-warning shrink-0" />
                               {lideres.map(l => nombreDe(l.usuario)).join(', ')}
                             </p>
                           )}
@@ -1047,35 +1039,35 @@ export default function EquiposGlobalPage() {
                           <div className="mt-3 flex flex-wrap gap-1">
                             {team.proyectos.length > 0 ? (
                               team.proyectos.map(p => (
-                                <span key={p.proyecto_id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] font-medium border border-zinc-200/50 dark:border-zinc-700/50">
+                                <span key={p.proyecto_id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-ui bg-sunken text-ink-muted text-xs font-medium border border-line">
                                   <FolderGit2 size={10} />
                                   {p.nombre}
                                 </span>
                               ))
                             ) : (
-                              <span className="text-[10px] text-zinc-400 italic">Sin proyectos vinculados</span>
+                              <span className="text-xs text-ink-subtle italic">Sin proyectos vinculados</span>
                             )}
                           </div>
                         </div>
 
-                        <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-xs">
+                        <div className="mt-5 pt-4 border-t border-line flex items-center justify-between text-xs">
                           <div className="flex items-center gap-2">
                             <div className="flex -space-x-1.5">
                               {team.miembros.slice(0, 4).map(m => (
                                 <span
                                   key={m.usuario.id}
                                   title={nombreDe(m.usuario)}
-                                  className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 ring-2 ring-white dark:ring-zinc-900 flex items-center justify-center text-[9px] font-bold"
+                                  className="w-6 h-6 rounded-full bg-brand-subtle text-brand-text ring-2 ring-surface flex items-center justify-center text-xs font-bold"
                                 >
                                   {iniciales(m.usuario)}
                                 </span>
                               ))}
                             </div>
-                            <span className="text-zinc-500 text-[11px]">
+                            <span className="text-ink-subtle text-xs">
                               {team.miembros.length} {team.miembros.length === 1 ? 'integrante' : 'integrantes'}
                             </span>
                           </div>
-                          <span className="font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-0.5">
+                          <span className="font-semibold text-brand-text flex items-center gap-0.5">
                             Miembros
                             <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
                           </span>

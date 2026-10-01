@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
 import {
-  Plus, Edit2, Trash2, Save, BookOpen, Search, Copy, Check
+  Plus, Edit2, Trash2, Save, Search, Copy, Check
 } from 'lucide-react';
 import type { Modelo, Patron } from '@/lib/database.types';
 import {
@@ -19,6 +19,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
+import PageHeader from '@/components/ui/PageHeader';
 
 export default function PatronesPage() {
   const confirmar = useConfirm();
@@ -120,7 +121,7 @@ export default function PatronesPage() {
       titulo: '¿Eliminar patrón?',
       mensaje: (
         <>
-          Se eliminará el patrón <strong className="text-zinc-900 dark:text-zinc-100">{pattern.nombre}</strong>.
+          Se eliminará el patrón <strong className="text-ink">{pattern.nombre}</strong>.
           Los requerimientos ya redactados con él no se modifican.
         </>
       ),
@@ -159,31 +160,24 @@ export default function PatronesPage() {
   const modeloSeleccionado = modelos.find(m => m.id === selectedModeloFilter);
 
   const claseFiltro = (activo: boolean) =>
-    `px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+    `px-3 py-1.5 rounded-ui text-xs font-medium transition-colors cursor-pointer ${
       activo
-        ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs'
-        : 'bg-zinc-100 dark:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+        ? 'bg-brand-solid text-on-solid'
+        : 'bg-sunken text-ink-muted hover:bg-sunken-strong'
     }`;
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
-            <BookOpen className="text-zinc-700 dark:text-zinc-300" size={24} />
-            Patrones y Modelos
-          </h1>
-          <p className="text-zinc-500 dark:text-zinc-400 mt-1 text-xs">
-            Catálogo de sintaxis estructuradas para redactar requerimientos (EARS, Sistemas Embebidos, Lenguaje Natural).
-          </p>
-        </div>
-
-        <button onClick={() => openModal()} className={btnPrimario}>
-          <Plus size={15} />
-          Nuevo Patrón
-        </button>
-      </div>
+      <PageHeader
+        title="Patrones y Modelos"
+        description="Catálogo de sintaxis estructuradas para redactar requerimientos (EARS, Sistemas Embebidos, Lenguaje Natural)."
+        actions={
+          <button onClick={() => openModal()} className={btnPrimario}>
+            <Plus size={16} />
+            Nuevo patrón
+          </button>
+        }
+      />
 
       {/* Filtros por Modelo */}
       <div className="space-y-2">
@@ -210,13 +204,13 @@ export default function PatronesPage() {
           })}
         </div>
         {modeloSeleccionado?.descripcion && (
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 pl-1">{modeloSeleccionado.descripcion}</p>
+          <p className="text-xs text-ink-subtle pl-1">{modeloSeleccionado.descripcion}</p>
         )}
       </div>
 
       {/* Buscador */}
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
           <Search size={14} />
         </div>
         <input
@@ -233,15 +227,15 @@ export default function PatronesPage() {
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-36 bg-zinc-100 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 rounded-2xl animate-pulse" />
+            <div key={i} className="h-36 bg-sunken border border-line rounded-ui animate-pulse" />
           ))}
         </div>
       ) : filteredPatrones.length === 0 ? (
-        <div className="text-center py-14 bg-white dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
-          <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+        <div className="text-center py-14 bg-surface rounded-ui border border-dashed border-line">
+          <p className="text-sm font-semibold text-ink">
             {termino ? 'Sin resultados' : 'No hay patrones en este modelo'}
           </p>
-          <p className="text-zinc-500 text-xs mt-1">
+          <p className="text-ink-subtle text-xs mt-1">
             {termino ? 'Ningún patrón coincide con tu búsqueda.' : 'Agrega el primero para poder usarlo al redactar requerimientos.'}
           </p>
           <div className="mt-4 flex justify-center gap-2">
@@ -261,15 +255,15 @@ export default function PatronesPage() {
           {filteredPatrones.map((pat) => (
             <div
               key={pat.patron_id}
-              className={`${tarjeta} p-4 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors flex flex-col`}
+              className={`${tarjeta} p-4 hover:border-line-strong transition-colors flex flex-col`}
             >
               <div className="flex items-start justify-between gap-3 mb-2.5">
                 <div className="min-w-0">
-                  <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                  <h3 className="text-sm font-bold text-ink">
                     {pat.nombre}
                   </h3>
                   {pat.modelo && (
-                    <span className="inline-block mt-1 text-[10px] font-medium text-zinc-600 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded-md border border-zinc-200/60 dark:border-zinc-700/50">
+                    <span className="inline-block mt-1 text-xs font-medium text-ink-muted bg-sunken px-2 py-0.5 rounded-ui border border-line">
                       {pat.modelo.nombre}
                     </span>
                   )}
@@ -282,7 +276,7 @@ export default function PatronesPage() {
                     aria-label={`Copiar sintaxis de ${pat.nombre}`}
                     className={btnIcono}
                   >
-                    {copiadoId === pat.patron_id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                    {copiadoId === pat.patron_id ? <Check size={14} className="text-success" /> : <Copy size={14} />}
                   </button>
                   <button
                     onClick={() => openModal(pat)}
@@ -304,7 +298,7 @@ export default function PatronesPage() {
               </div>
 
               {/* Caja de Sintaxis */}
-              <div className="flex-1 bg-zinc-950 p-3 rounded-xl border border-zinc-800/80 font-mono text-[11px] text-emerald-400/90 leading-relaxed overflow-x-auto whitespace-pre-wrap">
+              <div className="flex-1 bg-sunken p-3 rounded-ui border border-line font-mono text-xs text-ink leading-relaxed overflow-x-auto whitespace-pre-wrap">
                 {pat.promt}
               </div>
             </div>
@@ -338,7 +332,7 @@ export default function PatronesPage() {
 
             <div>
               <label htmlFor="patron-nombre" className={etiqueta}>
-                Nombre del Patrón <span className="text-rose-500">*</span>
+                Nombre del Patrón <span className="text-danger">*</span>
               </label>
               <input
                 id="patron-nombre"
@@ -352,7 +346,7 @@ export default function PatronesPage() {
 
             <div>
               <label htmlFor="patron-sintaxis" className={etiqueta}>
-                Sintaxis / Estructura <span className="text-rose-500">*</span>
+                Sintaxis / Estructura <span className="text-danger">*</span>
               </label>
               <textarea
                 id="patron-sintaxis"
@@ -362,7 +356,7 @@ export default function PatronesPage() {
                 onChange={(e) => setFormData({ ...formData, promt: e.target.value })}
                 className={`${campo} font-mono leading-relaxed`}
               />
-              <p className="text-[11px] text-zinc-400 mt-1">
+              <p className="text-xs text-ink-subtle mt-1">
                 Usa &lt;marcadores&gt; o [corchetes] para las partes que se deben completar.
               </p>
             </div>

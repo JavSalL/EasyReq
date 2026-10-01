@@ -3,9 +3,10 @@
 import React from 'react';
 import Link from 'next/link';
 import {
-  HelpCircle, FolderGit2, FileText, Users, BookOpen, Shield, Sparkles, Keyboard, ChevronRight
+  FolderGit2, FileText, Users, BookOpen, Shield, Sparkles, Keyboard, ChevronRight
 } from 'lucide-react';
 import { tarjeta } from '@/components/ui/estilos';
+import PageHeader from '@/components/ui/PageHeader';
 
 const SECCIONES = [
   {
@@ -71,32 +72,24 @@ const PERMISOS: Array<[string, string]> = [
 export default function AyudaPage() {
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="pb-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
-          <HelpCircle className="text-zinc-700 dark:text-zinc-300" size={24} />
-          Ayuda
-        </h1>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-          Guía rápida para trabajar con EasyReq.
-        </p>
-      </div>
+    <div className="animate-in fade-in">
+      <PageHeader title="Ayuda" description="Guía rápida para trabajar con EasyReq." />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {SECCIONES.map(({ icono: Icono, titulo, href, puntos }) => (
           <section key={titulo} className={`${tarjeta} p-5`}>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                <Icono size={16} className="text-blue-600 dark:text-blue-400" />
+              <h2 className="text-base font-semibold text-ink flex items-center gap-2">
+                <Icono size={16} className="text-brand-text" />
                 {titulo}
               </h2>
               {href && (
-                <Link href={href} className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center">
+                <Link href={href} className="text-xs font-semibold text-brand-text hover:underline inline-flex items-center">
                   Ir <ChevronRight size={12} />
                 </Link>
               )}
             </div>
-            <ul className="space-y-1.5 text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed list-disc pl-4">
+            <ul className="space-y-1.5 text-xs text-ink-muted leading-relaxed list-disc pl-4">
               {puntos.map((p) => (
                 <li key={p}>{p}</li>
               ))}
@@ -106,16 +99,16 @@ export default function AyudaPage() {
       </div>
 
       <section className={`${tarjeta} overflow-hidden`}>
-        <h2 className="px-5 py-4 border-b border-zinc-200/60 dark:border-zinc-800/60 text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-          <Shield size={16} className="text-blue-600 dark:text-blue-400" />
+        <h2 className="px-5 py-4 border-b border-line text-base font-semibold text-ink flex items-center gap-2">
+          <Shield size={16} className="text-brand-text" />
           ¿Quién puede hacer qué?
         </h2>
         <table className="w-full text-xs">
-          <tbody className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
+          <tbody className="divide-y divide-line">
             {PERMISOS.map(([accion, quien]) => (
               <tr key={accion}>
-                <td className="px-5 py-2.5 text-zinc-800 dark:text-zinc-200">{accion}</td>
-                <td className="px-5 py-2.5 text-zinc-500 dark:text-zinc-400">{quien}</td>
+                <td className="px-5 py-2.5 text-ink">{accion}</td>
+                <td className="px-5 py-2.5 text-ink-subtle">{quien}</td>
               </tr>
             ))}
           </tbody>
@@ -123,19 +116,19 @@ export default function AyudaPage() {
       </section>
 
       <section className={`${tarjeta} p-5`}>
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
-          <Keyboard size={16} className="text-blue-600 dark:text-blue-400" />
+        <h2 className="text-base font-semibold text-ink flex items-center gap-2 mb-3">
+          <Keyboard size={16} className="text-brand-text" />
           Atajos
         </h2>
-        <ul className="space-y-1.5 text-xs text-zinc-600 dark:text-zinc-400">
+        <ul className="space-y-1.5 text-xs text-ink-muted">
           <li>
-            <kbd className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 font-mono text-[10px]">Esc</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Esc</kbd>
             {' '}cierra cualquier ventana abierta.
           </li>
           <li>
-            <kbd className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 font-mono text-[10px]">Ctrl</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Ctrl</kbd>
             {' + '}
-            <kbd className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 font-mono text-[10px]">Enter</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Enter</kbd>
             {' '}guarda el requerimiento que estás redactando.
           </li>
         </ul>

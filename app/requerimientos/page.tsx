@@ -41,6 +41,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
+import PageHeader from '@/components/ui/PageHeader';
 
 const FORM_VACIO = {
   enunciado: '',
@@ -66,11 +67,11 @@ const CAMPOS_EDITABLES: Array<[keyof typeof FORM_VACIO & keyof Requerimiento, st
 
 const getBadgeColorEstado = (nombre?: string) => {
   const n = (nombre || '').toLowerCase();
-  if (n.includes('aprobado')) return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20';
-  if (n.includes('rechazado')) return 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20';
-  if (n.includes('revisión') || n.includes('revision')) return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20';
-  if (n.includes('implementado')) return 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20';
-  return 'bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 border-zinc-500/20';
+  if (n.includes('aprobado')) return 'bg-success-subtle text-success border-success-line';
+  if (n.includes('rechazado')) return 'bg-danger-subtle text-danger border-danger-line';
+  if (n.includes('revisión') || n.includes('revision')) return 'bg-warning-subtle text-warning border-warning-line';
+  if (n.includes('implementado')) return 'bg-brand-subtle text-brand-text border-brand-line';
+  return 'bg-sunken text-ink-muted border-line';
 };
 
 export default function RequerimientosPage() {
@@ -427,7 +428,7 @@ export default function RequerimientosPage() {
       titulo: '¿Eliminar requerimiento?',
       mensaje: (
         <>
-          <span className="block font-mono text-[11px] bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-lg p-2 mb-2 text-zinc-800 dark:text-zinc-200">
+          <span className="block font-mono text-xs bg-sunken border border-line rounded-ui p-2 mb-2 text-ink">
             {extracto}
           </span>
           Esta acción no se puede deshacer.
@@ -472,7 +473,7 @@ export default function RequerimientosPage() {
         titulo: '¿Solicitar desvinculación?',
         mensaje: (
           <>
-            Se pedirá al líder de <strong className="text-zinc-900 dark:text-zinc-100">{equipo.nombre}</strong> que
+            Se pedirá al líder de <strong className="text-ink">{equipo.nombre}</strong> que
             acepte desvincular su equipo. Si acepta, sus miembros podrían perder el permiso de editar este proyecto.
           </>
         ),
@@ -519,9 +520,9 @@ export default function RequerimientosPage() {
 
   if (urlLeida && !proyectoId) {
     return (
-      <div className="p-8 text-center bg-white dark:bg-zinc-900/60 rounded-2xl border border-zinc-200 dark:border-zinc-800">
-        <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">No se indicó ningún proyecto</p>
-        <p className="text-xs text-zinc-500 mt-1">Abre un proyecto desde la lista para ver sus requerimientos.</p>
+      <div className="p-8 text-center bg-surface rounded-ui border border-line">
+        <p className="text-sm font-semibold text-ink">No se indicó ningún proyecto</p>
+        <p className="text-xs text-ink-subtle mt-1">Abre un proyecto desde la lista para ver sus requerimientos.</p>
         <button onClick={() => router.push('/')} className={`${btnPrimario} mt-4`}>
           Ir a Proyectos
         </button>
@@ -529,63 +530,55 @@ export default function RequerimientosPage() {
     );
   }
 
-  const selectFiltro = `${campo} !text-xs bg-white dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800`;
+  const selectFiltro = `${campo} !text-xs bg-surface border-line`;
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      {/* Barra superior de navegación */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-5">
-        <div className="min-w-0">
+      <PageHeader
+        back={
           <Link
             href="/"
-            className="inline-flex items-center text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors mb-2 group"
+            className="inline-flex items-center text-sm font-medium text-ink-subtle hover:text-ink transition-colors group"
           >
-            <ChevronLeft size={14} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
+            <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
             Proyectos
           </Link>
-
-          {proyecto ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
-                  {proyecto.nombre}
-                </h1>
-                {proyecto.tipos_sistema?.nombre && (
-                  <span className="px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200/60 dark:border-zinc-700/50">
-                    {proyecto.tipos_sistema.nombre}
-                  </span>
-                )}
-              </div>
-              <p className="text-zinc-500 dark:text-zinc-400 text-xs mt-1">
-                {proyecto.descripcion || 'Sin descripción'}
-              </p>
-            </>
+        }
+        title={
+          proyecto ? (
+            <span className="flex flex-wrap items-center gap-3">
+              {proyecto.nombre}
+              {proyecto.tipos_sistema?.nombre && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-sunken text-ink-muted border border-line">
+                  {proyecto.tipos_sistema.nombre}
+                </span>
+              )}
+            </span>
           ) : (
-            <div className="space-y-2">
-              <div className="h-7 w-64 max-w-full bg-zinc-200 dark:bg-zinc-800 rounded-lg animate-pulse" />
-              <div className="h-3 w-80 max-w-full bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse" />
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2.5 shrink-0">
-          <button onClick={() => setShowEquiposModal(true)} className={btnSecundario}>
-            <Users size={15} className="text-zinc-500" />
-            Equipos ({equiposAsignados.length})
-          </button>
-
-          {puedeEditar && (
-            <button onClick={openCreateModal} className={btnPrimario}>
-              <Plus size={15} />
-              Nuevo Requerimiento
+            <span className="block h-8 w-64 max-w-full bg-sunken-strong rounded-ui animate-pulse" />
+          )
+        }
+        description={proyecto ? proyecto.descripcion || 'Sin descripción' : undefined}
+        actions={
+          <>
+            <button onClick={() => setShowEquiposModal(true)} className={btnSecundario}>
+              <Users size={16} className="text-ink-subtle" />
+              Equipos ({equiposAsignados.length})
             </button>
-          )}
-        </div>
-      </div>
+
+            {puedeEditar && (
+              <button onClick={openCreateModal} className={btnPrimario}>
+                <Plus size={16} />
+                Nuevo requerimiento
+              </button>
+            )}
+          </>
+        }
+      />
 
       {/* Aviso de solo lectura para no relacionados */}
       {permisoCargado && !puedeEditar && (
-        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-3.5 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+        <div className="bg-warning-subtle border border-warning-line rounded-ui p-3.5 flex items-center gap-2.5 text-xs text-warning">
           <Lock size={15} className="shrink-0" />
           <span>
             Tienes acceso de lectura. Solo el creador del proyecto o miembros de un equipo vinculado pueden
@@ -598,7 +591,7 @@ export default function RequerimientosPage() {
       <div className="space-y-2">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
               <Search size={14} />
             </div>
             <input
@@ -633,14 +626,14 @@ export default function RequerimientosPage() {
           </select>
         </div>
         {!loading && requerimientos.length > 0 && (
-          <div className="flex items-center justify-between text-[11px] text-zinc-500 px-1">
+          <div className="flex items-center justify-between text-xs text-ink-subtle px-1">
             <span>
               {hayFiltros
                 ? `Mostrando ${filteredRequerimientos.length} de ${requerimientos.length} requerimientos`
                 : `${requerimientos.length} ${requerimientos.length === 1 ? 'requerimiento' : 'requerimientos'}`}
             </span>
             {hayFiltros && (
-              <button onClick={limpiarFiltros} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
+              <button onClick={limpiarFiltros} className="font-semibold text-brand-text hover:underline cursor-pointer">
                 Quitar filtros
               </button>
             )}
@@ -652,18 +645,18 @@ export default function RequerimientosPage() {
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-28 bg-zinc-100 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 rounded-2xl animate-pulse" />
+            <div key={i} className="h-28 bg-sunken border border-line rounded-ui animate-pulse" />
           ))}
         </div>
       ) : filteredRequerimientos.length === 0 ? (
-        <div className="text-center py-16 bg-white dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
-          <div className="w-12 h-12 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl flex items-center justify-center mx-auto mb-3">
+        <div className="text-center py-16 bg-surface rounded-ui border border-dashed border-line">
+          <div className="w-12 h-12 bg-sunken text-ink-subtle rounded-ui flex items-center justify-center mx-auto mb-3">
             <FileText size={22} />
           </div>
-          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+          <h3 className="text-sm font-semibold text-ink">
             {hayFiltros ? 'Sin resultados' : 'Todavía no hay requerimientos'}
           </h3>
-          <p className="text-zinc-500 dark:text-zinc-400 text-xs mt-1 max-w-sm mx-auto">
+          <p className="text-ink-subtle text-xs mt-1 max-w-sm mx-auto">
             {hayFiltros
               ? 'Ningún requerimiento coincide con los filtros seleccionados.'
               : puedeEditar
@@ -687,22 +680,22 @@ export default function RequerimientosPage() {
           {filteredRequerimientos.map((req) => (
             <div
               key={req.id}
-              className={`${tarjeta} p-4 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors flex flex-col md:flex-row md:items-start justify-between gap-4`}
+              className={`${tarjeta} p-4 hover:border-line-strong transition-colors flex flex-col md:flex-row md:items-start justify-between gap-4`}
             >
               <div className="space-y-2.5 flex-1 min-w-0">
                 {/* Badges de clasificación */}
-                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
                   {puedeEditar ? (
                     <select
                       value={req.id_estado || ''}
                       onChange={(e) => handleCambioEstado(req, e.target.value)}
                       aria-label="Cambiar estado"
                       title="Cambiar estado"
-                      className={`pl-2.5 pr-1 py-0.5 rounded-full font-medium border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${getBadgeColorEstado(req.estado?.nombre_estado)}`}
+                      className={`pl-2.5 pr-1 py-0.5 rounded-full font-medium border cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-text/30 ${getBadgeColorEstado(req.estado?.nombre_estado)}`}
                     >
                       {!req.id_estado && <option value="">Sin estado</option>}
                       {estados.map((e) => (
-                        <option key={e.id} value={e.id} className="text-zinc-900">{e.nombre_estado}</option>
+                        <option key={e.id} value={e.id} className="text-ink">{e.nombre_estado}</option>
                       ))}
                     </select>
                   ) : (
@@ -713,39 +706,39 @@ export default function RequerimientosPage() {
                   )}
 
                   {req.tipo_requerimiento && (
-                    <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 font-medium border border-zinc-200/60 dark:border-zinc-700/50">
+                    <span className="px-2 py-0.5 rounded-ui bg-sunken text-ink-muted font-medium border border-line">
                       {req.tipo_requerimiento.nombre}
                     </span>
                   )}
                   {req.modelo && (
-                    <span className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-200/60 dark:border-indigo-800/40">
+                    <span className="px-2 py-0.5 rounded-ui bg-brand-subtle text-brand-text font-medium border border-brand-line">
                       {req.modelo.nombre}
                     </span>
                   )}
                   {req.modalidad && (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-medium border border-amber-200/60 dark:border-amber-800/40">
+                    <span className="px-2 py-0.5 rounded-ui bg-warning-subtle text-warning font-medium border border-warning-line">
                       {req.modalidad.nombre_modalidad}
                     </span>
                   )}
                 </div>
 
-                <div className="border-l-2 border-zinc-900 dark:border-zinc-100 pl-3 py-0.5">
-                  <p className="text-zinc-900 dark:text-zinc-100 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
+                <div className="border-l-2 border-line-strong pl-3 py-0.5">
+                  <p className="text-ink font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
                     {req.enunciado}
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-400 pt-1">
+                <div className="flex flex-wrap items-center gap-3 text-xs text-ink-subtle pt-1">
                   {req.autor && (
                     <span className="flex items-center gap-1">
                       <User size={12} />
-                      Autor: <strong className="text-zinc-700 dark:text-zinc-300 font-medium">{req.autor.nombre || req.autor.correo}</strong>
+                      Autor: <strong className="text-ink-muted font-medium">{req.autor.nombre || req.autor.correo}</strong>
                     </span>
                   )}
                   {req.aprobador && (
                     <span className="flex items-center gap-1">
-                      <CheckCheck size={12} className="text-emerald-500" />
-                      Aprobado por: <strong className="text-zinc-700 dark:text-zinc-300 font-medium">{req.aprobador.nombre || req.aprobador.correo}</strong>
+                      <CheckCheck size={12} className="text-success" />
+                      Aprobado por: <strong className="text-ink-muted font-medium">{req.aprobador.nombre || req.aprobador.correo}</strong>
                     </span>
                   )}
                   {req.created_at && (
@@ -758,7 +751,7 @@ export default function RequerimientosPage() {
               </div>
 
               {/* Acciones */}
-              <div className="flex items-center gap-1 border-t md:border-t-0 pt-3 md:pt-0 border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center gap-1 border-t md:border-t-0 pt-3 md:pt-0 border-line">
                 <button
                   onClick={() => handleViewLogs(req)}
                   title="Ver historial de cambios"
@@ -804,7 +797,7 @@ export default function RequerimientosPage() {
         <form ref={formRef} onSubmit={handleSaveReq} noValidate className="flex flex-col flex-1 min-h-0">
           <ModalBody className="space-y-5">
             {/* Selector de Modelo y Patrón */}
-            <div className="bg-zinc-50/80 dark:bg-zinc-800/30 p-4 rounded-2xl border border-zinc-200/60 dark:border-zinc-700/50 space-y-3">
+            <div className="bg-sunken p-4 rounded-ui border border-line space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="req-modelo" className={etiqueta}>Modelo de Requisitos</label>
@@ -838,14 +831,14 @@ export default function RequerimientosPage() {
                 </div>
               </div>
               {patronSeleccionado && (
-                <div className="flex items-start justify-between gap-3 bg-zinc-950 rounded-xl px-3 py-2">
-                  <code className="font-mono text-[11px] text-emerald-400/90 leading-relaxed whitespace-pre-wrap">
+                <div className="flex items-start justify-between gap-3 bg-sunken border border-line rounded-ui px-3 py-2">
+                  <code className="font-mono text-xs text-ink leading-relaxed whitespace-pre-wrap">
                     {patronSeleccionado.promt}
                   </code>
                   <button
                     type="button"
                     onClick={usarPlantilla}
-                    className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-300 hover:text-emerald-200 cursor-pointer"
+                    className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-brand-text hover:underline cursor-pointer"
                   >
                     <Wand2 size={12} />
                     Usar plantilla
@@ -855,9 +848,9 @@ export default function RequerimientosPage() {
             </div>
 
             {/* AI Generation */}
-            <div className="bg-gradient-to-r from-indigo-50/70 to-blue-50/70 dark:from-indigo-950/30 dark:to-blue-950/30 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-800/40">
-              <label htmlFor="req-ia" className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <Sparkles size={14} className="text-indigo-600 dark:text-indigo-400" />
+            <div className="bg-brand-subtle p-4 rounded-ui border border-brand-line">
+              <label htmlFor="req-ia" className="text-sm font-semibold text-brand-text mb-2 flex items-center gap-1.5">
+                <Sparkles size={14} className="text-brand-text" />
                 Generar con IA
               </label>
               <div className="flex flex-col sm:flex-row gap-2">
@@ -867,7 +860,7 @@ export default function RequerimientosPage() {
                   placeholder="Describe la funcionalidad brevemente..."
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  className="flex-1 px-3.5 py-2 bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-800/60 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-zinc-900 dark:text-white placeholder:text-zinc-400"
+                  className="flex-1 px-3.5 py-2 bg-surface border border-brand-line rounded-ui text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-text text-ink placeholder:text-ink-subtle"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
@@ -879,14 +872,14 @@ export default function RequerimientosPage() {
                   type="button"
                   onClick={handleAIGenerate}
                   disabled={isAILoading || !aiPrompt.trim()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                  className="px-4 py-2 bg-brand-solid hover:bg-brand-solid-hover text-on-solid rounded-ui text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                 >
                   {isAILoading && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                   {isAILoading ? 'Generando...' : 'Generar'}
                 </button>
               </div>
               {patronSeleccionado && (
-                <p className="text-[11px] text-indigo-600/80 dark:text-indigo-300/70 mt-1.5">
+                <p className="text-xs text-brand-text mt-1.5">
                   Se usará el patrón <strong>{patronSeleccionado.nombre}</strong>.
                 </p>
               )}
@@ -895,7 +888,7 @@ export default function RequerimientosPage() {
             {/* Enunciado */}
             <div>
               <label htmlFor="req-enunciado" className={etiqueta}>
-                Enunciado del Requerimiento <span className="text-rose-500">*</span>
+                Enunciado del Requerimiento <span className="text-danger">*</span>
               </label>
               <textarea
                 id="req-enunciado"
@@ -911,7 +904,7 @@ export default function RequerimientosPage() {
                 }}
                 className={`${campo} font-mono leading-relaxed`}
               />
-              <p className="text-[11px] text-zinc-400 mt-1">Ctrl + Enter para guardar.</p>
+              <p className="text-xs text-ink-subtle mt-1">Ctrl + Enter para guardar.</p>
             </div>
 
             {/* Clasificación */}
@@ -1018,42 +1011,42 @@ export default function RequerimientosPage() {
       >
         <ModalBody className="space-y-3">
           {currentReqForLogs && (
-            <p className="font-mono text-[11px] text-zinc-600 dark:text-zinc-400 line-clamp-2 border-l-2 border-zinc-300 dark:border-zinc-700 pl-2">
+            <p className="font-mono text-xs text-ink-muted line-clamp-2 border-l-2 border-line-strong pl-2">
               {currentReqForLogs.enunciado}
             </p>
           )}
           {loadingLogs ? (
             [1, 2].map(i => (
-              <div key={i} className="h-14 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl animate-pulse" />
+              <div key={i} className="h-14 bg-sunken rounded-ui animate-pulse" />
             ))
           ) : selectedReqLogs.length === 0 ? (
-            <p className="text-xs text-zinc-500 text-center py-6">No hay registros de cambios todavía.</p>
+            <p className="text-xs text-ink-subtle text-center py-6">No hay registros de cambios todavía.</p>
           ) : (
             <ol className="space-y-2">
               {selectedReqLogs.map((log) => {
                 const autor = log.autor ? (log.autor.nombre || log.autor.correo) : nombreUsuario(log.id_autor);
                 const campos: string[] = Array.isArray(log.detalles?.campos) ? log.detalles.campos : [];
                 return (
-                  <li key={log.id} className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 text-xs space-y-1">
+                  <li key={log.id} className="p-3 bg-sunken rounded-ui border border-line text-xs space-y-1">
                     <div className="flex items-start justify-between gap-3">
-                      <span className="font-semibold text-zinc-800 dark:text-zinc-200">{log.accion}</span>
-                      <time className="text-[10px] text-zinc-400 shrink-0" dateTime={log.fecha_hora}>
+                      <span className="font-semibold text-ink">{log.accion}</span>
+                      <time className="text-xs text-ink-subtle shrink-0" dateTime={log.fecha_hora}>
                         {new Date(log.fecha_hora).toLocaleString()}
                       </time>
                     </div>
                     {log.detalles?.estado_anterior !== undefined && log.detalles?.estado_nuevo && (
-                      <p className="text-[11px] text-zinc-500 flex items-center gap-1">
+                      <p className="text-xs text-ink-subtle flex items-center gap-1">
                         {log.detalles.estado_anterior || 'Sin estado'}
                         <ArrowRight size={11} />
                         {log.detalles.estado_nuevo}
                       </p>
                     )}
                     {campos.length > 0 && (
-                      <p className="text-[11px] text-zinc-500">Cambió: {campos.join(', ')}</p>
+                      <p className="text-xs text-ink-subtle">Cambió: {campos.join(', ')}</p>
                     )}
                     {autor && (
-                      <p className="text-[11px] text-zinc-500">
-                        Por <strong className="text-zinc-700 dark:text-zinc-300">{autor}</strong>
+                      <p className="text-xs text-ink-subtle">
+                        Por <strong className="text-ink-muted">{autor}</strong>
                       </p>
                     )}
                   </li>
@@ -1080,28 +1073,28 @@ export default function RequerimientosPage() {
       >
         <ModalBody className="space-y-2">
           {equipos.length === 0 ? (
-            <p className="text-zinc-500 text-xs text-center py-4">No hay equipos registrados todavía.</p>
+            <p className="text-ink-subtle text-xs text-center py-4">No hay equipos registrados todavía.</p>
           ) : (
             equiposOrdenados.map(eq => {
               const isAssigned = equiposAsignados.includes(eq.equipo_id);
               const pendiente = solicitudesEquiposPendientes.includes(eq.equipo_id);
               if (!puedeGestionarVinculos && !isAssigned) return null;
               return (
-                <div key={eq.equipo_id} className={`flex items-center justify-between gap-3 p-3 rounded-xl border ${isAssigned ? 'bg-blue-50/60 dark:bg-blue-950/20 border-blue-200/60 dark:border-blue-800/40' : 'bg-zinc-50/80 dark:bg-zinc-800/50 border-zinc-200/60 dark:border-zinc-700/60'}`}>
+                <div key={eq.equipo_id} className={`flex items-center justify-between gap-3 p-3 rounded-ui border ${isAssigned ? 'bg-brand-subtle border-brand-line' : 'bg-sunken border-line'}`}>
                   <div className="min-w-0">
-                    <p className="font-semibold text-zinc-900 dark:text-zinc-100 text-xs sm:text-sm">{eq.nombre}</p>
-                    {eq.descripcion && <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{eq.descripcion}</p>}
+                    <p className="font-semibold text-ink text-xs sm:text-sm">{eq.nombre}</p>
+                    {eq.descripcion && <p className="text-xs text-ink-subtle truncate">{eq.descripcion}</p>}
                   </div>
                   {puedeGestionarVinculos && (
                     pendiente ? (
-                      <span className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40">
+                      <span className="shrink-0 px-3 py-1.5 rounded-ui text-xs font-medium text-warning bg-warning-subtle border border-warning-line">
                         Solicitud pendiente
                       </span>
                     ) : (
                       <button
                         onClick={() => solicitarVinculoEquipo(eq)}
                         title={isAssigned ? 'Pedir al líder del equipo que acepte desvincularse' : 'Invitar al líder del equipo a vincularse'}
-                        className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${isAssigned ? 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:text-rose-600 hover:border-rose-300' : 'bg-blue-600 text-white hover:bg-blue-500'}`}
+                        className={`shrink-0 px-3 py-1.5 rounded-ui text-xs font-semibold transition-colors cursor-pointer ${isAssigned ? 'bg-surface border border-line text-ink-muted hover:text-danger hover:border-danger-line' : 'bg-brand-solid text-on-solid hover:bg-brand-solid-hover'}`}
                       >
                         {isAssigned ? 'Solicitar desvinculación' : 'Invitar equipo'}
                       </button>
@@ -1112,11 +1105,11 @@ export default function RequerimientosPage() {
             })
           )}
           {!puedeGestionarVinculos && equipos.length > 0 && equiposAsignados.length === 0 && (
-            <p className="text-zinc-500 text-xs text-center py-4">Este proyecto aún no tiene equipos vinculados.</p>
+            <p className="text-ink-subtle text-xs text-center py-4">Este proyecto aún no tiene equipos vinculados.</p>
           )}
         </ModalBody>
         <ModalFooter>
-          <Link href="/equipos-global/" className="mr-auto text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+          <Link href="/equipos-global/" className="mr-auto text-xs font-semibold text-brand-text hover:underline">
             Gestionar equipos
           </Link>
           <button type="button" onClick={() => setShowEquiposModal(false)} className={btnSecundario}>
