@@ -17,7 +17,7 @@ import { mensajeError } from '@/lib/errores';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import {
-  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
+  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
@@ -160,7 +160,21 @@ export default function PatronesPage() {
     const matchModelo = selectedModeloFilter === 'todos' || p.id_modelo === selectedModeloFilter;
     return matchSearch && matchModelo;
   });
-  const modeloSeleccionado = modelos.find(m => m.id === selectedModeloFilter);
+  // Los patrones se muestran agrupados por modelo, cada grupo con su título
+  const gruposPatrones = [
+    ...modelos.map(m => ({
+      id: m.id,
+      nombre: m.nombre,
+      descripcion: m.descripcion,
+      patrones: filteredPatrones.filter(p => p.id_modelo === m.id)
+    })),
+    {
+      id: 'sin-modelo',
+      nombre: 'Sin modelo',
+      descripcion: null,
+      patrones: filteredPatrones.filter(p => !modelos.some(m => m.id === p.id_modelo))
+    }
+  ].filter(g => g.patrones.length > 0);
 
   const claseFiltro = (activo: boolean) =>
     `px-3 py-1.5 rounded-ui text-xs font-medium transition-colors cursor-pointer ${
@@ -206,9 +220,6 @@ export default function PatronesPage() {
             );
           })}
         </div>
-        {modeloSeleccionado?.descripcion && (
-          <p className="text-xs text-ink-subtle pl-1">{modeloSeleccionado.descripcion}</p>
-        )}
       </div>
 
       {/* Buscador */}
@@ -254,54 +265,65 @@ export default function PatronesPage() {
           </div>
         </div>
       ) : (
-        <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
-          {filteredPatrones.map((pat) => (
-            <li key={pat.patron_id} className="px-5 py-5">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <h3 className="text-base font-semibold text-ink">{pat.nombre}</h3>
-                  {pat.modelo && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sunken border border-line text-xs font-medium text-ink-muted">
-                      {pat.modelo.nombre}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={() => copyPrompt(pat)}
-                    title="Copiar sintaxis"
-                    aria-label={`Copiar sintaxis de ${pat.nombre}`}
-                    className={btnIcono}
-                  >
-                    {copiadoId === pat.patron_id ? <Check size={16} className="text-success" /> : <Copy size={16} />}
-                  </button>
-                  <button
-                    onClick={() => openModal(pat)}
-                    title="Editar patrón"
-                    aria-label={`Editar ${pat.nombre}`}
-                    className={btnIcono}
-                  >
-                    <Edit2 size={16} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(pat)}
-                    title="Eliminar patrón"
-                    aria-label={`Eliminar ${pat.nombre}`}
-                    className={btnIconoPeligro}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+        <div className="space-y-12">
+          {gruposPatrones.map((grupo) => (
+            <section key={grupo.id} aria-labelledby={`grupo-${grupo.id}`}>
+              <div className="pb-3 mb-5 border-b-2 border-line-strong">
+                <h2 id={`grupo-${grupo.id}`} className="text-xl font-semibold text-ink">
+                  {grupo.nombre}
+                  <span className="ml-2 text-sm font-normal text-ink-subtle">
+                    {grupo.patrones.length} {grupo.patrones.length === 1 ? 'patrón' : 'patrones'}
+                  </span>
+                </h2>
+                {grupo.descripcion && (
+                  <p className="text-sm text-ink-muted mt-1 max-w-prose">{grupo.descripcion}</p>
+                )}
               </div>
 
-              {/* Sintaxis del patrón */}
-              <div className="bg-sunken p-3 rounded-ui border border-line font-mono text-sm text-ink leading-relaxed overflow-x-auto whitespace-pre-wrap">
-                {pat.promt}
-              </div>
-            </li>
+              <ul className="space-y-4">
+                {grupo.patrones.map((pat) => (
+                  <li key={pat.patron_id} className={`${tarjeta} p-5`}>
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <h3 className="text-base font-semibold text-ink min-w-0">{pat.nombre}</h3>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => copyPrompt(pat)}
+                          title="Copiar sintaxis"
+                          aria-label={`Copiar sintaxis de ${pat.nombre}`}
+                          className={btnIcono}
+                        >
+                          {copiadoId === pat.patron_id ? <Check size={16} className="text-success" /> : <Copy size={16} />}
+                        </button>
+                        <button
+                          onClick={() => openModal(pat)}
+                          title="Editar patrón"
+                          aria-label={`Editar ${pat.nombre}`}
+                          className={btnIcono}
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(pat)}
+                          title="Eliminar patrón"
+                          aria-label={`Eliminar ${pat.nombre}`}
+                          className={btnIconoPeligro}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Sintaxis del patrón */}
+                    <div className="bg-sunken px-4 py-3 rounded-ui border border-line border-l-4 border-l-brand-solid font-mono text-sm text-ink leading-relaxed overflow-x-auto whitespace-pre-wrap">
+                      {pat.promt}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       )}
 
       {/* Modal Crear / Editar Patrón */}
