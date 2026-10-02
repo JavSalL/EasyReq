@@ -7,7 +7,7 @@ import {
   Plus, Edit2, Trash2, FolderGit2, ChevronRight, Search,
   Layers, Users, Save, Cpu, Smartphone, Globe, Laptop, Server, Lock
 } from 'lucide-react';
-import type { Proyecto, TipoSistema } from '@/lib/database.types';
+import type { Proyecto, TipoSistema, PerfilUsuario, QuienCreaEquipos } from '@/lib/database.types';
 import {
   getProyectos,
   getTiposSistema,
@@ -16,7 +16,8 @@ import {
   deleteProyecto,
   getRequerimientos,
   getProyectoEquipos,
-  getProyectosRelacionados
+  getProyectosRelacionados,
+  getAllUsers
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
@@ -25,7 +26,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import ProjectTeamRequestInbox from '@/components/ProjectTeamRequestInbox';
+import PermisoCrearEquipos from '@/components/proyectos/PermisoCrearEquipos';
 import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
 } from '@/components/ui/estilos';
@@ -75,10 +76,19 @@ export default function Home() {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Proyecto | null>(null);
+  // Usuarios elegibles para el permiso "quién puede crear equipos"
+  const [usuarios, setUsuarios] = useState<Array<PerfilUsuario>>([]);
+  useEffect(() => {
+    getAllUsers()
+      .then(lista => setUsuarios(lista))
+      .catch(err => console.error('Error al cargar usuarios:', err));
+  }, []);
   const [formData, setFormData] = useState({
     nombre: '',
     descripcion: '',
-    id_tipo_sistema: ''
+    id_tipo_sistema: '',
+    quien_crea_equipos: 'creador' as QuienCreaEquipos,
+    ids_creadores_equipos: [] as string[]
   });
   const [saving, setSaving] = useState(false);
   const { hayCambios, intentarCerrar } = useCierreSeguro(isModalOpen, formData, () => setIsModalOpen(false));
@@ -135,7 +145,9 @@ export default function Home() {
     setFormData({
       nombre: '',
       descripcion: '',
-      id_tipo_sistema: tiposSistema[0]?.id || ''
+      id_tipo_sistema: tiposSistema[0]?.id || '',
+      quien_crea_equipos: 'creador',
+      ids_creadores_equipos: []
     });
     setIsModalOpen(true);
   };
@@ -149,7 +161,9 @@ export default function Home() {
     setFormData({
       nombre: p.nombre,
       descripcion: p.descripcion || '',
-      id_tipo_sistema: p.id_tipo_sistema || ''
+      id_tipo_sistema: p.id_tipo_sistema || '',
+      quien_crea_equipos: p.quien_crea_equipos ?? 'creador',
+      ids_creadores_equipos: p.ids_creadores_equipos ?? []
     });
     setIsModalOpen(true);
   };
@@ -176,7 +190,11 @@ export default function Home() {
         await updateProyecto(editingProject.proyecto_id, {
           nombre: formData.nombre.trim(),
           descripcion: formData.descripcion.trim(),
-          id_tipo_sistema: formData.id_tipo_sistema || null
+          id_tipo_sistema: formData.id_tipo_sistema || null,
+          // Solo el creador cambia quién puede crear equipos (las reglas lo exigen)
+          ...(editingProject.id_creador === uid
+            ? { quien_crea_equipos: formData.quien_crea_equipos, ids_creadores_equipos: formData.ids_creadores_equipos }
+            : {})
         });
         toast.success('Proyecto actualizado');
       } else {
@@ -185,7 +203,9 @@ export default function Home() {
           nombre: formData.nombre.trim(),
           descripcion: formData.descripcion.trim(),
           id_tipo_sistema: formData.id_tipo_sistema || null,
-          id_creador: uid
+          id_creador: uid,
+          quien_crea_equipos: formData.quien_crea_equipos,
+          ids_creadores_equipos: formData.ids_creadores_equipos
         });
         toast.success('Proyecto creado');
       }
@@ -271,12 +291,6 @@ export default function Home() {
         description="Sistemas de software y la especificación de sus requerimientos."
         actions={
           <>
-            <ProjectTeamRequestInbox
-              userId={uid}
-              onResponded={async () => {
-                await Promise.all([fetchProjects(), cargarPermisos()]);
-              }}
-            />
             <button onClick={openCreateModal} className={btnPrimario}>
               <Plus size={16} />
               Nuevo proyecto
@@ -483,6 +497,15 @@ export default function Home() {
                 className={`${campo} resize-none`}
               />
             </div>
+
+            {(!editingProject || editingProject.id_creador === uid) && (
+              <PermisoCrearEquipos
+                quien={formData.quien_crea_equipos}
+                ids={formData.ids_creadores_equipos}
+                usuarios={usuarios.filter(u => u.id !== uid)}
+                onChange={({ quien, ids }) => setFormData({ ...formData, quien_crea_equipos: quien, ids_creadores_equipos: ids })}
+              />
+            )}
           </ModalBody>
           <ModalFooter>
             <button type="button" onClick={intentarCerrar} className={btnSecundario}>

@@ -5,13 +5,13 @@ import toast from "react-hot-toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ChevronLeft, Plus, Edit2, Trash2, Search, User, Users, Clock, Save,
+  ChevronLeft, Plus, Edit2, Trash2, Search, User, Clock, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, ArrowRight, Copy, ListPlus, ListOrdered
 } from 'lucide-react';
 import { generateSingleRequirement } from '@/lib/ai-actions';
 import type {
   Proyecto, Requerimiento, TipoRequerimiento, Estado,
-  Modalidad, Modelo, Patron, PerfilUsuario, Equipo, LogRequerimiento
+  Modalidad, Modelo, Patron, PerfilUsuario, LogRequerimiento
 } from '@/lib/database.types';
 import {
   getProyectoById,
@@ -31,8 +31,6 @@ import {
   getLogsRequerimientos,
   getEquipos,
   getProyectoEquipos,
-  crearSolicitudProyectoEquipo,
-  getSolicitudesProyectoEquipoEnviadas,
   isUsuarioRelacionadoAProyecto
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
@@ -45,7 +43,8 @@ import {
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
 import ModalHistorialLogs from '@/components/requerimientos/ModalHistorialLogs';
-import ModalEquiposProyecto from '@/components/requerimientos/ModalEquiposProyecto';
+import EquiposDelProyecto from '@/components/equipos/EquiposDelProyecto';
+import { irA, leerNavegacion, suscribirNavegacion, type VistaProyecto } from '@/lib/navegacion-proyecto';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
@@ -150,28 +149,20 @@ export default function RequerimientosPage() {
   const [selectedReqLogs, setSelectedReqLogs] = useState<Array<LogRequerimiento>>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
 
-  // Equipos asignados al proyecto
-  const [equipos, setEquipos] = useState<Array<Equipo>>([]);
-  const [equiposAsignados, setEquiposAsignados] = useState<string[]>([]);
-  const [solicitudesEquiposPendientes, setSolicitudesEquiposPendientes] = useState<string[]>([]);
-  const [showEquiposModal, setShowEquiposModal] = useState(false);
+  // Vista del proyecto (requerimientos o equipos), reflejada en la URL
+  const [vista, setVista] = useState<VistaProyecto>('requerimientos');
+  useEffect(() => {
+    const leer = () => setVista(leerNavegacion().vista);
+    leer();
+    return suscribirNavegacion(leer);
+  }, []);
+  // Cantidad de equipos del proyecto, para la pestaña (la lista la carga EquiposDelProyecto)
+  const [cantidadEquipos, setCantidadEquipos] = useState<number | null>(null);
 
-  // Control de acceso: lectura total; crear/editar requerimientos y
-  // vincular equipos solo si el usuario está relacionado al proyecto
-  // (creador o miembro de un equipo vinculado).
+  // Control de acceso: lectura total; crear/editar requerimientos solo si el
+  // usuario está relacionado al proyecto (creador o miembro de uno de sus equipos).
   const [puedeEditar, setPuedeEditar] = useState(false);
   const [permisoCargado, setPermisoCargado] = useState(false);
-  // Solo el creador invita equipos o pide desvincularlos (lo acepta el líder)
-  const puedeGestionarVinculos = uid !== null && proyecto?.id_creador === uid;
-
-  // Equipos con una solicitud de vínculo/desvínculo enviada y sin responder
-  useEffect(() => {
-    if (!uid || !proyectoId) return;
-    getSolicitudesProyectoEquipoEnviadas(uid, proyectoId)
-      .then(solicitudes => setSolicitudesEquiposPendientes(solicitudes.map(s => s.id_equipo)))
-      .catch(err => console.error('Error al cargar solicitudes enviadas:', err));
-  }, [uid, proyectoId]);
-
   useEffect(() => {
     let activo = true;
     const cargarPermiso = async () => {
@@ -228,7 +219,7 @@ export default function RequerimientosPage() {
     setLoading(true);
 
     try {
-      const [found, trData, estData, modData, modelData, patData, userData, todosEquipos, pes] = await Promise.all([
+      const [found, trData, estData, modData, modelData, patData, userData, todosEquipos, vinculos] = await Promise.all([
         getProyectoById(proyectoId),
         getTiposRequerimientos(),
         getEstados(),
@@ -254,8 +245,12 @@ export default function RequerimientosPage() {
       setModelos(modelData);
       setPatrones(patData);
       setUsuarios([...userData].sort((a, b) => (a.nombre || a.correo).localeCompare(b.nombre || b.correo)));
-      setEquipos([...todosEquipos].sort((a, b) => a.nombre.localeCompare(b.nombre)));
-      setEquiposAsignados(pes.filter(p => p.id_proyecto === proyectoId).map(p => p.id_equipo));
+      setCantidadEquipos(
+        new Set([
+          ...vinculos.filter(v => v.id_proyecto === proyectoId).map(v => v.id_equipo),
+          ...todosEquipos.filter(e => e.id_proyecto === proyectoId).map(e => e.equipo_id)
+        ]).size
+      );
     } catch (e) {
       console.error(e);
       toast.error(mensajeError(e, 'No se pudieron cargar los datos del proyecto'));
@@ -603,43 +598,6 @@ export default function RequerimientosPage() {
     }
   };
 
-  // Solicitar al líder del equipo que se vincule o desvincule del proyecto.
-  // El vínculo solo cambia cuando el líder acepta la solicitud.
-  const solicitarVinculoEquipo = async (equipo: Equipo) => {
-    if (!proyectoId || !uid) return;
-    if (!puedeGestionarVinculos) {
-      toast.error('Solo el creador del proyecto puede invitar equipos o solicitar su desvinculación');
-      return;
-    }
-    const isAsignado = equiposAsignados.includes(equipo.equipo_id);
-    if (isAsignado) {
-      const ok = await confirmar({
-        titulo: '¿Solicitar desvinculación?',
-        mensaje: (
-          <>
-            Se pedirá al líder de <strong className="text-ink">{equipo.nombre}</strong> que
-            acepte desvincular su equipo. Si acepta, sus miembros podrían perder el permiso de editar este proyecto.
-          </>
-        ),
-        textoConfirmar: 'Enviar solicitud',
-        peligro: true
-      });
-      if (!ok) return;
-    }
-    try {
-      await crearSolicitudProyectoEquipo(proyectoId, equipo.equipo_id, uid, isAsignado ? 'desvincular' : 'vincular');
-      setSolicitudesEquiposPendientes(prev => [...new Set([...prev, equipo.equipo_id])]);
-      toast.success(
-        isAsignado
-          ? 'Solicitud de desvinculación enviada al líder del equipo'
-          : 'Invitación enviada al líder del equipo'
-      );
-    } catch (e) {
-      console.error('Error al crear solicitud de vínculo proyecto-equipo:', e);
-      toast.error(mensajeError(e, 'No se pudo enviar la solicitud'));
-    }
-  };
-
   // Filtrado de lista
   const termino = searchTerm.trim().toLowerCase();
   const hayFiltros = termino !== '' || filterEstado !== 'todos' || filterTipo !== 'todos' || filterModelo !== 'todos';
@@ -691,11 +649,6 @@ export default function RequerimientosPage() {
       { id: 'sin-clasificar', nombre: agrupar === 'tipo' ? 'Sin tipo' : 'Sin modelo', items: resto }
     ].filter(g => g.items.length > 0);
   })();
-
-  // Equipos vinculados primero en el modal
-  const equiposOrdenados = [...equipos].sort(
-    (a, b) => Number(equiposAsignados.includes(b.equipo_id)) - Number(equiposAsignados.includes(a.equipo_id))
-  );
 
   if (urlLeida && !proyectoId) {
     return (
@@ -876,29 +829,56 @@ export default function RequerimientosPage() {
         }
         description={proyecto ? proyecto.descripcion || 'Sin descripción' : undefined}
         actions={
-          <>
-            <button onClick={() => setShowEquiposModal(true)} className={btnSecundario}>
-              <Users size={16} className="text-ink-subtle" />
-              Equipos ({equiposAsignados.length})
+          vista === 'requerimientos' && puedeEditar && (
+            <button onClick={openCreateModal} className={btnPrimario}>
+              <Plus size={16} />
+              Nuevo requerimiento
             </button>
-
-            {puedeEditar && (
-              <button onClick={openCreateModal} className={btnPrimario}>
-                <Plus size={16} />
-                Nuevo requerimiento
-              </button>
-            )}
-          </>
+          )
         }
       />
 
+      {/* Secciones del proyecto */}
+      {proyecto && proyectoId && (
+        <nav aria-label="Secciones del proyecto" className="flex gap-1 border-b border-line">
+          {[
+            { id: 'requerimientos' as const, nombre: 'Requerimientos', cantidad: loading ? null : requerimientos.length },
+            { id: 'equipos' as const, nombre: 'Equipos', cantidad: cantidadEquipos }
+          ].map((p) => {
+            const activa = vista === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => irA(proyectoId, p.id)}
+                aria-current={activa ? 'page' : undefined}
+                className={`px-4 min-h-11 text-base whitespace-nowrap border-b-2 transition-colors cursor-pointer ${
+                  activa ? 'border-ink text-ink font-semibold' : 'border-transparent text-ink-muted font-medium hover:text-ink'
+                }`}
+              >
+                {p.nombre}
+                {p.cantidad !== null && <span className="ml-2 text-sm tabular-nums text-ink-subtle">{p.cantidad}</span>}
+              </button>
+            );
+          })}
+        </nav>
+      )}
+
+      {vista === 'equipos' ? (
+        proyecto ? (
+          <EquiposDelProyecto proyecto={proyecto} onCantidad={setCantidadEquipos} />
+        ) : (
+          <div role="status" aria-label="Cargando" className="h-40 bg-sunken rounded-ui animate-pulse" />
+        )
+      ) : (
+      <>
       {/* Aviso de solo lectura para no relacionados */}
       {permisoCargado && !puedeEditar && (
         <div className="bg-warning-subtle border border-warning-line rounded-ui p-3.5 flex items-center gap-2.5 text-xs text-warning">
           <Lock size={15} className="shrink-0" />
           <span>
-            Tienes acceso de lectura. Solo el creador del proyecto o miembros de un equipo vinculado pueden
-            crear o editar requerimientos; el creador administra las invitaciones de equipos.
+            Tienes acceso de lectura. Solo el creador del proyecto o miembros de uno de sus equipos pueden
+            crear o editar requerimientos.
           </span>
         </div>
       )}
@@ -1062,6 +1042,9 @@ export default function RequerimientosPage() {
             ))}
           </div>
         )
+      )}
+
+      </>
       )}
 
       {/* Modal Redactar / Editar Requerimiento */}
@@ -1316,16 +1299,6 @@ export default function RequerimientosPage() {
         codigoDe={codigoDe}
       />
 
-      {/* Modal Equipos del Proyecto */}
-      <ModalEquiposProyecto
-        open={showEquiposModal}
-        onClose={() => setShowEquiposModal(false)}
-        equipos={equipos}
-        equiposAsignados={equiposAsignados}
-        solicitudesEquiposPendientes={solicitudesEquiposPendientes}
-        puedeGestionarVinculos={puedeGestionarVinculos}
-        onSolicitarVinculo={solicitarVinculoEquipo}
-      />
     </div>
   );
 }

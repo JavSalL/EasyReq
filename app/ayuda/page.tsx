@@ -17,7 +17,7 @@ const SECCIONES = [
       'Cualquier usuario puede crear un proyecto; quien lo crea puede editarlo y eliminarlo.',
       'Haz clic en la tarjeta de un proyecto para ver sus requerimientos.',
       'Arriba ves "Mis proyectos" (los que puedes editar) y abajo los de la comunidad.',
-      'Las solicitudes de equipos que recibas aparecen en el botón "Solicitudes de equipos".',
+      'Al crear el proyecto eliges quién puede crear equipos en él: solo tú, los usuarios que elijas o cualquiera. Puedes cambiarlo después desde "Editar".',
     ],
   },
   {
@@ -42,12 +42,11 @@ const SECCIONES = [
   {
     icono: Users,
     titulo: 'Equipos y roles',
-    href: '/equipos-global/',
     puntos: [
-      'Quien crea un equipo queda como su líder.',
-      'El líder invita a los usuarios con uno o varios roles; se unen al aceptar la invitación en "Invitaciones".',
+      'Los equipos viven dentro de cada proyecto: abre un proyecto y entra a su pestaña "Equipos".',
+      'Quien crea un equipo queda como su líder. Quién puede crear equipos en un proyecto lo define el creador del proyecto.',
+      'El líder invita a los usuarios con uno o varios roles. La invitación te llega a la campana de la barra superior y te unes al aceptarla.',
       'El líder puede cambiar los roles de un miembro. El equipo siempre debe conservar al menos un líder.',
-      'Para vincular un equipo a un proyecto, el creador del proyecto lo invita desde el botón "Equipos" y el líder del equipo acepta.',
     ],
   },
   {
@@ -63,11 +62,11 @@ const SECCIONES = [
 
 const PERMISOS: Array<[string, string]> = [
   ['Ver proyectos, requerimientos, equipos y patrones', 'Cualquier usuario con sesión'],
-  ['Crear proyectos y equipos', 'Cualquier usuario con sesión'],
-  ['Editar o eliminar un proyecto', 'Su creador o miembros de un equipo vinculado'],
-  ['Crear, editar o aprobar requerimientos', 'Su creador o miembros de un equipo vinculado'],
-  ['Invitar un equipo a un proyecto', 'El creador del proyecto (el líder del equipo acepta)'],
-  ['Pedir desvincular un equipo de un proyecto', 'El creador del proyecto o el líder del equipo'],
+  ['Crear proyectos', 'Cualquier usuario con sesión'],
+  ['Crear equipos en un proyecto', 'Lo define el creador del proyecto: solo él, usuarios que elija o cualquiera'],
+  ['Cambiar quién puede crear equipos en un proyecto', 'El creador del proyecto'],
+  ['Editar o eliminar un proyecto', 'Su creador o miembros de uno de sus equipos'],
+  ['Crear, editar o aprobar requerimientos', 'Su creador o miembros de uno de sus equipos'],
   ['Editar un equipo, invitar miembros y cambiar roles', 'Los líderes del equipo'],
   ['Editar o eliminar patrones y modelos', 'Nadie por ahora. Se pueden copiar y crear nuevos'],
 ];
@@ -95,7 +94,7 @@ const FAQS = [
   },
   {
     pregunta: '¿Cómo funcionan los proyectos, equipos y roles?',
-    respuesta: 'Los proyectos agrupan requerimientos. Cada proyecto tiene un equipo con miembros y roles (por ejemplo, administrador, analista). Gestiona los equipos desde la sección “Equipos” y asigna personas a cada proyecto para colaborar.',
+    respuesta: 'Los proyectos agrupan requerimientos. Cada proyecto tiene sus propios equipos, con miembros y roles (por ejemplo, líder, analista). Los gestionas desde la pestaña “Equipos” dentro del proyecto, y las invitaciones que recibas para unirte a un equipo aparecen en la campana de la barra superior.',
   },
   {
     pregunta: '¿A quién pido ayuda si algo falla?',
