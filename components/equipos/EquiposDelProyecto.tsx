@@ -778,14 +778,6 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                     {gestionable ? (
                       <>
                         <button
-                          onClick={() => abrirEquipo(team)}
-                          title="Editar equipo: datos y miembros"
-                          aria-label={`Editar ${team.nombre}: datos y miembros`}
-                          className={btnIcono}
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
                           onClick={() => handleDeleteTeam(team)}
                           title="Eliminar equipo"
                           aria-label={`Eliminar ${team.nombre}`}
