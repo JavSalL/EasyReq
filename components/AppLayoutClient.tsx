@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { FirebaseAuthProvider, useAuth } from '@/lib/firebase-auth-provider';
 import TopNav from './TopNav';
@@ -10,9 +10,7 @@ import { ConfirmProvider } from './ui/ConfirmProvider';
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, profile, loading } = useAuth();
-  const [modalPerfilAbierto, setModalPerfilAbierto] = useState(false);
-  const yaSePidioPerfil = useRef(false);
+  const { user, profile, profileLoaded, loading } = useAuth();
   // Con trailingSlash:true (exportación estática para Firebase Hosting) la ruta real
   // es "/login/", así que se normaliza quitando la barra final antes de comparar.
   const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname;
@@ -28,16 +26,13 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, isLoginPage, router]);
 
-  // Si el usuario entra al sistema y no tiene profesiones asignadas en su perfil,
-  // le abrimos el editor de perfil para que complete su información
-  useEffect(() => {
-    if (loading || !user || !profile || yaSePidioPerfil.current || isLoginPage) return;
-    const sinProfesion = !profile.ids_profesiones || profile.ids_profesiones.length === 0;
-    if (sinProfesion) {
-      yaSePidioPerfil.current = true;
-      setModalPerfilAbierto(true);
-    }
-  }, [loading, user, profile, isLoginPage]);
+  // Registro pendiente: la cuenta existe pero falta el perfil o no tiene profesiones (p. ej. una
+  // cuenta nueva de Google). Se piden los mismos datos que en el registro normal y no se puede omitir.
+  const registroPendiente =
+    !!user &&
+    profileLoaded &&
+    (!profile || !Array.isArray(profile.ids_profesiones) || profile.ids_profesiones.length === 0) &&
+    !(profile?.id_profesion);
 
   // Atajo "/": lleva el cursor al buscador de la pantalla (si hay uno)
   useEffect(() => {
@@ -92,10 +87,11 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       </main>
 
       <ProfileModal
-        open={modalPerfilAbierto}
-        onClose={() => setModalPerfilAbierto(false)}
-        title="¡Bienvenido a EasyReq! Completa tu perfil"
-        description="Por favor confírmanos tu nombre y selecciona tus profesiones o especialidades para personalizar tu experiencia."
+        open={registroPendiente}
+        obligatorio
+        onClose={() => {}}
+        title="Completa tu registro"
+        description="Para terminar de crear tu cuenta, confirma tu nombre y elige tus profesiones o especialidades."
       />
     </div>
   );

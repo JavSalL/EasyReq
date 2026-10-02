@@ -9,6 +9,8 @@ import { PerfilUsuario } from './database.types';
 interface AuthContextType {
   user: User | null;
   profile: PerfilUsuario | null;
+  /** true cuando ya se consultó el perfil del usuario (exista o no): evita pedir datos antes de saberlo. */
+  profileLoaded: boolean;
   loading: boolean;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -17,6 +19,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
+  profileLoaded: false,
   loading: true,
   logout: async () => {},
   refreshProfile: async () => {},
@@ -25,12 +28,14 @@ const AuthContext = createContext<AuthContextType>({
 export function FirebaseAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<PerfilUsuario | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (currentUser: User) => {
     try {
       const prof = await getUserProfile(currentUser.uid);
       setProfile(prof);
+      setProfileLoaded(true);
     } catch (err) {
       console.error('Error cargando perfil:', err);
     }
@@ -44,6 +49,7 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
         seedCatalogsIfEmpty();
       } else {
         setProfile(null);
+        setProfileLoaded(false);
       }
       setLoading(false);
     });
@@ -55,6 +61,7 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
     await fbSignOut(auth);
     setUser(null);
     setProfile(null);
+    setProfileLoaded(false);
   };
 
   const refreshProfile = async () => {
@@ -64,7 +71,7 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, logout, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, profileLoaded, loading, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
