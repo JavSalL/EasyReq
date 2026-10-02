@@ -45,6 +45,73 @@ interface EquipoDetallado extends Equipo {
 const nombreDe = (u: PerfilUsuario) => u.nombre || u.correo;
 const iniciales = (u: PerfilUsuario) => nombreDe(u).slice(0, 2).toUpperCase();
 
+interface FormularioDatosEquipoProps {
+  equipo: EquipoDetallado;
+  guardando: boolean;
+  onGuardar: (datos: { nombre: string; descripcion: string }) => void;
+  onEliminar: () => void;
+}
+
+/**
+ * Datos del equipo (nombre y descripción) editables en la misma pantalla que sus miembros.
+ * Se monta con `key` ligada a los datos guardados, así el formulario siempre parte de lo último.
+ */
+function FormularioDatosEquipo({ equipo, guardando, onGuardar, onEliminar }: FormularioDatosEquipoProps) {
+  const [nombre, setNombre] = useState(equipo.nombre);
+  const [descripcion, setDescripcion] = useState(equipo.descripcion ?? '');
+  const hayCambios = nombre.trim() !== equipo.nombre || descripcion.trim() !== (equipo.descripcion ?? '');
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onGuardar({ nombre, descripcion });
+      }}
+      noValidate
+      className={`${tarjeta} p-5`}
+    >
+      <h3 className="text-base font-semibold text-ink mb-4">Datos del equipo</h3>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <label htmlFor="equipo-nombre" className={etiqueta}>
+            Nombre <span className="text-danger">*</span>
+          </label>
+          <input
+            id="equipo-nombre"
+            type="text"
+            maxLength={80}
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            className={campo}
+          />
+        </div>
+        <div>
+          <label htmlFor="equipo-descripcion" className={etiqueta}>
+            Descripción <span className="text-danger">*</span>
+          </label>
+          <input
+            id="equipo-descripcion"
+            type="text"
+            value={descripcion}
+            onChange={(e) => setDescripcion(e.target.value)}
+            className={campo}
+          />
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <button type="button" onClick={onEliminar} className={btnSecundario}>
+          <Trash2 size={16} />
+          Eliminar equipo
+        </button>
+        <button type="submit" disabled={guardando || !hayCambios} className={btnPrimario}>
+          <Save size={16} />
+          {guardando ? 'Guardando...' : 'Guardar cambios'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 interface EquiposDelProyectoProps {
   proyecto: Proyecto;
   /** Se avisa con la cantidad de equipos cada vez que se cargan (para el contador de la pestaña). */
@@ -85,7 +152,6 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
 
   // Modal crear / editar equipo
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingEquipo, setEditingEquipo] = useState<Equipo | null>(null);
   const [formData, setFormData] = useState({ nombre: '', descripcion: '' });
   const [saving, setSaving] = useState(false);
   const { hayCambios, intentarCerrar } = useCierreSeguro(isModalOpen, formData, () => setIsModalOpen(false));
@@ -165,18 +231,42 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
   };
   const cerrarEquipo = () => irA(proyectoId, 'equipos');
 
-  const openModal = (team: EquipoDetallado | null = null) => {
-    if (team && !puedeGestionarEquipo(team.equipo_id)) {
-      toast.error('Solo el líder del equipo puede editarlo');
-      return;
-    }
-    if (!team && !puedeCrear) {
+  // Crear un equipo (editar se hace en la pantalla del equipo, junto con sus miembros)
+  const openModal = () => {
+    if (!puedeCrear) {
       toast.error('No tienes permiso para crear equipos en este proyecto');
       return;
     }
-    setEditingEquipo(team);
-    setFormData({ nombre: team?.nombre ?? '', descripcion: team?.descripcion ?? '' });
+    setFormData({ nombre: '', descripcion: '' });
     setIsModalOpen(true);
+  };
+
+  // Guardar los datos de un equipo existente (nombre y descripción)
+  const [guardandoDatos, setGuardandoDatos] = useState(false);
+  const guardarDatosEquipo = async (team: EquipoDetallado, datos: { nombre: string; descripcion: string }) => {
+    if (!puedeGestionarEquipo(team.equipo_id)) {
+      toast.error('Solo el líder del equipo puede editarlo');
+      return;
+    }
+    if (!datos.nombre.trim()) {
+      toast.error('El nombre del equipo es obligatorio');
+      return;
+    }
+    if (!datos.descripcion.trim()) {
+      toast.error('La descripción del equipo es obligatoria');
+      return;
+    }
+    setGuardandoDatos(true);
+    try {
+      await updateEquipo(team.equipo_id, { nombre: datos.nombre.trim(), descripcion: datos.descripcion.trim() });
+      toast.success('Equipo actualizado');
+      await recargar();
+    } catch (err) {
+      console.error(err);
+      toast.error(mensajeError(err, 'No se pudo guardar el equipo'));
+    } finally {
+      setGuardandoDatos(false);
+    }
   };
 
   const handleSaveTeam = async (e: React.FormEvent) => {
@@ -192,37 +282,29 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
 
     setSaving(true);
     try {
-      if (editingEquipo) {
-        if (!puedeGestionarEquipo(editingEquipo.equipo_id)) {
-          toast.error('Solo el líder del equipo puede editarlo');
-          return;
-        }
-        await updateEquipo(editingEquipo.equipo_id, {
-          nombre: formData.nombre.trim(),
-          descripcion: formData.descripcion.trim()
-        });
-      } else {
-        if (!uid) {
-          toast.error('Debes iniciar sesión para crear un equipo');
-          return;
-        }
-        // Quien lo crea queda como líder inicial para poder gestionarlo
-        const rolLider = roles.find(r => esRolLider(r.nombre_rol));
-        if (!rolLider) {
-          toast.error('No está configurado el rol de líder; no se puede crear el equipo');
-          return;
-        }
-        await createEquipoEnProyecto({
-          nombre: formData.nombre.trim(),
-          descripcion: formData.descripcion.trim(),
-          id_proyecto: proyectoId,
-          id_creador: uid,
-          id_rol_lider: rolLider.id
-        });
+      if (!uid) {
+        toast.error('Debes iniciar sesión para crear un equipo');
+        return;
       }
-      toast.success(editingEquipo ? 'Equipo actualizado' : 'Equipo creado. Eres su líder.');
+      // Quien lo crea queda como líder inicial para poder gestionarlo
+      const rolLider = roles.find(r => esRolLider(r.nombre_rol));
+      if (!rolLider) {
+        toast.error('No está configurado el rol de líder; no se puede crear el equipo');
+        return;
+      }
+      const nuevo = await createEquipoEnProyecto({
+        nombre: formData.nombre.trim(),
+        descripcion: formData.descripcion.trim(),
+        id_proyecto: proyectoId,
+        id_creador: uid,
+        id_rol_lider: rolLider.id
+      });
+      toast.success('Equipo creado. Eres su líder: agrega a sus miembros.');
       setIsModalOpen(false);
       await recargar();
+      // Se abre el equipo para seguir con sus miembros
+      irA(proyectoId, 'equipos', nuevo.equipo_id);
+      window.scrollTo({ top: 0 });
     } catch (err) {
       console.error(err);
       toast.error(mensajeError(err, 'No se pudo guardar el equipo'));
@@ -355,7 +437,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
       open={isModalOpen}
       onClose={intentarCerrar}
       cerrarConFondo={!hayCambios}
-      editingEquipo={editingEquipo}
+      editingEquipo={null}
       formData={formData}
       setFormData={setFormData}
       onSave={handleSaveTeam}
@@ -390,19 +472,22 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
             <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
             Equipos del proyecto
           </button>
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-            <div className="min-w-0">
-              <h2 className="text-2xl font-semibold text-ink">{equipoAbierto.nombre}</h2>
-              <p className="text-base text-ink-muted mt-2 max-w-prose">{equipoAbierto.descripcion || 'Sin descripción.'}</p>
-            </div>
-            {puedeGestionar && (
-              <button onClick={() => openModal(equipoAbierto)} className={`${btnSecundario} shrink-0`}>
-                <Edit2 size={16} />
-                Editar equipo
-              </button>
-            )}
-          </div>
+          <h2 className="text-2xl font-semibold text-ink">{equipoAbierto.nombre}</h2>
+          {!puedeGestionar && (
+            <p className="text-base text-ink-muted mt-2 max-w-prose">{equipoAbierto.descripcion || 'Sin descripción.'}</p>
+          )}
         </div>
+
+        {/* Datos del equipo (solo líder): se editan aquí, junto con los miembros */}
+        {puedeGestionar && (
+          <FormularioDatosEquipo
+            key={`${equipoAbierto.equipo_id}|${equipoAbierto.nombre}|${equipoAbierto.descripcion ?? ''}`}
+            equipo={equipoAbierto}
+            guardando={guardandoDatos}
+            onGuardar={(datos) => guardarDatosEquipo(equipoAbierto, datos)}
+            onEliminar={() => handleDeleteTeam(equipoAbierto)}
+          />
+        )}
 
         {/* Invitar miembros o cambiar roles (solo líder) */}
         {!puedeGestionar ? (
@@ -693,9 +778,9 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                     {gestionable ? (
                       <>
                         <button
-                          onClick={() => openModal(team)}
-                          title="Editar equipo"
-                          aria-label={`Editar ${team.nombre}`}
+                          onClick={() => abrirEquipo(team)}
+                          title="Editar equipo: datos y miembros"
+                          aria-label={`Editar ${team.nombre}: datos y miembros`}
                           className={btnIcono}
                         >
                           <Edit2 size={16} />
