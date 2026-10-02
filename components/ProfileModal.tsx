@@ -13,9 +13,16 @@ import { auth } from '@/lib/firebase';
 interface ProfileModalProps {
   open: boolean;
   onClose: () => void;
+  title?: string;
+  description?: string;
 }
 
-export default function ProfileModal({ open, onClose }: ProfileModalProps) {
+export default function ProfileModal({ 
+  open, 
+  onClose,
+  title = 'Configuración del Perfil',
+  description = 'Actualiza tu información personal y especialidades profesionales.'
+}: ProfileModalProps) {
   const { user, profile, refreshProfile } = useAuth();
   
   const [nombre, setNombre] = useState('');
@@ -111,8 +118,8 @@ export default function ProfileModal({ open, onClose }: ProfileModalProps) {
     <Modal
       open={open}
       onClose={onClose}
-      title="Configuración del Perfil"
-      description="Actualiza tu información personal y especialidades profesionales."
+      title={title}
+      description={description}
       size="md"
     >
       <form onSubmit={handleGuardar} className="flex flex-col flex-1 min-h-0">

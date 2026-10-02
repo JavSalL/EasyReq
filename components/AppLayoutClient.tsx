@@ -1,15 +1,18 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { FirebaseAuthProvider, useAuth } from '@/lib/firebase-auth-provider';
 import TopNav from './TopNav';
+import ProfileModal from './ProfileModal';
 import { ConfirmProvider } from './ui/ConfirmProvider';
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
+  const [modalPerfilAbierto, setModalPerfilAbierto] = useState(false);
+  const yaSePidioPerfil = useRef(false);
   // Con trailingSlash:true (exportación estática para Firebase Hosting) la ruta real
   // es "/login/", así que se normaliza quitando la barra final antes de comparar.
   const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname;
@@ -24,6 +27,17 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       router.replace('/');
     }
   }, [user, loading, isLoginPage, router]);
+
+  // Si el usuario entra al sistema y no tiene profesiones asignadas en su perfil,
+  // le abrimos el editor de perfil para que complete su información
+  useEffect(() => {
+    if (loading || !user || !profile || yaSePidioPerfil.current || isLoginPage) return;
+    const sinProfesion = !profile.ids_profesiones || profile.ids_profesiones.length === 0;
+    if (sinProfesion) {
+      yaSePidioPerfil.current = true;
+      setModalPerfilAbierto(true);
+    }
+  }, [loading, user, profile, isLoginPage]);
 
   // Atajo "/": lleva el cursor al buscador de la pantalla (si hay uno)
   useEffect(() => {
@@ -76,6 +90,13 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       <main id="contenido" tabIndex={-1} className="outline-none">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">{children}</div>
       </main>
+
+      <ProfileModal
+        open={modalPerfilAbierto}
+        onClose={() => setModalPerfilAbierto(false)}
+        title="¡Bienvenido a EasyReq! Completa tu perfil"
+        description="Por favor confírmanos tu nombre y selecciona tus profesiones o especialidades para personalizar tu experiencia."
+      />
     </div>
   );
 }
