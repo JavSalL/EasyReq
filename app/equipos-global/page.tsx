@@ -838,8 +838,7 @@ export default function EquiposGlobalPage() {
         description="Equipos multidisciplinarios, sus integrantes, roles y proyectos."
         actions={
           <>
-          <ProjectTeamRequestInbox userId={uid} onResponded={recargar} />
-
+          {/*<ProjectTeamRequestInbox userId={uid} onResponded={recargar} />*/}
           {/* Invitaciones recibidas */}
           <div className="relative">
             <button

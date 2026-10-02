@@ -13,6 +13,7 @@ import {
   updatePatron,
   deletePatron
 } from '@/lib/firestore-service';
+import { puedeEditarCatalogos } from '@/lib/permisos';
 import { mensajeError } from '@/lib/errores';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -25,6 +26,12 @@ import { useEstadoSesion } from '@/lib/use-estado-sesion';
 
 export default function PatronesPage() {
   const confirmar = useConfirm();
+  // KAN-17: `false` para todos los usuarios por ahora, así que los botones de
+  // editar y eliminar no se renderizan. El JSX sigue aquí detrás de la condición
+  // a propósito: cuando exista el sistema de roles, `puedeEditarCatalogos` empezará
+  // a devolver `true` para los perfiles autorizados y aparecerán solos, sin
+  // reescribir esta página.
+  const puedeEditar = puedeEditarCatalogos();
   const [modelos, setModelos] = useState<Array<Modelo>>([]);
   const [patrones, setPatrones] = useState<Array<Patron>>([]);
   const [loading, setLoading] = useState(true);
@@ -189,10 +196,12 @@ export default function PatronesPage() {
         title="Patrones y Modelos"
         description="Catálogo de sintaxis estructuradas para redactar requerimientos (EARS, Sistemas Embebidos, Lenguaje Natural)."
         actions={
-          <button onClick={() => openModal()} className={btnPrimario}>
-            <Plus size={16} />
-            Nuevo patrón
-          </button>
+          puedeEditar && (
+            <button onClick={() => openModal()} className={btnPrimario}>
+              <Plus size={16} />
+              Nuevo patrón
+            </button>
+          )
         }
       />
 
@@ -256,7 +265,7 @@ export default function PatronesPage() {
             {termino && (
               <button onClick={() => setSearchTerm('')} className={btnSecundario}>Limpiar búsqueda</button>
             )}
-            {!termino && (
+            {!termino && puedeEditar && (
               <button onClick={() => openModal()} className={btnPrimario}>
                 <Plus size={15} />
                 Nuevo Patrón
@@ -295,22 +304,26 @@ export default function PatronesPage() {
                         >
                           {copiadoId === pat.patron_id ? <Check size={16} className="text-success" /> : <Copy size={16} />}
                         </button>
-                        <button
-                          onClick={() => openModal(pat)}
-                          title="Editar patrón"
-                          aria-label={`Editar ${pat.nombre}`}
-                          className={btnIcono}
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(pat)}
-                          title="Eliminar patrón"
-                          aria-label={`Eliminar ${pat.nombre}`}
-                          className={btnIconoPeligro}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {puedeEditar && (
+                          <button
+                            onClick={() => openModal(pat)}
+                            title="Editar patrón"
+                            aria-label={`Editar ${pat.nombre}`}
+                            className={btnIcono}
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                        )}
+                        {puedeEditar && (
+                          <button
+                            onClick={() => handleDelete(pat)}
+                            title="Eliminar patrón"
+                            aria-label={`Eliminar ${pat.nombre}`}
+                            className={btnIconoPeligro}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </div>
 

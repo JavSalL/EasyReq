@@ -1,5 +1,13 @@
 // Convierte errores de Firebase en mensajes que expliquen la causa al usuario.
 
+/**
+ * Texto único para los rechazos por permisos. Lo comparten las dos vías por las
+ * que una acción puede quedar bloqueada —el `permission-denied` que devuelve
+ * Firestore y la comprobación anticipada del cliente en `lib/permisos.ts`— para
+ * que el usuario lea lo mismo independientemente de dónde se cortara.
+ */
+export const MENSAJE_SIN_PERMISOS = 'No tienes permiso para realizar esta acción.';
+
 function codigoError(err: unknown): string {
   if (typeof err === 'object' && err !== null && 'code' in err) {
     const code: unknown = (err as { code?: unknown }).code;
@@ -15,7 +23,7 @@ function codigoError(err: unknown): string {
 export function mensajeError(err: unknown, fallback: string): string {
   switch (codigoError(err)) {
     case 'permission-denied':
-      return 'No tienes permiso para realizar esta acción.';
+      return MENSAJE_SIN_PERMISOS;
     case 'unauthenticated':
       return 'Tu sesión expiró. Vuelve a iniciar sesión.';
     case 'unavailable':

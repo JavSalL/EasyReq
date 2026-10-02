@@ -4,7 +4,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, LogOut } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '@/lib/firebase-auth-provider';
-import { getProfesionesLabel } from '@/lib/firestore-service';
 import ThemeToggle from '@/components/ThemeToggle';
 
 const itemMenu =
@@ -33,7 +32,6 @@ export default function UserMenu() {
   }, [abierto]);
 
   const nombre = profile?.nombre || user?.displayName || user?.email?.split('@')[0] || 'Usuario';
-  const subtitulo = getProfesionesLabel(profile, profile?.correo || user?.email || 'Miembro');
   const iniciales = nombre.slice(0, 2).toUpperCase();
 
   const cerrarSesion = async () => {
@@ -69,7 +67,6 @@ export default function UserMenu() {
         >
           <div className="px-3 py-3 border-b border-line mb-1">
             <p className="text-sm font-semibold text-ink truncate">{nombre}</p>
-            <p className="text-xs text-ink-subtle truncate">{subtitulo}</p>
           </div>
           <ThemeToggle conEtiqueta className={itemMenu} />
           <button type="button" role="menuitem" onClick={cerrarSesion} className={`${itemMenu} hover:text-danger`}>
