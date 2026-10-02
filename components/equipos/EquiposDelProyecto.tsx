@@ -23,7 +23,7 @@ import {
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
-import { puedeCrearEquipos } from '@/lib/equipos-proyecto';
+import { esMiembroDelProyecto, puedeCrearEquipos } from '@/lib/equipos-proyecto';
 import { EVENTO_EQUIPOS_CAMBIARON, irA, leerNavegacion, suscribirNavegacion } from '@/lib/navegacion-proyecto';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -444,8 +444,10 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                 >
                   <option value="">Seleccionar usuario...</option>
                   {usuarios
-                    // Uno mismo solo aparece si ya es miembro (para editar sus roles)
+                    // Uno mismo solo aparece si ya es miembro del equipo (para editar sus roles)
                     .filter(u => u.id !== uid || idsMiembros.has(u.id))
+                    // Los equipos de un proyecto se arman con los miembros del proyecto
+                    .filter(u => idsMiembros.has(u.id) || !equipoAbierto.id_proyecto || esMiembroDelProyecto(proyecto, u.id))
                     .filter(u => {
                       const filtro = filtroUsuario.trim().toLowerCase();
                       return !filtro || u.id === memberForm.id_usuario || `${nombreDe(u)} ${u.correo}`.toLowerCase().includes(filtro);
@@ -456,6 +458,11 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                       </option>
                     ))}
                 </select>
+                {equipoAbierto.id_proyecto && !editandoMiembro && (
+                  <p className="text-xs text-ink-subtle mt-1.5">
+                    Solo aparecen los miembros del proyecto. Para sumar a otra persona, agrégala antes en la pestaña Miembros.
+                  </p>
+                )}
               </div>
 
               <div>

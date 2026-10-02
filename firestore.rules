@@ -114,15 +114,36 @@ service cloud.firestore {
         );
     }
 
-    // KAN-24: los equipos pertenecen a un proyecto y los crea quien el proyecto autorice
-    // (campo `quien_crea_equipos`): solo el creador, usuarios elegidos o cualquiera.
-    // Replica `puedeCrearEquipos` de lib/equipos-proyecto.ts: si se cambia una, hay
-    // que cambiar la otra.
+    // KAN-24: el proyecto tiene miembros (su creador, que siempre lo es, y los que se agregan
+    // directamente en `ids_miembros`) y los equipos se arman con ellos. Estas funciones replican
+    // lib/equipos-proyecto.ts: si se cambia una, hay que cambiar la otra.
+    function esMiembroDelProyecto(projectId, userId) {
+      let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
+      return exists(projectPath) && (
+        get(projectPath).data.get('id_creador', null) == userId ||
+        userId in get(projectPath).data.get('ids_miembros', [])
+      );
+    }
+
+    // Agregar y quitar miembros: el creador y los miembros que él autorizó (`ids_gestores_miembros`).
+    function puedeGestionarMiembrosProyecto(projectId, userId) {
+      let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
+      return exists(projectPath) && (
+        get(projectPath).data.get('id_creador', null) == userId ||
+        userId in get(projectPath).data.get('ids_gestores_miembros', [])
+      );
+    }
+
+    // Crear equipos en el proyecto (campo `quien_crea_equipos`): solo el creador, los miembros
+    // que él elija o cualquier miembro del proyecto.
     function puedeCrearEquipoEnProyecto(projectId, userId) {
       let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
       return exists(projectPath) && (
         get(projectPath).data.get('id_creador', null) == userId ||
-        get(projectPath).data.get('quien_crea_equipos', 'creador') == 'cualquiera' ||
+        (
+          get(projectPath).data.get('quien_crea_equipos', 'creador') == 'miembros' &&
+          userId in get(projectPath).data.get('ids_miembros', [])
+        ) ||
         (
           get(projectPath).data.get('quien_crea_equipos', 'creador') == 'seleccionados' &&
           userId in get(projectPath).data.get('ids_creadores_equipos', [])
@@ -252,10 +273,18 @@ service cloud.firestore {
           ) ||
           request.resource.data.id_creador == resource.data.id_creador
         ) &&
-        // KAN-24: el permiso para crear equipos solo lo cambia el creador del proyecto
+        // KAN-24: los permisos del proyecto (quién crea equipos y quién gestiona miembros) solo
+        // los cambia su creador; la lista de miembros, el creador y los miembros que él autorizó
         (
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['quien_crea_equipos', 'ids_creadores_equipos']) ||
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'quien_crea_equipos', 'ids_creadores_equipos', 'quien_agrega_miembros', 'ids_gestores_miembros'
+          ]) ||
           resource.data.get('id_creador', null) == request.auth.uid
+        ) &&
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ids_miembros']) ||
+          resource.data.get('id_creador', null) == request.auth.uid ||
+          request.auth.uid in resource.data.get('ids_gestores_miembros', [])
         );
       allow delete: if isAuthenticated();
     }
@@ -342,6 +371,14 @@ service cloud.firestore {
         (
           isTeamLeader(resource.data.id_equipo) &&
           resource.data.id_usuario != request.auth.uid
+        ) ||
+        (
+          // KAN-24: al quitar a alguien del proyecto, sale de los equipos del proyecto
+          get(/databases/$(database)/documents/equipo/$(resource.data.id_equipo)).data.get('id_proyecto', null) != null &&
+          puedeGestionarMiembrosProyecto(
+            get(/databases/$(database)/documents/equipo/$(resource.data.id_equipo)).data.id_proyecto,
+            request.auth.uid
+          )
         )
       );
     }
@@ -364,6 +401,14 @@ service cloud.firestore {
         invitationId == request.resource.data.id_equipo + "_" + request.resource.data.id_invitado &&
         isTeamLeader(request.resource.data.id_equipo) &&
         isValidTeamRole(request.resource.data.id_rol) &&
+        // KAN-24: un equipo con proyecto solo invita a miembros de ese proyecto
+        (
+          get(/databases/$(database)/documents/equipo/$(request.resource.data.id_equipo)).data.get('id_proyecto', null) == null ||
+          esMiembroDelProyecto(
+            get(/databases/$(database)/documents/equipo/$(request.resource.data.id_equipo)).data.id_proyecto,
+            request.resource.data.id_invitado
+          )
+        ) &&
         !exists(/databases/$(database)/documents/miembros_equipo/$(request.resource.data.id_equipo + "_" + request.resource.data.id_invitado));
       allow update: if isAuthenticated() && (
         (

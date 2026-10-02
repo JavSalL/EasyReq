@@ -7,7 +7,7 @@ import {
   Plus, Edit2, Trash2, FolderGit2, ChevronRight, Search,
   Layers, Users, Save, Cpu, Smartphone, Globe, Laptop, Server, Lock
 } from 'lucide-react';
-import type { Proyecto, TipoSistema, PerfilUsuario, QuienCreaEquipos } from '@/lib/database.types';
+import type { Proyecto, TipoSistema, PerfilUsuario, QuienCreaEquipos, QuienAgregaMiembros } from '@/lib/database.types';
 import {
   getProyectos,
   getTiposSistema,
@@ -26,7 +26,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import PermisoCrearEquipos from '@/components/proyectos/PermisoCrearEquipos';
+import PermisosProyecto from '@/components/proyectos/PermisosProyecto';
 import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
 } from '@/components/ui/estilos';
@@ -88,7 +88,9 @@ export default function Home() {
     descripcion: '',
     id_tipo_sistema: '',
     quien_crea_equipos: 'creador' as QuienCreaEquipos,
-    ids_creadores_equipos: [] as string[]
+    ids_creadores_equipos: [] as string[],
+    quien_agrega_miembros: 'creador' as QuienAgregaMiembros,
+    ids_gestores_miembros: [] as string[]
   });
   const [saving, setSaving] = useState(false);
   const { hayCambios, intentarCerrar } = useCierreSeguro(isModalOpen, formData, () => setIsModalOpen(false));
@@ -147,7 +149,9 @@ export default function Home() {
       descripcion: '',
       id_tipo_sistema: tiposSistema[0]?.id || '',
       quien_crea_equipos: 'creador',
-      ids_creadores_equipos: []
+      ids_creadores_equipos: [],
+      quien_agrega_miembros: 'creador',
+      ids_gestores_miembros: []
     });
     setIsModalOpen(true);
   };
@@ -163,7 +167,9 @@ export default function Home() {
       descripcion: p.descripcion || '',
       id_tipo_sistema: p.id_tipo_sistema || '',
       quien_crea_equipos: p.quien_crea_equipos ?? 'creador',
-      ids_creadores_equipos: p.ids_creadores_equipos ?? []
+      ids_creadores_equipos: p.ids_creadores_equipos ?? [],
+      quien_agrega_miembros: p.quien_agrega_miembros ?? 'creador',
+      ids_gestores_miembros: p.ids_gestores_miembros ?? []
     });
     setIsModalOpen(true);
   };
@@ -193,7 +199,12 @@ export default function Home() {
           id_tipo_sistema: formData.id_tipo_sistema || null,
           // Solo el creador cambia quién puede crear equipos (las reglas lo exigen)
           ...(editingProject.id_creador === uid
-            ? { quien_crea_equipos: formData.quien_crea_equipos, ids_creadores_equipos: formData.ids_creadores_equipos }
+            ? {
+                quien_crea_equipos: formData.quien_crea_equipos,
+                ids_creadores_equipos: formData.ids_creadores_equipos,
+                quien_agrega_miembros: formData.quien_agrega_miembros,
+                ids_gestores_miembros: formData.ids_gestores_miembros
+              }
             : {})
         });
         toast.success('Proyecto actualizado');
@@ -205,7 +216,9 @@ export default function Home() {
           id_tipo_sistema: formData.id_tipo_sistema || null,
           id_creador: uid,
           quien_crea_equipos: formData.quien_crea_equipos,
-          ids_creadores_equipos: formData.ids_creadores_equipos
+          ids_creadores_equipos: formData.ids_creadores_equipos,
+          quien_agrega_miembros: formData.quien_agrega_miembros,
+          ids_gestores_miembros: formData.ids_gestores_miembros
         });
         toast.success('Proyecto creado');
       }
@@ -499,11 +512,24 @@ export default function Home() {
             </div>
 
             {(!editingProject || editingProject.id_creador === uid) && (
-              <PermisoCrearEquipos
-                quien={formData.quien_crea_equipos}
-                ids={formData.ids_creadores_equipos}
-                usuarios={usuarios.filter(u => u.id !== uid)}
-                onChange={({ quien, ids }) => setFormData({ ...formData, quien_crea_equipos: quien, ids_creadores_equipos: ids })}
+              <PermisosProyecto
+                valor={{
+                  quienCreaEquipos: formData.quien_crea_equipos,
+                  idsCreadoresEquipos: formData.ids_creadores_equipos,
+                  quienAgregaMiembros: formData.quien_agrega_miembros,
+                  idsGestoresMiembros: formData.ids_gestores_miembros
+                }}
+                // Los permisos "a miembros que elija" se reparten entre los miembros actuales (al crear no hay)
+                miembros={usuarios.filter(u => u.id !== uid && (editingProject?.ids_miembros ?? []).includes(u.id))}
+                onChange={(v) =>
+                  setFormData({
+                    ...formData,
+                    quien_crea_equipos: v.quienCreaEquipos,
+                    ids_creadores_equipos: v.idsCreadoresEquipos,
+                    quien_agrega_miembros: v.quienAgregaMiembros,
+                    ids_gestores_miembros: v.idsGestoresMiembros
+                  })
+                }
               />
             )}
           </ModalBody>

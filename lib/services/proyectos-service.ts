@@ -7,10 +7,12 @@ import {
   updateDoc, 
   deleteDoc, 
   query, 
-  where 
+  where,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Proyecto, UUID, MiembroEquipo, QuienCreaEquipos } from '../database.types';
+import { Proyecto, UUID, MiembroEquipo, QuienCreaEquipos, QuienAgregaMiembros } from '../database.types';
 import { getTiposSistema } from './catalogos-service';
 import { getProyectoEquipos, getMiembrosEquipo } from './equipos-service';
 
@@ -35,8 +37,11 @@ export async function getProyectos(): Promise<Proyecto[]> {
         // Documentos legacy pueden no tener `id_creador`: se normaliza a null
         // y se tratan como hoy (solo miembros vinculados editan).
         id_creador: (data.id_creador as string | null | undefined) ?? null,
+        ids_miembros: Array.isArray(data.ids_miembros) ? data.ids_miembros : [],
         quien_crea_equipos: (data.quien_crea_equipos as QuienCreaEquipos | undefined) ?? 'creador',
         ids_creadores_equipos: Array.isArray(data.ids_creadores_equipos) ? data.ids_creadores_equipos : [],
+        quien_agrega_miembros: (data.quien_agrega_miembros as QuienAgregaMiembros | undefined) ?? 'creador',
+        ids_gestores_miembros: Array.isArray(data.ids_gestores_miembros) ? data.ids_gestores_miembros : [],
         created_at: data.created_at || new Date().toISOString()
       });
     }
@@ -62,8 +67,11 @@ export async function getProyectoById(id: string): Promise<Proyecto | null> {
       tipos_sistema: tipo,
       // Documentos legacy sin `id_creador` se normalizan a null.
       id_creador: (data.id_creador as string | null | undefined) ?? null,
+      ids_miembros: Array.isArray(data.ids_miembros) ? data.ids_miembros : [],
       quien_crea_equipos: (data.quien_crea_equipos as QuienCreaEquipos | undefined) ?? 'creador',
       ids_creadores_equipos: Array.isArray(data.ids_creadores_equipos) ? data.ids_creadores_equipos : [],
+      quien_agrega_miembros: (data.quien_agrega_miembros as QuienAgregaMiembros | undefined) ?? 'creador',
+      ids_gestores_miembros: Array.isArray(data.ids_gestores_miembros) ? data.ids_gestores_miembros : [],
       created_at: data.created_at || new Date().toISOString()
     };
   } catch (e) {
@@ -79,10 +87,14 @@ export async function createProyecto(data: {
   id_creador?: UUID | null;
   quien_crea_equipos?: QuienCreaEquipos;
   ids_creadores_equipos?: UUID[];
+  quien_agrega_miembros?: QuienAgregaMiembros;
+  ids_gestores_miembros?: UUID[];
 }): Promise<Proyecto> {
   const created_at = new Date().toISOString();
   const quien_crea_equipos = data.quien_crea_equipos ?? 'creador';
   const ids_creadores_equipos = quien_crea_equipos === 'seleccionados' ? data.ids_creadores_equipos ?? [] : [];
+  const quien_agrega_miembros = data.quien_agrega_miembros ?? 'creador';
+  const ids_gestores_miembros = quien_agrega_miembros === 'seleccionados' ? data.ids_gestores_miembros ?? [] : [];
   const docRef = await addDoc(collection(db, 'proyecto'), {
     nombre: data.nombre,
     descripcion: data.descripcion || '',
@@ -90,8 +102,11 @@ export async function createProyecto(data: {
     // UID del creador (política: cualquier autenticado puede crear; el
     // creador siempre puede editar/eliminar). Null si no se provee.
     id_creador: data.id_creador ?? null,
+    ids_miembros: [],
     quien_crea_equipos,
     ids_creadores_equipos,
+    quien_agrega_miembros,
+    ids_gestores_miembros,
     created_at
   });
   return {
@@ -100,8 +115,11 @@ export async function createProyecto(data: {
     descripcion: data.descripcion || '',
     id_tipo_sistema: data.id_tipo_sistema || null,
     id_creador: data.id_creador ?? null,
+    ids_miembros: [],
     quien_crea_equipos,
     ids_creadores_equipos,
+    quien_agrega_miembros,
+    ids_gestores_miembros,
     created_at
   };
 }
@@ -112,9 +130,11 @@ export async function updateProyecto(
     nombre: string;
     descripcion?: string;
     id_tipo_sistema?: string | null;
-    // Solo los envía el creador del proyecto: las reglas impiden que otros cambien el permiso
+    // Solo los envía el creador del proyecto: las reglas impiden que otros cambien los permisos
     quien_crea_equipos?: QuienCreaEquipos;
     ids_creadores_equipos?: UUID[];
+    quien_agrega_miembros?: QuienAgregaMiembros;
+    ids_gestores_miembros?: UUID[];
   }
 ): Promise<void> {
   const docRef = doc(db, 'proyecto', id);
@@ -122,7 +142,32 @@ export async function updateProyecto(
   if (data.quien_crea_equipos !== undefined) {
     cambios.ids_creadores_equipos = data.quien_crea_equipos === 'seleccionados' ? data.ids_creadores_equipos ?? [] : [];
   }
+  if (data.quien_agrega_miembros !== undefined) {
+    cambios.ids_gestores_miembros = data.quien_agrega_miembros === 'seleccionados' ? data.ids_gestores_miembros ?? [] : [];
+  }
   await updateDoc(docRef, cambios);
+}
+
+/** Agrega miembros al proyecto directamente (sin invitación). Lo hacen el creador y quienes él autorizó. */
+export async function agregarMiembrosProyecto(id_proyecto: string, ids_usuarios: UUID[]): Promise<void> {
+  if (ids_usuarios.length === 0) return;
+  await updateDoc(doc(db, 'proyecto', id_proyecto), { ids_miembros: arrayUnion(...ids_usuarios) });
+}
+
+/**
+ * Quita a un miembro del proyecto: sale de la lista de miembros, de las listas de permisos que
+ * lo nombraban y de los equipos del proyecto a los que pertenecía.
+ */
+export async function quitarMiembroProyecto(id_proyecto: string, id_usuario: UUID): Promise<void> {
+  await updateDoc(doc(db, 'proyecto', id_proyecto), {
+    ids_miembros: arrayRemove(id_usuario),
+    ids_creadores_equipos: arrayRemove(id_usuario),
+    ids_gestores_miembros: arrayRemove(id_usuario)
+  });
+  const equipos = await getDocs(query(collection(db, 'equipo'), where('id_proyecto', '==', id_proyecto)));
+  for (const equipo of equipos.docs) {
+    await deleteDoc(doc(db, 'miembros_equipo', `${equipo.id}_${id_usuario}`));
+  }
 }
 
 export async function deleteProyecto(id: string): Promise<void> {
@@ -166,10 +211,12 @@ export async function deleteProyecto(id: string): Promise<void> {
  */
 export async function getProyectosRelacionados(userId: string): Promise<UUID[]> {
   if (!userId) return [];
-  const [vinculos, membresias, creadosSnap] = await Promise.all([
+  const [vinculos, membresias, creadosSnap, miembroSnap] = await Promise.all([
     getProyectoEquipos(),
     getMiembrosEquipo(),
-    getDocs(query(collection(db, 'proyecto'), where('id_creador', '==', userId)))
+    getDocs(query(collection(db, 'proyecto'), where('id_creador', '==', userId))),
+    // Proyectos donde lo agregaron como miembro directo (KAN-24)
+    getDocs(query(collection(db, 'proyecto'), where('ids_miembros', 'array-contains', userId)))
   ]);
   const equiposDelUsuario = new Set(
     membresias
@@ -178,6 +225,9 @@ export async function getProyectosRelacionados(userId: string): Promise<UUID[]> 
   );
   const proyectos = new Set<UUID>();
   for (const d of creadosSnap.docs) {
+    proyectos.add(d.id);
+  }
+  for (const d of miembroSnap.docs) {
     proyectos.add(d.id);
   }
   for (const pe of vinculos) {

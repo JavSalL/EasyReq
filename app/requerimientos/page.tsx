@@ -44,6 +44,7 @@ import {
 import PageHeader from '@/components/ui/PageHeader';
 import ModalHistorialLogs from '@/components/requerimientos/ModalHistorialLogs';
 import EquiposDelProyecto from '@/components/equipos/EquiposDelProyecto';
+import MiembrosDelProyecto from '@/components/proyectos/MiembrosDelProyecto';
 import { irA, leerNavegacion, suscribirNavegacion, type VistaProyecto } from '@/lib/navegacion-proyecto';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
@@ -158,6 +159,8 @@ export default function RequerimientosPage() {
   }, []);
   // Cantidad de equipos del proyecto, para la pestaña (la lista la carga EquiposDelProyecto)
   const [cantidadEquipos, setCantidadEquipos] = useState<number | null>(null);
+  // Cantidad de miembros: la pestaña la ajusta al cargar (suma a quienes entraron por un equipo)
+  const [cantidadMiembros, setCantidadMiembros] = useState<number | null>(null);
 
   // Control de acceso: lectura total; crear/editar requerimientos solo si el
   // usuario está relacionado al proyecto (creador o miembro de uno de sus equipos).
@@ -262,6 +265,13 @@ export default function RequerimientosPage() {
   useEffect(() => {
     cargarTodo();
   }, [cargarTodo]);
+
+  // Recarga solo el proyecto (p. ej. tras agregar o quitar miembros)
+  const recargarProyecto = useCallback(async () => {
+    if (!proyectoId) return;
+    const actualizado = await getProyectoById(proyectoId);
+    if (actualizado) setProyecto(actualizado);
+  }, [proyectoId]);
 
   // Los requerimientos anteriores a los identificadores reciben su número (en orden de creación).
   // Lo inicia cualquier sesión que abra el proyecto, también las de solo lectura: es una
@@ -843,6 +853,11 @@ export default function RequerimientosPage() {
         <nav aria-label="Secciones del proyecto" className="flex gap-1 border-b border-line">
           {[
             { id: 'requerimientos' as const, nombre: 'Requerimientos', cantidad: loading ? null : requerimientos.length },
+            {
+              id: 'miembros' as const,
+              nombre: 'Miembros',
+              cantidad: cantidadMiembros ?? new Set([proyecto.id_creador, ...(proyecto.ids_miembros ?? [])].filter(Boolean)).size
+            },
             { id: 'equipos' as const, nombre: 'Equipos', cantidad: cantidadEquipos }
           ].map((p) => {
             const activa = vista === p.id;
@@ -864,11 +879,13 @@ export default function RequerimientosPage() {
         </nav>
       )}
 
-      {vista === 'equipos' ? (
-        proyecto ? (
+      {vista === 'equipos' || vista === 'miembros' ? (
+        !proyecto ? (
+          <div role="status" aria-label="Cargando" className="h-40 bg-sunken rounded-ui animate-pulse" />
+        ) : vista === 'equipos' ? (
           <EquiposDelProyecto proyecto={proyecto} onCantidad={setCantidadEquipos} />
         ) : (
-          <div role="status" aria-label="Cargando" className="h-40 bg-sunken rounded-ui animate-pulse" />
+          <MiembrosDelProyecto proyecto={proyecto} onCambio={recargarProyecto} onCantidad={setCantidadMiembros} />
         )
       ) : (
       <>
