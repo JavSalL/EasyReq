@@ -1,18 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from 'react-hot-toast';
 import AppLayoutClient from "@/components/AppLayoutClient";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { SCRIPT_TEMA } from "@/lib/theme";
 
 export const metadata: Metadata = {
   // Cada ruta define su título en su layout.tsx; "/" (Proyectos) usa el default
@@ -29,18 +19,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-50 dark:bg-zinc-950`}>
+    <html lang="es" data-theme="light" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA }} />
+      </head>
+      <body className="antialiased bg-canvas text-ink">
         <AppLayoutClient>
           {children}
         </AppLayoutClient>
         <Toaster 
           position="top-right"
           toastOptions={{
-            className: 'dark:bg-zinc-900 dark:text-white dark:border-zinc-800 border',
             style: {
-              borderRadius: '12px',
-              fontSize: '14px',
+              background: 'var(--surface)',
+              color: 'var(--ink)',
+              border: '1px solid var(--line-strong)',
+              borderRadius: 'var(--radius-ui)',
+              boxShadow: 'none',
+              fontSize: '15px',
             },
           }}
         />

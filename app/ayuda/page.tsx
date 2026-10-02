@@ -6,6 +6,7 @@ import {
   HelpCircle, FolderGit2, FileText, Users, BookOpen, Shield, Sparkles, Keyboard, ChevronRight, ChevronDown
 } from 'lucide-react';
 import { tarjeta } from '@/components/ui/estilos';
+import PageHeader from '@/components/ui/PageHeader';
 
 const SECCIONES = [
   {
@@ -24,7 +25,9 @@ const SECCIONES = [
     titulo: 'Requerimientos',
     puntos: [
       'Elige un modelo (EARS, Sistemas Embebidos, Dr. Reyes) y un patrón; con "Usar plantilla" se copia su estructura al enunciado.',
-      'Cambia el estado de un requerimiento directamente desde su tarjeta.',
+      'Cada requerimiento tiene un identificador dentro de su proyecto (REQ-001, REQ-002...). Van en orden y, si borras uno, su número no se reutiliza. Haz clic en el identificador para copiarlo, o búscalo escribiendo su número.',
+      'Con «Insertar después» (el icono de lista con un +, en cada fila) añades un requerimiento entre dos: se registra con el número siguiente y todos los que venían después suben un número.',
+      'Cambia el estado de un requerimiento directamente desde su fila.',
       'El botón de historial muestra quién hizo cada cambio y cuándo.',
     ],
   },
@@ -103,32 +106,24 @@ const FAQS = [
 export default function AyudaPage() {
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="pb-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
-          <HelpCircle className="text-zinc-700 dark:text-zinc-300" size={24} />
-          Ayuda
-        </h1>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-          Guía rápida para trabajar con EasyReq.
-        </p>
-      </div>
+    <div className="animate-in fade-in">
+      <PageHeader title="Ayuda" description="Guía rápida para trabajar con EasyReq." />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {SECCIONES.map(({ icono: Icono, titulo, href, puntos }) => (
           <section key={titulo} className={`${tarjeta} p-5`}>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                <Icono size={16} className="text-blue-600 dark:text-blue-400" />
+              <h2 className="text-base font-semibold text-ink flex items-center gap-2">
+                <Icono size={16} className="text-brand-text" />
                 {titulo}
               </h2>
               {href && (
-                <Link href={href} className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center">
+                <Link href={href} className="text-xs font-semibold text-brand-text hover:underline inline-flex items-center">
                   Ir <ChevronRight size={12} />
                 </Link>
               )}
             </div>
-            <ul className="space-y-1.5 text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed list-disc pl-4">
+            <ul className="space-y-1.5 text-xs text-ink-muted leading-relaxed list-disc pl-4">
               {puntos.map((p) => (
                 <li key={p}>{p}</li>
               ))}
@@ -138,16 +133,16 @@ export default function AyudaPage() {
       </div>
 
       <section className={`${tarjeta} overflow-hidden`}>
-        <h2 className="px-5 py-4 border-b border-zinc-200/60 dark:border-zinc-800/60 text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-          <Shield size={16} className="text-blue-600 dark:text-blue-400" />
+        <h2 className="px-5 py-4 border-b border-line text-base font-semibold text-ink flex items-center gap-2">
+          <Shield size={16} className="text-brand-text" />
           ¿Quién puede hacer qué?
         </h2>
         <table className="w-full text-xs">
-          <tbody className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
+          <tbody className="divide-y divide-line">
             {PERMISOS.map(([accion, quien]) => (
               <tr key={accion}>
-                <td className="px-5 py-2.5 text-zinc-800 dark:text-zinc-200">{accion}</td>
-                <td className="px-5 py-2.5 text-zinc-500 dark:text-zinc-400">{quien}</td>
+                <td className="px-5 py-2.5 text-ink">{accion}</td>
+                <td className="px-5 py-2.5 text-ink-subtle">{quien}</td>
               </tr>
             ))}
           </tbody>
@@ -155,40 +150,48 @@ export default function AyudaPage() {
       </section>
 
       <section className={`${tarjeta} p-5`}>
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
-          <Keyboard size={16} className="text-blue-600 dark:text-blue-400" />
+        <h2 className="text-base font-semibold text-ink flex items-center gap-2 mb-3">
+          <Keyboard size={16} className="text-brand-text" />
           Atajos
         </h2>
-        <ul className="space-y-1.5 text-xs text-zinc-600 dark:text-zinc-400">
+        <ul className="space-y-1.5 text-xs text-ink-muted">
           <li>
-            <kbd className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 font-mono text-[10px]">Esc</kbd>
-            {' '}cierra cualquier ventana abierta.
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">/</kbd>
+            {' '}lleva el cursor al buscador de la pantalla.
           </li>
           <li>
-            <kbd className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 font-mono text-[10px]">Ctrl</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Esc</kbd>
+            {' '}cierra cualquier ventana abierta. Si tienes cambios sin guardar, te pregunta antes de descartarlos.
+          </li>
+          <li>
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Ctrl</kbd>
             {' + '}
-            <kbd className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 font-mono text-[10px]">Enter</kbd>
-            {' '}guarda el requerimiento que estás redactando.
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Enter</kbd>
+            {' '}guarda el formulario abierto (proyecto, equipo, patrón o requerimiento).
+          </li>
+          <li>
+            Al registrar varios requerimientos seguidos, usa «Guardar y añadir otro»: la ventana se queda abierta
+            con el mismo modelo y tipo para que solo escribas el siguiente enunciado.
           </li>
         </ul>
       </section>
 
       <section className={`${tarjeta} p-5`}>
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
-          <HelpCircle size={16} className="text-blue-600 dark:text-blue-400" />
+        <h2 className="text-base font-semibold text-ink flex items-center gap-2 mb-3">
+          <HelpCircle size={16} className="text-brand-text" />
           Preguntas frecuentes
         </h2>
         <div className="space-y-2">
           {FAQS.map((faq) => (
             <details
               key={faq.pregunta}
-              className="group rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 p-3 text-xs open:bg-zinc-50 dark:open:bg-zinc-900/40 transition-colors"
+              className="group rounded-ui border border-line p-3 text-sm open:bg-sunken transition-colors"
             >
-              <summary className="font-medium text-zinc-800 dark:text-zinc-200 cursor-pointer list-none flex items-center justify-between gap-2">
+              <summary className="font-medium text-ink cursor-pointer list-none flex items-center justify-between gap-2">
                 <span>{faq.pregunta}</span>
-                <ChevronDown size={14} className="text-zinc-400 group-open:rotate-180 transition-transform shrink-0" />
+                <ChevronDown size={14} className="text-ink-subtle group-open:rotate-180 transition-transform shrink-0" />
               </summary>
-              <p className="mt-2 text-zinc-600 dark:text-zinc-400 leading-relaxed pl-1">
+              <p className="mt-2 text-ink-muted leading-relaxed pl-1">
                 {faq.respuesta}
               </p>
             </details>

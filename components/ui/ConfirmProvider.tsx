@@ -51,11 +51,11 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
         <ModalBody>
           <div className="flex gap-3">
             {opciones?.peligro && (
-              <div className="w-8 h-8 shrink-0 rounded-full bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+              <div className="w-8 h-8 shrink-0 rounded-full bg-danger-subtle text-danger flex items-center justify-center">
                 <AlertTriangle size={16} />
               </div>
             )}
-            <div className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">{opciones?.mensaje}</div>
+            <div className="text-xs text-ink-muted leading-relaxed">{opciones?.mensaje}</div>
           </div>
         </ModalBody>
         <ModalFooter>

@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
 import {
-  Plus, Edit2, Trash2, Save, BookOpen, Search, Copy, Check
+  Plus, Edit2, Trash2, Save, Search, Copy, Check
 } from 'lucide-react';
 import type { Modelo, Patron } from '@/lib/database.types';
 import {
@@ -20,6 +20,9 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
+import PageHeader from '@/components/ui/PageHeader';
+import { useCierreSeguro } from '@/lib/use-cierre-seguro';
+import { useEstadoSesion } from '@/lib/use-estado-sesion';
 
 export default function PatronesPage() {
   const confirmar = useConfirm();
@@ -32,8 +35,8 @@ export default function PatronesPage() {
   const [modelos, setModelos] = useState<Array<Modelo>>([]);
   const [patrones, setPatrones] = useState<Array<Patron>>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedModeloFilter, setSelectedModeloFilter] = useState<string>("todos");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedModeloFilter, setSelectedModeloFilter] = useEstadoSesion<string>("easyreq:patrones:modelo", "todos");
+  const [searchTerm, setSearchTerm] = useEstadoSesion("easyreq:patrones:buscar", "");
   const [copiadoId, setCopiadoId] = useState<string | null>(null);
 
   // Modal State
@@ -45,6 +48,7 @@ export default function PatronesPage() {
     id_modelo: ''
   });
   const [saving, setSaving] = useState(false);
+  const { hayCambios, intentarCerrar } = useCierreSeguro(isModalOpen, formData, () => setIsModalOpen(false));
 
   const fetchData = useCallback(async () => {
     try {
@@ -127,7 +131,7 @@ export default function PatronesPage() {
       titulo: '¿Eliminar patrón?',
       mensaje: (
         <>
-          Se eliminará el patrón <strong className="text-zinc-900 dark:text-zinc-100">{pattern.nombre}</strong>.
+          Se eliminará el patrón <strong className="text-ink">{pattern.nombre}</strong>.
           Los requerimientos ya redactados con él no se modifican.
         </>
       ),
@@ -163,37 +167,43 @@ export default function PatronesPage() {
     const matchModelo = selectedModeloFilter === 'todos' || p.id_modelo === selectedModeloFilter;
     return matchSearch && matchModelo;
   });
-  const modeloSeleccionado = modelos.find(m => m.id === selectedModeloFilter);
+  // Los patrones se muestran agrupados por modelo, cada grupo con su título
+  const gruposPatrones = [
+    ...modelos.map(m => ({
+      id: m.id,
+      nombre: m.nombre,
+      descripcion: m.descripcion,
+      patrones: filteredPatrones.filter(p => p.id_modelo === m.id)
+    })),
+    {
+      id: 'sin-modelo',
+      nombre: 'Sin modelo',
+      descripcion: null,
+      patrones: filteredPatrones.filter(p => !modelos.some(m => m.id === p.id_modelo))
+    }
+  ].filter(g => g.patrones.length > 0);
 
   const claseFiltro = (activo: boolean) =>
-    `px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+    `px-3 py-1.5 rounded-ui text-xs font-medium transition-colors cursor-pointer ${
       activo
-        ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs'
-        : 'bg-zinc-100 dark:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+        ? 'bg-brand-solid text-on-solid'
+        : 'bg-sunken text-ink-muted hover:bg-sunken-strong'
     }`;
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
-            <BookOpen className="text-zinc-700 dark:text-zinc-300" size={24} />
-            Patrones y Modelos
-          </h1>
-          <p className="text-zinc-500 dark:text-zinc-400 mt-1 text-xs">
-            Catálogo de sintaxis estructuradas para redactar requerimientos (EARS, Sistemas Embebidos, Lenguaje Natural).
-          </p>
-        </div>
-
-        {puedeEditar&&(
-          <button onClick={() => openModal()} className={btnPrimario}>
-            <Plus size={15} />
-            Nuevo Patrón
-          </button>
-        )}
-
-      </div>
+      <PageHeader
+        title="Patrones y Modelos"
+        description="Catálogo de sintaxis estructuradas para redactar requerimientos (EARS, Sistemas Embebidos, Lenguaje Natural)."
+        actions={
+          puedeEditar && (
+            <button onClick={() => openModal()} className={btnPrimario}>
+              <Plus size={16} />
+              Nuevo patrón
+            </button>
+          )
+        }
+      />
 
       {/* Filtros por Modelo */}
       <div className="space-y-2">
@@ -219,14 +229,11 @@ export default function PatronesPage() {
             );
           })}
         </div>
-        {modeloSeleccionado?.descripcion && (
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 pl-1">{modeloSeleccionado.descripcion}</p>
-        )}
       </div>
 
       {/* Buscador */}
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
           <Search size={14} />
         </div>
         <input
@@ -241,17 +248,17 @@ export default function PatronesPage() {
 
       {/* Grid de Patrones */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div role="status" aria-label="Cargando" className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-36 bg-zinc-100 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 rounded-2xl animate-pulse" />
+            <div key={i} className="h-32 bg-sunken animate-pulse" />
           ))}
         </div>
       ) : filteredPatrones.length === 0 ? (
-        <div className="text-center py-14 bg-white dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
-          <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+        <div className="text-center py-20">
+          <p className="text-lg font-semibold text-ink">
             {termino ? 'Sin resultados' : 'No hay patrones en este modelo'}
           </p>
-          <p className="text-zinc-500 text-xs mt-1">
+          <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
             {termino ? 'Ningún patrón coincide con tu búsqueda.' : 'Agrega el primero para poder usarlo al redactar requerimientos.'}
           </p>
           <div className="mt-4 flex justify-center gap-2">
@@ -267,61 +274,67 @@ export default function PatronesPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredPatrones.map((pat) => (
-            <div
-              key={pat.patron_id}
-              className={`${tarjeta} p-4 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors flex flex-col`}
-            >
-              <div className="flex items-start justify-between gap-3 mb-2.5">
-                <div className="min-w-0">
-                  <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-                    {pat.nombre}
-                  </h3>
-                  {pat.modelo && (
-                    <span className="inline-block mt-1 text-[10px] font-medium text-zinc-600 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded-md border border-zinc-200/60 dark:border-zinc-700/50">
-                      {pat.modelo.nombre}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-0.5 shrink-0">
-                  <button
-                    onClick={() => copyPrompt(pat)}
-                    title="Copiar sintaxis"
-                    aria-label={`Copiar sintaxis de ${pat.nombre}`}
-                    className={btnIcono}
-                  >
-                    {copiadoId === pat.patron_id ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                  </button>
-                  {puedeEditar && (
-                    <button
-                      onClick={() => openModal(pat)}
-                      title="Editar patrón"
-                      aria-label={`Editar ${pat.nombre}`}
-                      className={btnIcono}
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                  )}
-                  {puedeEditar && (
-                    <button
-                      onClick={() => handleDelete(pat)}
-                      title="Eliminar patrón"
-                      aria-label={`Eliminar ${pat.nombre}`}
-                      className={btnIconoPeligro}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
+        <div className="space-y-12">
+          {gruposPatrones.map((grupo) => (
+            <section key={grupo.id} aria-labelledby={`grupo-${grupo.id}`}>
+              <div className="pb-3 mb-5 border-b-2 border-line-strong">
+                <h2 id={`grupo-${grupo.id}`} className="text-xl font-semibold text-ink">
+                  {grupo.nombre}
+                  <span className="ml-2 text-sm font-normal text-ink-subtle">
+                    {grupo.patrones.length} {grupo.patrones.length === 1 ? 'patrón' : 'patrones'}
+                  </span>
+                </h2>
+                {grupo.descripcion && (
+                  <p className="text-sm text-ink-muted mt-1 max-w-prose">{grupo.descripcion}</p>
+                )}
               </div>
 
-              {/* Caja de Sintaxis */}
-              <div className="flex-1 bg-zinc-950 p-3 rounded-xl border border-zinc-800/80 font-mono text-[11px] text-emerald-400/90 leading-relaxed overflow-x-auto whitespace-pre-wrap">
-                {pat.promt}
-              </div>
-            </div>
+              <ul className="space-y-4">
+                {grupo.patrones.map((pat) => (
+                  <li key={pat.patron_id} className={`${tarjeta} p-5`}>
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <h3 className="text-base font-semibold text-ink min-w-0">{pat.nombre}</h3>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => copyPrompt(pat)}
+                          title="Copiar sintaxis"
+                          aria-label={`Copiar sintaxis de ${pat.nombre}`}
+                          className={btnIcono}
+                        >
+                          {copiadoId === pat.patron_id ? <Check size={16} className="text-success" /> : <Copy size={16} />}
+                        </button>
+                        {puedeEditar && (
+                          <button
+                            onClick={() => openModal(pat)}
+                            title="Editar patrón"
+                            aria-label={`Editar ${pat.nombre}`}
+                            className={btnIcono}
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                        )}
+                        {puedeEditar && (
+                          <button
+                            onClick={() => handleDelete(pat)}
+                            title="Eliminar patrón"
+                            aria-label={`Eliminar ${pat.nombre}`}
+                            className={btnIconoPeligro}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Sintaxis del patrón */}
+                    <div className="bg-sunken px-4 py-3 rounded-ui border border-line border-l-4 border-l-brand-solid font-mono text-sm text-ink leading-relaxed overflow-x-auto whitespace-pre-wrap">
+                      {pat.promt}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
         </div>
       )}
@@ -329,7 +342,8 @@ export default function PatronesPage() {
       {/* Modal Crear / Editar Patrón */}
       <Modal
         open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={intentarCerrar}
+        cerrarConFondo={!hayCambios}
         title={editingPattern ? 'Editar Patrón' : 'Nuevo Patrón'}
         size="lg"
       >
@@ -352,7 +366,7 @@ export default function PatronesPage() {
 
             <div>
               <label htmlFor="patron-nombre" className={etiqueta}>
-                Nombre del Patrón <span className="text-rose-500">*</span>
+                Nombre del Patrón <span className="text-danger">*</span>
               </label>
               <input
                 id="patron-nombre"
@@ -366,7 +380,7 @@ export default function PatronesPage() {
 
             <div>
               <label htmlFor="patron-sintaxis" className={etiqueta}>
-                Sintaxis / Estructura <span className="text-rose-500">*</span>
+                Sintaxis / Estructura <span className="text-danger">*</span>
               </label>
               <textarea
                 id="patron-sintaxis"
@@ -376,13 +390,13 @@ export default function PatronesPage() {
                 onChange={(e) => setFormData({ ...formData, promt: e.target.value })}
                 className={`${campo} font-mono leading-relaxed`}
               />
-              <p className="text-[11px] text-zinc-400 mt-1">
+              <p className="text-xs text-ink-subtle mt-1">
                 Usa &lt;marcadores&gt; o [corchetes] para las partes que se deben completar.
               </p>
             </div>
           </ModalBody>
           <ModalFooter>
-            <button type="button" onClick={() => setIsModalOpen(false)} className={btnSecundario}>
+            <button type="button" onClick={intentarCerrar} className={btnSecundario}>
               Cancelar
             </button>
             <button type="submit" disabled={saving} className={btnPrimario}>

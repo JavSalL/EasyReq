@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Users, Clock, Save,
-  Sparkles, CheckCheck, FileText, History, Lock, Wand2, ArrowRight
+  Sparkles, CheckCheck, History, Lock, Wand2, ArrowRight, Copy, ListPlus, ListOrdered
 } from 'lucide-react';
 import { generateSingleRequirement } from '@/lib/ai-actions';
 import type {
@@ -23,6 +23,8 @@ import {
   getAllUsers,
   getRequerimientos,
   createRequerimiento,
+  insertarRequerimientoDespuesDe,
+  asignarNumerosRequerimientos,
   updateRequerimiento,
   deleteRequerimiento,
   addLogRequerimiento,
@@ -39,8 +41,15 @@ import { usePageTitle } from '@/lib/use-page-title';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import {
-  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
+  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
 } from '@/components/ui/estilos';
+import PageHeader from '@/components/ui/PageHeader';
+import ModalHistorialLogs from '@/components/requerimientos/ModalHistorialLogs';
+import ModalEquiposProyecto from '@/components/requerimientos/ModalEquiposProyecto';
+import { useCierreSeguro } from '@/lib/use-cierre-seguro';
+import { useEstadoSesion } from '@/lib/use-estado-sesion';
+import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
+import { codigoDe, codigoRequerimiento, numeroDesdeBusqueda } from '@/lib/requerimientos';
 
 const FORM_VACIO = {
   enunciado: '',
@@ -64,13 +73,25 @@ const CAMPOS_EDITABLES: Array<[keyof typeof FORM_VACIO & keyof Requerimiento, st
   ['id_aprobador', 'aprobador']
 ];
 
+type Orden = 'recientes' | 'antiguos' | 'estado' | 'numero';
+type Agrupar = 'ninguno' | 'tipo' | 'modelo';
+
+const FILTROS_INICIALES = {
+  q: '',
+  estado: 'todos',
+  tipo: 'todos',
+  modelo: 'todos',
+  orden: 'numero' as Orden,
+  agrupar: 'ninguno' as Agrupar
+};
+
 const getBadgeColorEstado = (nombre?: string) => {
   const n = (nombre || '').toLowerCase();
-  if (n.includes('aprobado')) return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20';
-  if (n.includes('rechazado')) return 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20';
-  if (n.includes('revisión') || n.includes('revision')) return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20';
-  if (n.includes('implementado')) return 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20';
-  return 'bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 border-zinc-500/20';
+  if (n.includes('aprobado')) return 'bg-success-subtle text-success border-success-line';
+  if (n.includes('rechazado')) return 'bg-danger-subtle text-danger border-danger-line';
+  if (n.includes('revisión') || n.includes('revision')) return 'bg-warning-subtle text-warning border-warning-line';
+  if (n.includes('implementado')) return 'bg-brand-subtle text-brand-text border-brand-line';
+  return 'bg-sunken text-ink-muted border-line';
 };
 
 export default function RequerimientosPage() {
@@ -105,10 +126,17 @@ export default function RequerimientosPage() {
   const [usuarios, setUsuarios] = useState<Array<PerfilUsuario>>([]);
 
   // Filtros
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterEstado, setFilterEstado] = useState<string>("todos");
-  const [filterTipo, setFilterTipo] = useState<string>("todos");
-  const [filterModelo, setFilterModelo] = useState<string>("todos");
+  // Se recuerdan por proyecto mientras dure la sesión del navegador
+  const [filtros, setFiltros] = useEstadoSesion(proyectoId ? `easyreq:req:v2:${proyectoId}` : null, FILTROS_INICIALES);
+  const { q: searchTerm, estado: filterEstado, tipo: filterTipo, modelo: filterModelo, orden } = filtros;
+  const setSearchTerm = (q: string) => setFiltros(f => ({ ...f, q }));
+  const setFilterEstado = (estado: string) => setFiltros(f => ({ ...f, estado }));
+  const setFilterTipo = (tipo: string) => setFiltros(f => ({ ...f, tipo }));
+  const setFilterModelo = (modelo: string) => setFiltros(f => ({ ...f, modelo }));
+  const setOrden = (nuevo: Orden) => setFiltros(f => ({ ...f, orden: nuevo }));
+  // Los filtros guardados antes de existir "agrupar" no lo traen
+  const agrupar: Agrupar = filtros.agrupar ?? 'ninguno';
+  const setAgrupar = (nuevo: Agrupar) => setFiltros(f => ({ ...f, agrupar: nuevo }));
 
   // Modal State Requerimiento
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -167,6 +195,26 @@ export default function RequerimientosPage() {
   const [isAILoading, setIsAILoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
 
+  // Al registrar varios requerimientos seguidos: "guardar y añadir otro" y
+  // recordar la clasificación del último para no volver a elegirla.
+  const crearOtroRef = useRef(false);
+  // Si no es null, el requerimiento nuevo se inserta justo después de este y los siguientes suben un número
+  const [insertarDespuesDe, setInsertarDespuesDe] = useState<{ numero: number; codigo: string } | null>(null);
+  const ultimaClasificacionRef = useRef<Partial<typeof FORM_VACIO> | null>(null);
+
+  // Cambios sin guardar: el enunciado, el texto de la IA y, al editar, el resto de campos
+  const { hayCambios, intentarCerrar } = useCierreSeguro(
+    isModalOpen,
+    {
+      enunciado: formData.enunciado,
+      ia: aiPrompt,
+      resto: editingReq
+        ? [formData.id_tipo_requerimiento, formData.id_estado, formData.id_modalidad, formData.id_modelo, formData.id_autor, formData.id_aprobador]
+        : null
+    },
+    () => setIsModalOpen(false)
+  );
+
   // Cargar lista de requerimientos (más recientes primero)
   const fetchRequerimientos = useCallback(async () => {
     if (!proyectoId) return;
@@ -220,6 +268,28 @@ export default function RequerimientosPage() {
     cargarTodo();
   }, [cargarTodo]);
 
+  // Los requerimientos anteriores a los identificadores reciben su número (en orden de creación).
+  // Lo inicia cualquier sesión que abra el proyecto, también las de solo lectura: es una
+  // asignación mecánica (solo escribe `numero` y `codigo`) y es segura si dos sesiones coinciden.
+  const numerandoRef = useRef(false);
+  const numeracionFallidaRef = useRef(false);
+  useEffect(() => {
+    if (loading || !proyectoId || numerandoRef.current || numeracionFallidaRef.current) return;
+    const pendientes = requerimientos.filter(r => r.numero == null || !r.codigo);
+    if (pendientes.length === 0) return;
+    numerandoRef.current = true;
+    asignarNumerosRequerimientos(proyectoId, pendientes)
+      .then(fetchRequerimientos)
+      .catch(e => {
+        console.error('No se pudieron numerar los requerimientos:', e);
+        numeracionFallidaRef.current = true;
+        toast.error('No se pudieron asignar los identificadores de los requerimientos. Recarga la página para reintentar.');
+      })
+      .finally(() => {
+        numerandoRef.current = false;
+      });
+  }, [loading, proyectoId, requerimientos, fetchRequerimientos]);
+
   // Filtrar patrones según el modelo seleccionado
   const patronesFiltrados = patrones.filter(p => p.id_modelo === formData.id_modelo);
   const patronSeleccionado = patrones.find(p => p.patron_id === formData.id_patron_seleccionado);
@@ -228,29 +298,63 @@ export default function RequerimientosPage() {
     return u ? (u.nombre || u.correo) : null;
   };
 
+  const copiarCodigo = async (codigo: string) => {
+    try {
+      await navigator.clipboard.writeText(codigo);
+      toast.success(`${codigo} copiado`);
+    } catch {
+      toast.error('No se pudo copiar el identificador.');
+    }
+  };
+
+  const copiarEnunciado = async (req: Requerimiento) => {
+    try {
+      await navigator.clipboard.writeText(req.enunciado);
+      toast.success('Enunciado copiado');
+    } catch {
+      toast.error('No se pudo copiar. Selecciona el texto y cópialo manualmente.');
+    }
+  };
+
   // Apertura de modal nuevo
-  const openCreateModal = () => {
+  const abrirNuevo = (despuesDe: Requerimiento | null) => {
     if (!puedeEditar) {
       toast.error('Solo el creador o miembros de un equipo vinculado pueden crear requerimientos');
       return;
     }
     setEditingReq(null);
+    const codigoBase = despuesDe ? codigoDe(despuesDe) : null;
+    setInsertarDespuesDe(despuesDe && codigoBase && despuesDe.numero != null ? { numero: despuesDe.numero, codigo: codigoBase } : null);
     const primerModelo = modelos[0]?.id || '';
     const primerPatron = patrones.find(p => p.id_modelo === primerModelo);
 
+    const previa = ultimaClasificacionRef.current;
+    const sigueExistiendo = (lista: Array<string>, id?: string) => !!id && lista.includes(id);
+    const modeloInicial = sigueExistiendo(modelos.map(m => m.id), previa?.id_modelo) ? previa!.id_modelo! : primerModelo;
+    const patronPrevio = patrones.find(p => p.patron_id === previa?.id_patron_seleccionado && p.id_modelo === modeloInicial);
+    const patronInicial = patronPrevio ?? patrones.find(p => p.id_modelo === modeloInicial) ?? primerPatron;
+
     setFormData({
       ...FORM_VACIO,
-      id_tipo_requerimiento: tiposReq[0]?.tipo_req || '',
+      id_tipo_requerimiento: sigueExistiendo(tiposReq.map(t => t.tipo_req), previa?.id_tipo_requerimiento)
+        ? previa!.id_tipo_requerimiento!
+        : tiposReq[0]?.tipo_req || '',
       id_estado: estados.find(e => e.nombre_estado === 'Borrador')?.id || estados[0]?.id || '',
-      id_modalidad: modalidades[0]?.id || '',
-      id_modelo: primerModelo,
-      id_patron_seleccionado: primerPatron?.patron_id || '',
+      id_modalidad: sigueExistiendo(modalidades.map(m => m.id), previa?.id_modalidad)
+        ? previa!.id_modalidad!
+        : modalidades[0]?.id || '',
+      id_modelo: modeloInicial,
+      id_patron_seleccionado: patronInicial?.patron_id || '',
       // Por defecto el autor es quien lo redacta
-      id_autor: usuarios.some(u => u.id === uid) ? uid! : ''
+      id_autor: usuarios.some(u => u.id === uid) ? uid! : '',
+      id_aprobador: sigueExistiendo(usuarios.map(u => u.id), previa?.id_aprobador) ? previa!.id_aprobador! : ''
     });
     setAiPrompt('');
     setIsModalOpen(true);
   };
+
+  const openCreateModal = () => abrirNuevo(null);
+  const openInsertModal = (req: Requerimiento) => abrirNuevo(req);
 
   // Apertura de modal editar
   const openEditModal = (req: Requerimiento) => {
@@ -259,6 +363,7 @@ export default function RequerimientosPage() {
       return;
     }
     setEditingReq(req);
+    setInsertarDespuesDe(null);
     setFormData({
       enunciado: req.enunciado,
       id_tipo_requerimiento: req.id_tipo_requerimiento || '',
@@ -299,6 +404,8 @@ export default function RequerimientosPage() {
   // Guardar Requerimiento (Crear o Editar)
   const handleSaveReq = async (e: React.FormEvent) => {
     e.preventDefault();
+    const crearOtro = crearOtroRef.current;
+    crearOtroRef.current = false;
     if (!puedeEditar) {
       toast.error('No tienes permiso para modificar requerimientos de este proyecto');
       return;
@@ -319,6 +426,7 @@ export default function RequerimientosPage() {
     };
 
     setSaving(true);
+    let siguientePosicion: { numero: number; codigo: string } | null = null;
     try {
       if (editingReq) {
         const cambios = CAMPOS_EDITABLES
@@ -339,19 +447,56 @@ export default function RequerimientosPage() {
         });
         toast.success('Requerimiento actualizado');
       } else {
-        const newReq = await createRequerimiento({ ...datos, id_proyecto: proyectoId! });
+        let newReq: Requerimiento;
+        let renumerados = 0;
+        if (insertarDespuesDe) {
+          const resultado = await insertarRequerimientoDespuesDe(
+            proyectoId!,
+            insertarDespuesDe.numero,
+            { ...datos, id_proyecto: proyectoId! },
+            uid
+          );
+          newReq = resultado.requerimiento;
+          renumerados = resultado.renumerados;
+          // Para "insertar y añadir otro": el siguiente va justo después del que se acaba de insertar
+          siguientePosicion = { numero: newReq.numero!, codigo: codigoDe(newReq)! };
+        } else {
+          newReq = await createRequerimiento({ ...datos, id_proyecto: proyectoId! });
+        }
         if (newReq?.id) {
           await addLogRequerimiento({
             id_requerimiento: newReq.id,
             accion: 'Creación de requerimiento',
             id_autor: uid,
-            detalles: { inicio: 'Creación inicial' }
+            detalles: insertarDespuesDe
+              ? { inicio: `Insertado después de ${insertarDespuesDe.codigo}`, renumerados }
+              : { inicio: 'Creación inicial' }
           });
         }
-        toast.success('Requerimiento registrado');
+        toast.success(
+          insertarDespuesDe
+            ? `Registrado como ${codigoDe(newReq)}.` +
+              (renumerados > 0 ? ` Los ${renumerados} siguientes subieron un número.` : '')
+            : 'Requerimiento registrado'
+        );
+        ultimaClasificacionRef.current = {
+          id_tipo_requerimiento: formData.id_tipo_requerimiento,
+          id_modalidad: formData.id_modalidad,
+          id_modelo: formData.id_modelo,
+          id_patron_seleccionado: formData.id_patron_seleccionado,
+          id_aprobador: formData.id_aprobador
+        };
       }
 
-      setIsModalOpen(false);
+      if (crearOtro && !editingReq) {
+        // Se queda abierto con la misma clasificación para redactar el siguiente
+        setFormData(prev => ({ ...prev, enunciado: '' }));
+        setAiPrompt('');
+        if (siguientePosicion) setInsertarDespuesDe(siguientePosicion);
+        requestAnimationFrame(() => document.getElementById('req-enunciado')?.focus());
+      } else {
+        setIsModalOpen(false);
+      }
       fetchRequerimientos();
     } catch (err) {
       console.error(err);
@@ -427,7 +572,7 @@ export default function RequerimientosPage() {
       titulo: '¿Eliminar requerimiento?',
       mensaje: (
         <>
-          <span className="block font-mono text-[11px] bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-lg p-2 mb-2 text-zinc-800 dark:text-zinc-200">
+          <span className="block font-mono text-xs bg-sunken border border-line rounded-ui p-2 mb-2 text-ink">
             {extracto}
           </span>
           Esta acción no se puede deshacer.
@@ -472,7 +617,7 @@ export default function RequerimientosPage() {
         titulo: '¿Solicitar desvinculación?',
         mensaje: (
           <>
-            Se pedirá al líder de <strong className="text-zinc-900 dark:text-zinc-100">{equipo.nombre}</strong> que
+            Se pedirá al líder de <strong className="text-ink">{equipo.nombre}</strong> que
             acepte desvincular su equipo. Si acepta, sus miembros podrían perder el permiso de editar este proyecto.
           </>
         ),
@@ -498,19 +643,54 @@ export default function RequerimientosPage() {
   // Filtrado de lista
   const termino = searchTerm.trim().toLowerCase();
   const hayFiltros = termino !== '' || filterEstado !== 'todos' || filterTipo !== 'todos' || filterModelo !== 'todos';
-  const limpiarFiltros = () => {
-    setSearchTerm('');
-    setFilterEstado('todos');
-    setFilterTipo('todos');
-    setFilterModelo('todos');
-  };
-  const filteredRequerimientos = requerimientos.filter((r) => {
-    const matchSearch = !termino || r.enunciado.toLowerCase().includes(termino);
-    const matchEstado = filterEstado === 'todos' || r.id_estado === filterEstado;
-    const matchTipo = filterTipo === 'todos' || r.id_tipo_requerimiento === filterTipo;
-    const matchModelo = filterModelo === 'todos' || r.id_modelo === filterModelo;
-    return matchSearch && matchEstado && matchTipo && matchModelo;
+  const limpiarFiltros = () => setFiltros(f => ({ ...FILTROS_INICIALES, orden: f.orden, agrupar: f.agrupar }));
+  // Coincidencia con todo salvo el estado: sirve para contar cuántos hay en cada pestaña de estado
+  const numeroBuscado = numeroDesdeBusqueda(termino);
+  const coincideSinEstado = (r: Requerimiento) =>
+    (!termino ||
+      r.enunciado.toLowerCase().includes(termino) ||
+      (numeroBuscado !== null && r.numero === numeroBuscado) ||
+      !!codigoDe(r)?.toLowerCase().includes(termino)) &&
+    (filterTipo === 'todos' || r.id_tipo_requerimiento === filterTipo) &&
+    (filterModelo === 'todos' || r.id_modelo === filterModelo);
+  const esDelEstado = (r: Requerimiento, id: string) =>
+    id === 'todos' || (id === 'sin-estado' ? !r.id_estado : r.id_estado === id);
+  const requerimientosBase = requerimientos.filter(coincideSinEstado);
+  const conteoEstado = (id: string) => requerimientosBase.filter(r => esDelEstado(r, id)).length;
+  const filteredRequerimientos = requerimientosBase.filter(r => esDelEstado(r, filterEstado));
+  const pestanasEstado = [
+    { id: 'todos', nombre: 'Todos' },
+    ...estados.map(e => ({ id: e.id, nombre: e.nombre_estado })),
+    ...(requerimientos.some(r => !r.id_estado) ? [{ id: 'sin-estado', nombre: 'Sin estado' }] : [])
+  ];
+  // La carga ya viene del más nuevo al más antiguo
+  const requerimientosOrdenados = [...filteredRequerimientos].sort((a, b) => {
+    if (orden === 'antiguos') return (a.created_at || '').localeCompare(b.created_at || '');
+    if (orden === 'numero') {
+      const sinNumero = Number.MAX_SAFE_INTEGER;
+      return (a.numero ?? sinNumero) - (b.numero ?? sinNumero);
+    }
+    if (orden === 'estado') {
+      const porEstado = (a.estado?.nombre_estado || 'zzz').localeCompare(b.estado?.nombre_estado || 'zzz', 'es');
+      return porEstado || (b.created_at || '').localeCompare(a.created_at || '');
+    }
+    return (b.created_at || '').localeCompare(a.created_at || '');
   });
+
+  // Secciones cuando se agrupa por tipo o por modelo (en el orden del catálogo)
+  const gruposRequerimientos = (() => {
+    if (agrupar === 'ninguno') return [];
+    const catalogo = agrupar === 'tipo'
+      ? tiposReq.map(t => ({ id: t.tipo_req, nombre: t.nombre }))
+      : modelos.map(m => ({ id: m.id, nombre: m.nombre }));
+    const idDe = (r: Requerimiento) => (agrupar === 'tipo' ? r.id_tipo_requerimiento : r.id_modelo);
+    const grupos = catalogo.map(c => ({ ...c, items: requerimientosOrdenados.filter(r => idDe(r) === c.id) }));
+    const resto = requerimientosOrdenados.filter(r => !catalogo.some(c => c.id === idDe(r)));
+    return [
+      ...grupos,
+      { id: 'sin-clasificar', nombre: agrupar === 'tipo' ? 'Sin tipo' : 'Sin modelo', items: resto }
+    ].filter(g => g.items.length > 0);
+  })();
 
   // Equipos vinculados primero en el modal
   const equiposOrdenados = [...equipos].sort(
@@ -519,9 +699,9 @@ export default function RequerimientosPage() {
 
   if (urlLeida && !proyectoId) {
     return (
-      <div className="p-8 text-center bg-white dark:bg-zinc-900/60 rounded-2xl border border-zinc-200 dark:border-zinc-800">
-        <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">No se indicó ningún proyecto</p>
-        <p className="text-xs text-zinc-500 mt-1">Abre un proyecto desde la lista para ver sus requerimientos.</p>
+      <div className="p-8 text-center bg-surface rounded-ui border border-line">
+        <p className="text-sm font-semibold text-ink">No se indicó ningún proyecto</p>
+        <p className="text-xs text-ink-subtle mt-1">Abre un proyecto desde la lista para ver sus requerimientos.</p>
         <button onClick={() => router.push('/')} className={`${btnPrimario} mt-4`}>
           Ir a Proyectos
         </button>
@@ -529,180 +709,39 @@ export default function RequerimientosPage() {
     );
   }
 
-  const selectFiltro = `${campo} !text-xs bg-white dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800`;
+  const selectFiltro = campo;
 
-  return (
-    <div className="space-y-6 animate-in fade-in">
-      {/* Barra superior de navegación */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-5">
-        <div className="min-w-0">
-          <Link
-            href="/"
-            className="inline-flex items-center text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors mb-2 group"
-          >
-            <ChevronLeft size={14} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
-            Proyectos
-          </Link>
-
-          {proyecto ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
-                  {proyecto.nombre}
-                </h1>
-                {proyecto.tipos_sistema?.nombre && (
-                  <span className="px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200/60 dark:border-zinc-700/50">
-                    {proyecto.tipos_sistema.nombre}
-                  </span>
-                )}
-              </div>
-              <p className="text-zinc-500 dark:text-zinc-400 text-xs mt-1">
-                {proyecto.descripcion || 'Sin descripción'}
-              </p>
-            </>
-          ) : (
-            <div className="space-y-2">
-              <div className="h-7 w-64 max-w-full bg-zinc-200 dark:bg-zinc-800 rounded-lg animate-pulse" />
-              <div className="h-3 w-80 max-w-full bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse" />
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2.5 shrink-0">
-          <button onClick={() => setShowEquiposModal(true)} className={btnSecundario}>
-            <Users size={15} className="text-zinc-500" />
-            Equipos ({equiposAsignados.length})
-          </button>
-
-          {puedeEditar && (
-            <button onClick={openCreateModal} className={btnPrimario}>
-              <Plus size={15} />
-              Nuevo Requerimiento
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Aviso de solo lectura para no relacionados */}
-      {permisoCargado && !puedeEditar && (
-        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl p-3.5 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
-          <Lock size={15} className="shrink-0" />
-          <span>
-            Tienes acceso de lectura. Solo el creador del proyecto o miembros de un equipo vinculado pueden
-            crear o editar requerimientos; el creador administra las invitaciones de equipos.
-          </span>
-        </div>
-      )}
-
-      {/* Barra de Búsqueda y Filtros */}
-      <div className="space-y-2">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
-              <Search size={14} />
-            </div>
-            <input
-              type="search"
-              placeholder="Buscar enunciado..."
-              aria-label="Buscar requerimientos"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className={buscador}
-            />
-          </div>
-
-          <select value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} aria-label="Filtrar por estado" className={selectFiltro}>
-            <option value="todos">Todos los estados</option>
-            {estados.map((e) => (
-              <option key={e.id} value={e.id}>{e.nombre_estado}</option>
-            ))}
-          </select>
-
-          <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} aria-label="Filtrar por tipo" className={selectFiltro}>
-            <option value="todos">Todos los tipos</option>
-            {tiposReq.map((t) => (
-              <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
-            ))}
-          </select>
-
-          <select value={filterModelo} onChange={(e) => setFilterModelo(e.target.value)} aria-label="Filtrar por modelo" className={selectFiltro}>
-            <option value="todos">Todos los modelos</option>
-            {modelos.map((m) => (
-              <option key={m.id} value={m.id}>{m.nombre}</option>
-            ))}
-          </select>
-        </div>
-        {!loading && requerimientos.length > 0 && (
-          <div className="flex items-center justify-between text-[11px] text-zinc-500 px-1">
-            <span>
-              {hayFiltros
-                ? `Mostrando ${filteredRequerimientos.length} de ${requerimientos.length} requerimientos`
-                : `${requerimientos.length} ${requerimientos.length === 1 ? 'requerimiento' : 'requerimientos'}`}
-            </span>
-            {hayFiltros && (
-              <button onClick={limpiarFiltros} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
-                Quitar filtros
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Lista de Requerimientos */}
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-28 bg-zinc-100 dark:bg-zinc-900/40 border border-zinc-200/60 dark:border-zinc-800/60 rounded-2xl animate-pulse" />
-          ))}
-        </div>
-      ) : filteredRequerimientos.length === 0 ? (
-        <div className="text-center py-16 bg-white dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
-          <div className="w-12 h-12 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl flex items-center justify-center mx-auto mb-3">
-            <FileText size={22} />
-          </div>
-          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-            {hayFiltros ? 'Sin resultados' : 'Todavía no hay requerimientos'}
-          </h3>
-          <p className="text-zinc-500 dark:text-zinc-400 text-xs mt-1 max-w-sm mx-auto">
-            {hayFiltros
-              ? 'Ningún requerimiento coincide con los filtros seleccionados.'
-              : puedeEditar
-                ? 'Redacta el primero usando las sintaxis de los modelos o genéralo con IA.'
-                : 'Cuando el equipo redacte requerimientos, aparecerán aquí.'}
-          </p>
-          <div className="mt-4 flex justify-center gap-2">
-            {hayFiltros && (
-              <button onClick={limpiarFiltros} className={btnSecundario}>Quitar filtros</button>
-            )}
-            {!hayFiltros && puedeEditar && (
-              <button onClick={openCreateModal} className={btnPrimario}>
-                <Plus size={15} />
-                Redactar Requerimiento
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filteredRequerimientos.map((req) => (
-            <div
+  // Una fila de la lista de requerimientos
+  const filaRequerimiento = (req: Requerimiento) => (
+    <li
               key={req.id}
-              className={`${tarjeta} p-4 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors flex flex-col md:flex-row md:items-start justify-between gap-4`}
+              className="px-5 py-5 hover:bg-sunken/60 transition-colors flex flex-col md:flex-row md:items-start justify-between gap-4"
             >
               <div className="space-y-2.5 flex-1 min-w-0">
                 {/* Badges de clasificación */}
-                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  {codigoDe(req) && (
+                    <button
+                      type="button"
+                      onClick={() => copiarCodigo(codigoDe(req)!)}
+                      title="Copiar identificador"
+                      aria-label={`Copiar identificador ${codigoDe(req)}`}
+                      className="px-2 py-0.5 rounded-ui border border-line-strong bg-surface font-mono font-semibold text-ink hover:bg-sunken transition-colors cursor-pointer"
+                    >
+                      {codigoDe(req)}
+                    </button>
+                  )}
                   {puedeEditar ? (
                     <select
                       value={req.id_estado || ''}
                       onChange={(e) => handleCambioEstado(req, e.target.value)}
                       aria-label="Cambiar estado"
                       title="Cambiar estado"
-                      className={`pl-2.5 pr-1 py-0.5 rounded-full font-medium border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${getBadgeColorEstado(req.estado?.nombre_estado)}`}
+                      className={`pl-2.5 pr-1 py-0.5 rounded-full font-medium border cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-text/30 ${getBadgeColorEstado(req.estado?.nombre_estado)}`}
                     >
                       {!req.id_estado && <option value="">Sin estado</option>}
                       {estados.map((e) => (
-                        <option key={e.id} value={e.id} className="text-zinc-900">{e.nombre_estado}</option>
+                        <option key={e.id} value={e.id} className="text-ink">{e.nombre_estado}</option>
                       ))}
                     </select>
                   ) : (
@@ -713,52 +752,60 @@ export default function RequerimientosPage() {
                   )}
 
                   {req.tipo_requerimiento && (
-                    <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 font-medium border border-zinc-200/60 dark:border-zinc-700/50">
+                    <span className="px-2 py-0.5 rounded-ui bg-sunken text-ink-muted font-medium border border-line">
                       {req.tipo_requerimiento.nombre}
                     </span>
                   )}
                   {req.modelo && (
-                    <span className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-200/60 dark:border-indigo-800/40">
+                    <span className="px-2 py-0.5 rounded-ui bg-brand-subtle text-brand-text font-medium border border-brand-line">
                       {req.modelo.nombre}
                     </span>
                   )}
                   {req.modalidad && (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-medium border border-amber-200/60 dark:border-amber-800/40">
+                    <span className="px-2 py-0.5 rounded-ui bg-warning-subtle text-warning font-medium border border-warning-line">
                       {req.modalidad.nombre_modalidad}
                     </span>
                   )}
                 </div>
 
-                <div className="border-l-2 border-zinc-900 dark:border-zinc-100 pl-3 py-0.5">
-                  <p className="text-zinc-900 dark:text-zinc-100 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
+                <div className="border-l-2 border-line-strong pl-3 py-0.5">
+                  <p className="text-ink font-mono text-sm leading-relaxed whitespace-pre-wrap break-words">
                     {req.enunciado}
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-400 pt-1">
+                <div className="flex flex-wrap items-center gap-3 text-xs text-ink-subtle pt-1">
                   {req.autor && (
                     <span className="flex items-center gap-1">
                       <User size={12} />
-                      Autor: <strong className="text-zinc-700 dark:text-zinc-300 font-medium">{req.autor.nombre || req.autor.correo}</strong>
+                      Autor: <strong className="text-ink-muted font-medium">{req.autor.nombre || req.autor.correo}</strong>
                     </span>
                   )}
                   {req.aprobador && (
                     <span className="flex items-center gap-1">
-                      <CheckCheck size={12} className="text-emerald-500" />
-                      Aprobado por: <strong className="text-zinc-700 dark:text-zinc-300 font-medium">{req.aprobador.nombre || req.aprobador.correo}</strong>
+                      <CheckCheck size={12} className="text-success" />
+                      Aprobado por: <strong className="text-ink-muted font-medium">{req.aprobador.nombre || req.aprobador.correo}</strong>
                     </span>
                   )}
                   {req.created_at && (
-                    <span className="flex items-center gap-1" title={new Date(req.created_at).toLocaleString()}>
+                    <time dateTime={req.created_at} title={fechaCompleta(req.created_at)} className="flex items-center gap-1">
                       <Clock size={12} />
-                      {new Date(req.created_at).toLocaleDateString()}
-                    </span>
+                      {fechaRelativa(req.created_at)}
+                    </time>
                   )}
                 </div>
               </div>
 
               {/* Acciones */}
-              <div className="flex items-center gap-1 border-t md:border-t-0 pt-3 md:pt-0 border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center gap-1 border-t md:border-t-0 pt-3 md:pt-0 border-line">
+                <button
+                  onClick={() => copiarEnunciado(req)}
+                  title="Copiar enunciado"
+                  aria-label="Copiar enunciado"
+                  className={btnIcono}
+                >
+                  <Copy size={16} />
+                </button>
                 <button
                   onClick={() => handleViewLogs(req)}
                   title="Ver historial de cambios"
@@ -769,6 +816,16 @@ export default function RequerimientosPage() {
                 </button>
                 {puedeEditar && (
                   <>
+                    {req.numero != null && (
+                      <button
+                        onClick={() => openInsertModal(req)}
+                        title={`Insertar un requerimiento después de ${codigoDe(req)}`}
+                        aria-label={`Insertar un requerimiento después de ${codigoDe(req)}`}
+                        className={btnIcono}
+                      >
+                        <ListPlus size={16} />
+                      </button>
+                    )}
                     <button
                       onClick={() => openEditModal(req)}
                       title="Editar requerimiento"
@@ -788,23 +845,256 @@ export default function RequerimientosPage() {
                   </>
                 )}
               </div>
+            </li>
+  );
+
+  return (
+    <div className="space-y-6 animate-in fade-in">
+      <PageHeader
+        back={
+          <Link
+            href="/"
+            className="inline-flex items-center text-sm font-medium text-ink-subtle hover:text-ink transition-colors group"
+          >
+            <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
+            Proyectos
+          </Link>
+        }
+        title={
+          proyecto ? (
+            <span className="flex flex-wrap items-center gap-3">
+              {proyecto.nombre}
+              {proyecto.tipos_sistema?.nombre && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-sunken text-ink-muted border border-line">
+                  {proyecto.tipos_sistema.nombre}
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="block h-8 w-64 max-w-full bg-sunken-strong rounded-ui animate-pulse" />
+          )
+        }
+        description={proyecto ? proyecto.descripcion || 'Sin descripción' : undefined}
+        actions={
+          <>
+            <button onClick={() => setShowEquiposModal(true)} className={btnSecundario}>
+              <Users size={16} className="text-ink-subtle" />
+              Equipos ({equiposAsignados.length})
+            </button>
+
+            {puedeEditar && (
+              <button onClick={openCreateModal} className={btnPrimario}>
+                <Plus size={16} />
+                Nuevo requerimiento
+              </button>
+            )}
+          </>
+        }
+      />
+
+      {/* Aviso de solo lectura para no relacionados */}
+      {permisoCargado && !puedeEditar && (
+        <div className="bg-warning-subtle border border-warning-line rounded-ui p-3.5 flex items-center gap-2.5 text-xs text-warning">
+          <Lock size={15} className="shrink-0" />
+          <span>
+            Tienes acceso de lectura. Solo el creador del proyecto o miembros de un equipo vinculado pueden
+            crear o editar requerimientos; el creador administra las invitaciones de equipos.
+          </span>
+        </div>
+      )}
+
+      {/* Navegación por estado: un clic muestra solo los requerimientos de ese estado */}
+      {!loading && requerimientos.length > 0 && (
+        <div
+          role="group"
+          aria-label="Filtrar por estado"
+          className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line custom-scrollbar"
+        >
+          {pestanasEstado.map((p) => {
+            const activa = filterEstado === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setFilterEstado(p.id)}
+                aria-pressed={activa}
+                className={`shrink-0 px-4 min-h-11 text-sm whitespace-nowrap border-b-2 transition-colors cursor-pointer ${
+                  activa
+                    ? 'border-ink text-ink font-semibold'
+                    : 'border-transparent text-ink-muted font-medium hover:text-ink'
+                }`}
+              >
+                {p.nombre}
+                <span className="ml-2 text-xs tabular-nums text-ink-subtle">{conteoEstado(p.id)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Barra de Búsqueda y Filtros */}
+      <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
+              <Search size={14} />
             </div>
+            <input
+              type="search"
+              placeholder="Buscar enunciado o número (REQ-014)..."
+              aria-label="Buscar requerimientos"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className={buscador}
+            />
+          </div>
+
+          <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} aria-label="Filtrar por tipo" className={selectFiltro}>
+            <option value="todos">Todos los tipos</option>
+            {tiposReq.map((t) => (
+              <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
+            ))}
+          </select>
+
+          <select value={filterModelo} onChange={(e) => setFilterModelo(e.target.value)} aria-label="Filtrar por modelo" className={selectFiltro}>
+            <option value="todos">Todos los modelos</option>
+            {modelos.map((m) => (
+              <option key={m.id} value={m.id}>{m.nombre}</option>
+            ))}
+          </select>
+        </div>
+        {!loading && requerimientos.length > 0 && (
+          <div className="flex items-center justify-between gap-3 text-sm text-ink-subtle px-1">
+            <span aria-live="polite">
+              {hayFiltros
+                ? `Mostrando ${filteredRequerimientos.length} de ${requerimientos.length} requerimientos`
+                : `${requerimientos.length} ${requerimientos.length === 1 ? 'requerimiento' : 'requerimientos'}`}
+            </span>
+            <div className="flex items-center gap-4">
+              {hayFiltros && (
+                <button onClick={limpiarFiltros} className="font-semibold text-brand-text hover:underline cursor-pointer">
+                  Quitar filtros
+                </button>
+              )}
+              <label className="flex items-center gap-2">
+                <span>Agrupar</span>
+                <select
+                  value={agrupar}
+                  onChange={(e) => setAgrupar(e.target.value as Agrupar)}
+                  aria-label="Agrupar requerimientos"
+                  className="bg-transparent text-ink font-medium text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
+                >
+                  <option value="ninguno">Sin agrupar</option>
+                  <option value="tipo">Por tipo</option>
+                  <option value="modelo">Por modelo</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2">
+                <span>Ordenar</span>
+                <select
+                  value={orden}
+                  onChange={(e) => setOrden(e.target.value as Orden)}
+                  aria-label="Ordenar requerimientos"
+                  className="bg-transparent text-ink font-medium text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
+                >
+                  <option value="numero">Por número</option>
+                  <option value="recientes">Más recientes</option>
+                  <option value="antiguos">Más antiguos</option>
+                  <option value="estado">Por estado</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Lista de Requerimientos */}
+      {loading ? (
+        <div className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden" role="status" aria-label="Cargando">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-32 bg-sunken animate-pulse" />
           ))}
         </div>
+      ) : filteredRequerimientos.length === 0 ? (
+        <div className="text-center py-20">
+          <h3 className="text-lg font-semibold text-ink">
+            {hayFiltros ? 'Sin resultados' : 'Todavía no hay requerimientos'}
+          </h3>
+          <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
+            {hayFiltros
+              ? 'Ningún requerimiento coincide con los filtros seleccionados.'
+              : puedeEditar
+                ? 'Redacta el primero usando las sintaxis de los modelos o genéralo con IA.'
+                : 'Cuando el equipo redacte requerimientos, aparecerán aquí.'}
+          </p>
+          <div className="mt-4 flex justify-center gap-2">
+            {hayFiltros && (
+              <button onClick={limpiarFiltros} className={btnSecundario}>Quitar filtros</button>
+            )}
+            {!hayFiltros && puedeEditar && (
+              <button onClick={openCreateModal} className={btnPrimario}>
+                <Plus size={15} />
+                Redactar Requerimiento
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        agrupar === 'ninguno' ? (
+          <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+            {requerimientosOrdenados.map(filaRequerimiento)}
+          </ul>
+        ) : (
+          <div className="space-y-10">
+            {gruposRequerimientos.map((grupo) => (
+              <section key={grupo.id} aria-labelledby={`req-grupo-${grupo.id}`}>
+                <h2
+                  id={`req-grupo-${grupo.id}`}
+                  className="text-lg font-semibold text-ink pb-3 mb-4 border-b-2 border-line-strong"
+                >
+                  {grupo.nombre}
+                  <span className="ml-2 text-sm font-normal text-ink-subtle">{grupo.items.length}</span>
+                </h2>
+                <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+                  {grupo.items.map(filaRequerimiento)}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )
       )}
 
       {/* Modal Redactar / Editar Requerimiento */}
       <Modal
         open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={editingReq ? 'Editar Requerimiento' : 'Nuevo Requerimiento'}
+        onClose={intentarCerrar}
+        cerrarConFondo={!hayCambios}
+        title={
+          editingReq
+            ? 'Editar Requerimiento'
+            : insertarDespuesDe
+              ? `Nuevo requerimiento después de ${insertarDespuesDe.codigo}`
+              : 'Nuevo Requerimiento'
+        }
         description="Elige el modelo de especificación y redacta respetando la estructura del patrón."
         size="xl"
       >
         <form ref={formRef} onSubmit={handleSaveReq} noValidate className="flex flex-col flex-1 min-h-0">
           <ModalBody className="space-y-5">
+            {insertarDespuesDe && !editingReq && (
+              <div className="flex items-start gap-3 rounded-ui border border-warning-line bg-warning-subtle p-3 text-sm text-warning">
+                <ListOrdered size={18} aria-hidden className="mt-0.5 shrink-0" />
+                <p>
+                  Se registrará como <strong>{codigoRequerimiento(insertarDespuesDe.numero + 1)}</strong>.{' '}
+                  {requerimientos.filter(r => (r.numero ?? 0) > insertarDespuesDe.numero).length > 0
+                    ? `Los ${requerimientos.filter(r => (r.numero ?? 0) > insertarDespuesDe.numero).length} requerimientos que van después subirán un número.`
+                    : 'No hay requerimientos posteriores que renumerar.'}
+                </p>
+              </div>
+            )}
+
             {/* Selector de Modelo y Patrón */}
-            <div className="bg-zinc-50/80 dark:bg-zinc-800/30 p-4 rounded-2xl border border-zinc-200/60 dark:border-zinc-700/50 space-y-3">
+            <div className="bg-sunken p-4 rounded-ui border border-line space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="req-modelo" className={etiqueta}>Modelo de Requisitos</label>
@@ -838,14 +1128,14 @@ export default function RequerimientosPage() {
                 </div>
               </div>
               {patronSeleccionado && (
-                <div className="flex items-start justify-between gap-3 bg-zinc-950 rounded-xl px-3 py-2">
-                  <code className="font-mono text-[11px] text-emerald-400/90 leading-relaxed whitespace-pre-wrap">
+                <div className="flex items-start justify-between gap-3 bg-sunken border border-line rounded-ui px-3 py-2">
+                  <code className="font-mono text-xs text-ink leading-relaxed whitespace-pre-wrap">
                     {patronSeleccionado.promt}
                   </code>
                   <button
                     type="button"
                     onClick={usarPlantilla}
-                    className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-300 hover:text-emerald-200 cursor-pointer"
+                    className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-brand-text hover:underline cursor-pointer"
                   >
                     <Wand2 size={12} />
                     Usar plantilla
@@ -855,9 +1145,9 @@ export default function RequerimientosPage() {
             </div>
 
             {/* AI Generation */}
-            <div className="bg-gradient-to-r from-indigo-50/70 to-blue-50/70 dark:from-indigo-950/30 dark:to-blue-950/30 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-800/40">
-              <label htmlFor="req-ia" className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <Sparkles size={14} className="text-indigo-600 dark:text-indigo-400" />
+            <div className="bg-brand-subtle p-4 rounded-ui border border-brand-line">
+              <label htmlFor="req-ia" className="text-sm font-semibold text-brand-text mb-2 flex items-center gap-1.5">
+                <Sparkles size={14} className="text-brand-text" />
                 Generar con IA
               </label>
               <div className="flex flex-col sm:flex-row gap-2">
@@ -867,7 +1157,7 @@ export default function RequerimientosPage() {
                   placeholder="Describe la funcionalidad brevemente..."
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  className="flex-1 px-3.5 py-2 bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-800/60 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-zinc-900 dark:text-white placeholder:text-zinc-400"
+                  className="flex-1 px-3 min-h-10 pointer-coarse:min-h-11 py-2 bg-surface border border-line-strong rounded-ui text-base focus:outline-none focus:border-brand-text focus:ring-1 focus:ring-brand-text text-ink placeholder:text-ink-subtle"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
@@ -879,14 +1169,14 @@ export default function RequerimientosPage() {
                   type="button"
                   onClick={handleAIGenerate}
                   disabled={isAILoading || !aiPrompt.trim()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                  className="px-4 py-2 bg-brand-solid hover:bg-brand-solid-hover text-on-solid rounded-ui text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                 >
                   {isAILoading && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                   {isAILoading ? 'Generando...' : 'Generar'}
                 </button>
               </div>
               {patronSeleccionado && (
-                <p className="text-[11px] text-indigo-600/80 dark:text-indigo-300/70 mt-1.5">
+                <p className="text-xs text-brand-text mt-1.5">
                   Se usará el patrón <strong>{patronSeleccionado.nombre}</strong>.
                 </p>
               )}
@@ -895,7 +1185,7 @@ export default function RequerimientosPage() {
             {/* Enunciado */}
             <div>
               <label htmlFor="req-enunciado" className={etiqueta}>
-                Enunciado del Requerimiento <span className="text-rose-500">*</span>
+                Enunciado del Requerimiento <span className="text-danger">*</span>
               </label>
               <textarea
                 id="req-enunciado"
@@ -903,15 +1193,9 @@ export default function RequerimientosPage() {
                 placeholder={patronSeleccionado?.promt || "Escribe el enunciado siguiendo la estructura del patrón..."}
                 value={formData.enunciado}
                 onChange={(e) => setFormData({ ...formData, enunciado: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                    e.preventDefault();
-                    formRef.current?.requestSubmit();
-                  }
-                }}
                 className={`${campo} font-mono leading-relaxed`}
               />
-              <p className="text-[11px] text-zinc-400 mt-1">Ctrl + Enter para guardar.</p>
+              <p className="text-xs text-ink-subtle mt-1">Ctrl + Enter para guardar.</p>
             </div>
 
             {/* Clasificación */}
@@ -997,133 +1281,51 @@ export default function RequerimientosPage() {
           </ModalBody>
 
           <ModalFooter>
-            <button type="button" onClick={() => setIsModalOpen(false)} className={btnSecundario}>
+            <button type="button" onClick={intentarCerrar} className={btnSecundario}>
               Cancelar
             </button>
+            {!editingReq && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => {
+                  crearOtroRef.current = true;
+                  formRef.current?.requestSubmit();
+                }}
+                className={btnSecundario}
+              >
+                {insertarDespuesDe ? 'Insertar y añadir otro' : 'Guardar y añadir otro'}
+              </button>
+            )}
             <button type="submit" disabled={saving} className={btnPrimario}>
-              <Save size={14} />
-              {saving ? 'Guardando...' : editingReq ? 'Guardar cambios' : 'Registrar Requerimiento'}
+              <Save size={16} />
+              {saving ? 'Guardando...' : editingReq ? 'Guardar cambios' : insertarDespuesDe ? 'Insertar requerimiento' : 'Registrar requerimiento'}
             </button>
           </ModalFooter>
         </form>
       </Modal>
 
       {/* Modal Historial */}
-      <Modal
+      <ModalHistorialLogs
         open={currentReqForLogs !== null}
         onClose={() => setCurrentReqForLogs(null)}
-        title="Historial de Cambios"
-        description="Quién modificó el requerimiento y cuándo."
-        size="lg"
-      >
-        <ModalBody className="space-y-3">
-          {currentReqForLogs && (
-            <p className="font-mono text-[11px] text-zinc-600 dark:text-zinc-400 line-clamp-2 border-l-2 border-zinc-300 dark:border-zinc-700 pl-2">
-              {currentReqForLogs.enunciado}
-            </p>
-          )}
-          {loadingLogs ? (
-            [1, 2].map(i => (
-              <div key={i} className="h-14 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl animate-pulse" />
-            ))
-          ) : selectedReqLogs.length === 0 ? (
-            <p className="text-xs text-zinc-500 text-center py-6">No hay registros de cambios todavía.</p>
-          ) : (
-            <ol className="space-y-2">
-              {selectedReqLogs.map((log) => {
-                const autor = log.autor ? (log.autor.nombre || log.autor.correo) : nombreUsuario(log.id_autor);
-                const campos: string[] = Array.isArray(log.detalles?.campos) ? log.detalles.campos : [];
-                return (
-                  <li key={log.id} className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 text-xs space-y-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="font-semibold text-zinc-800 dark:text-zinc-200">{log.accion}</span>
-                      <time className="text-[10px] text-zinc-400 shrink-0" dateTime={log.fecha_hora}>
-                        {new Date(log.fecha_hora).toLocaleString()}
-                      </time>
-                    </div>
-                    {log.detalles?.estado_anterior !== undefined && log.detalles?.estado_nuevo && (
-                      <p className="text-[11px] text-zinc-500 flex items-center gap-1">
-                        {log.detalles.estado_anterior || 'Sin estado'}
-                        <ArrowRight size={11} />
-                        {log.detalles.estado_nuevo}
-                      </p>
-                    )}
-                    {campos.length > 0 && (
-                      <p className="text-[11px] text-zinc-500">Cambió: {campos.join(', ')}</p>
-                    )}
-                    {autor && (
-                      <p className="text-[11px] text-zinc-500">
-                        Por <strong className="text-zinc-700 dark:text-zinc-300">{autor}</strong>
-                      </p>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <button type="button" onClick={() => setCurrentReqForLogs(null)} className={btnSecundario}>
-            Cerrar
-          </button>
-        </ModalFooter>
-      </Modal>
+        requerimiento={currentReqForLogs}
+        logs={selectedReqLogs}
+        loading={loadingLogs}
+        nombreUsuario={nombreUsuario}
+        codigoDe={codigoDe}
+      />
 
       {/* Modal Equipos del Proyecto */}
-      <Modal
+      <ModalEquiposProyecto
         open={showEquiposModal}
         onClose={() => setShowEquiposModal(false)}
-        title="Equipos del Proyecto"
-        description={puedeGestionarVinculos
-          ? 'Invita equipos a este proyecto. El vínculo se crea cuando el líder del equipo acepta.'
-          : 'Equipos que trabajan en este proyecto. Solo el creador del proyecto invita equipos.'}
-      >
-        <ModalBody className="space-y-2">
-          {equipos.length === 0 ? (
-            <p className="text-zinc-500 text-xs text-center py-4">No hay equipos registrados todavía.</p>
-          ) : (
-            equiposOrdenados.map(eq => {
-              const isAssigned = equiposAsignados.includes(eq.equipo_id);
-              const pendiente = solicitudesEquiposPendientes.includes(eq.equipo_id);
-              if (!puedeGestionarVinculos && !isAssigned) return null;
-              return (
-                <div key={eq.equipo_id} className={`flex items-center justify-between gap-3 p-3 rounded-xl border ${isAssigned ? 'bg-blue-50/60 dark:bg-blue-950/20 border-blue-200/60 dark:border-blue-800/40' : 'bg-zinc-50/80 dark:bg-zinc-800/50 border-zinc-200/60 dark:border-zinc-700/60'}`}>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-zinc-900 dark:text-zinc-100 text-xs sm:text-sm">{eq.nombre}</p>
-                    {eq.descripcion && <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{eq.descripcion}</p>}
-                  </div>
-                  {puedeGestionarVinculos && (
-                    pendiente ? (
-                      <span className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40">
-                        Solicitud pendiente
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => solicitarVinculoEquipo(eq)}
-                        title={isAssigned ? 'Pedir al líder del equipo que acepte desvincularse' : 'Invitar al líder del equipo a vincularse'}
-                        className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${isAssigned ? 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:text-rose-600 hover:border-rose-300' : 'bg-blue-600 text-white hover:bg-blue-500'}`}
-                      >
-                        {isAssigned ? 'Solicitar desvinculación' : 'Invitar equipo'}
-                      </button>
-                    )
-                  )}
-                </div>
-              );
-            })
-          )}
-          {!puedeGestionarVinculos && equipos.length > 0 && equiposAsignados.length === 0 && (
-            <p className="text-zinc-500 text-xs text-center py-4">Este proyecto aún no tiene equipos vinculados.</p>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <Link href="/equipos-global/" className="mr-auto text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">
-            Gestionar equipos
-          </Link>
-          <button type="button" onClick={() => setShowEquiposModal(false)} className={btnSecundario}>
-            Cerrar
-          </button>
-        </ModalFooter>
-      </Modal>
+        equipos={equipos}
+        equiposAsignados={equiposAsignados}
+        solicitudesEquiposPendientes={solicitudesEquiposPendientes}
+        puedeGestionarVinculos={puedeGestionarVinculos}
+        onSolicitarVinculo={solicitarVinculoEquipo}
+      />
     </div>
   );
 }

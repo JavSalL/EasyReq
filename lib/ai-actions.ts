@@ -50,6 +50,29 @@ function safeJsonParse<T>(text: string, fallback: T): T {
 }
 
 /**
+ * Instrucción común para los patrones de redacción. Algunos patrones (p. ej.
+ * "[Actor] + [Acción] + [Objeto]") usan "+" y corchetes solo para marcar sus
+ * componentes; la IA a veces los copia tal cual en el texto.
+ */
+const REGLA_SEPARADORES = `Los signos "+", los corchetes [ ] y los símbolos < > del patrón solo señalan sus componentes: NO los escribas en el requerimiento. Une los componentes en una oración corrida, natural y gramaticalmente correcta.`;
+
+/**
+ * Limpia el texto generado cuando el patrón usa "+" como separador: quita los
+ * "+" que quedaron entre componentes y los corchetes de las etiquetas.
+ * Si el patrón no usa "+", el texto se devuelve sin tocar (un "+" legítimo,
+ * como en "C++", se respeta).
+ */
+export function limpiarRedaccion(texto: string, pattern?: string): string {
+  if (!pattern || !pattern.includes('+')) return texto;
+  return texto
+    .replace(/\s+\+(?!\+)\s*|(?<!\+)\+\s+/g, ' ')
+    .replace(/\[([^\]]*)\]/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([.,;:])/g, '$1')
+    .trim();
+}
+
+/**
  * Genera requerimientos en masa basados en la descripción de un proyecto.
  */
 export async function generateBulkRequirements(projectDesc: string, pattern?: string, count?: number): Promise<AIRequirement[]> {
@@ -58,7 +81,7 @@ export async function generateBulkRequirements(projectDesc: string, pattern?: st
     "${projectDesc}"
     
     INSTRUCCIONES DE REDACCIÓN:
-    ${pattern ? `IMPORTANTE: Debes seguir estrictamente este patrón de redacción específico: \n"${pattern}"\n` : 'REGLA: Redacta en 6 palabras o menos'}
+    ${pattern ? `IMPORTANTE: Debes seguir estrictamente este patrón de redacción específico: \n"${pattern}"\n${REGLA_SEPARADORES}\n` : 'REGLA: Redacta en 6 palabras o menos'}
     
     IDIOMA: Puedes redactar los requerimientos en ESPAÑOL o INGLÉS. Basado en si la descripción del proyecto está en español o inglés.
 
@@ -82,7 +105,10 @@ export async function generateBulkRequirements(projectDesc: string, pattern?: st
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
-    return safeJsonParse<AIRequirement[]>(text, []);
+    const generados = safeJsonParse<AIRequirement[]>(text, []);
+    return Array.isArray(generados)
+      ? generados.map(r => (r && typeof r.name === 'string' ? { ...r, name: limpiarRedaccion(r.name, pattern) } : r))
+      : [];
   } catch (err) {
     console.error('Error al generar requerimientos en lote:', err);
     return [];
@@ -95,7 +121,7 @@ export async function generateBulkRequirements(projectDesc: string, pattern?: st
 export async function generateSingleRequirement(userPrompt: string, pattern?: string): Promise<AIRequirement | null> {
   const prompt = `
     Genera un requerimiento técnico profesional basado en este prompt: "${userPrompt}"
-    ${pattern ? `Debes usar estrictamente este patrón de redacción: \n"${pattern}"` : ''}
+    ${pattern ? `Debes usar estrictamente este patrón de redacción: \n"${pattern}"\n${REGLA_SEPARADORES}` : ''}
     
     IDIOMA: Puedes redactar en ESPAÑOL o INGLÉS. Sé flexible con el idioma pero estricto con la estructura del patrón.
 
@@ -112,7 +138,10 @@ export async function generateSingleRequirement(userPrompt: string, pattern?: st
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
-    return safeJsonParse<AIRequirement | null>(text, null);
+    const generado = safeJsonParse<AIRequirement | null>(text, null);
+    return generado && typeof generado.name === 'string'
+      ? { ...generado, name: limpiarRedaccion(generado.name, pattern) }
+      : generado;
   } catch (err) {
     console.error('Error al generar requerimiento individual:', err);
     return null;

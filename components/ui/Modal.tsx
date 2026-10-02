@@ -19,6 +19,8 @@ interface ModalProps {
   title: React.ReactNode;
   description?: React.ReactNode;
   size?: keyof typeof ANCHOS;
+  /** Si es false, un clic en el fondo no cierra el modal (formularios con cambios sin guardar). */
+  cerrarConFondo?: boolean;
   children: React.ReactNode;
 }
 
@@ -27,7 +29,7 @@ interface ModalProps {
  * la X. El contenido va en `ModalBody` (con scroll) y `ModalFooter`; si hay un
  * formulario, debe envolver a ambos para que el botón de enviar funcione.
  */
-export function Modal({ open, onClose, title, description, size = 'md', children }: ModalProps) {
+export function Modal({ open, onClose, title, description, size = 'md', cerrarConFondo = true, children }: ModalProps) {
   const id = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -42,9 +44,17 @@ export function Modal({ open, onClose, title, description, size = 'md', children
     document.body.style.overflow = 'hidden';
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && pilaModales[pilaModales.length - 1] === id) {
+      if (pilaModales[pilaModales.length - 1] !== id) return;
+      if (e.key === 'Escape') {
         e.stopPropagation();
         onCloseRef.current();
+      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        // Ctrl/Cmd + Enter envía el formulario del modal desde cualquier campo
+        const formulario = panelRef.current?.querySelector('form');
+        if (formulario) {
+          e.preventDefault();
+          formulario.requestSubmit();
+        }
       }
     };
     document.addEventListener('keydown', onKeyDown);
@@ -67,9 +77,9 @@ export function Modal({ open, onClose, title, description, size = 'md', children
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-zinc-950/60 backdrop-blur-sm animate-in fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-scrim animate-in fade-in"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (cerrarConFondo && e.target === e.currentTarget) onClose();
       }}
     >
       <div
@@ -78,15 +88,15 @@ export function Modal({ open, onClose, title, description, size = 'md', children
         aria-modal="true"
         aria-labelledby={`${id}-titulo`}
         tabIndex={-1}
-        className={`bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl w-full ${ANCHOS[size]} shadow-2xl max-h-[90vh] flex flex-col overflow-hidden outline-none animate-in zoom-in`}
+        className={`bg-surface border border-line rounded-ui w-full ${ANCHOS[size]} max-h-[90vh] flex flex-col overflow-hidden outline-none animate-in zoom-in`}
       >
-        <div className="px-5 sm:px-6 py-4 border-b border-zinc-100 dark:border-zinc-800/80 flex items-start justify-between gap-4 shrink-0">
+        <div className="px-5 sm:px-6 py-4 border-b border-line flex items-start justify-between gap-4 shrink-0">
           <div className="min-w-0">
-            <h3 id={`${id}-titulo`} className="text-base font-bold text-zinc-900 dark:text-white tracking-tight">
+            <h3 id={`${id}-titulo`} className="text-base font-bold text-ink ">
               {title}
             </h3>
             {description && (
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{description}</p>
+              <p className="text-xs text-ink-subtle mt-0.5">{description}</p>
             )}
           </div>
           <button
@@ -94,7 +104,7 @@ export function Modal({ open, onClose, title, description, size = 'md', children
             onClick={onClose}
             aria-label="Cerrar"
             title="Cerrar (Esc)"
-            className="p-1.5 -mr-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer shrink-0"
+            className="p-1.5 -mr-1.5 rounded-ui text-ink-subtle hover:text-ink-muted hover:bg-sunken transition-colors cursor-pointer shrink-0"
           >
             <X size={18} />
           </button>
@@ -115,7 +125,7 @@ export function ModalBody({ children, className = '' }: { children: React.ReactN
 
 export function ModalFooter({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-5 sm:px-6 py-3.5 border-t border-zinc-100 dark:border-zinc-800/80 shrink-0 flex items-center justify-end gap-2 bg-zinc-50/80 dark:bg-zinc-900/80">
+    <div className="px-5 sm:px-6 py-3.5 border-t border-line shrink-0 flex items-center justify-end gap-2 bg-sunken">
       {children}
     </div>
   );
