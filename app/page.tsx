@@ -27,6 +27,7 @@ import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import PermisosProyecto from '@/components/proyectos/PermisosProyecto';
+import SelectorMiembros from '@/components/proyectos/SelectorMiembros';
 import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
 } from '@/components/ui/estilos';
@@ -90,7 +91,9 @@ export default function Home() {
     quien_crea_equipos: 'creador' as QuienCreaEquipos,
     ids_creadores_equipos: [] as string[],
     quien_agrega_miembros: 'creador' as QuienAgregaMiembros,
-    ids_gestores_miembros: [] as string[]
+    ids_gestores_miembros: [] as string[],
+    // Solo al crear: miembros que entran con el proyecto (luego se administran en la pestaña Miembros)
+    ids_miembros: [] as string[]
   });
   const [saving, setSaving] = useState(false);
   const { hayCambios, intentarCerrar } = useCierreSeguro(isModalOpen, formData, () => setIsModalOpen(false));
@@ -151,7 +154,8 @@ export default function Home() {
       quien_crea_equipos: 'creador',
       ids_creadores_equipos: [],
       quien_agrega_miembros: 'creador',
-      ids_gestores_miembros: []
+      ids_gestores_miembros: [],
+      ids_miembros: []
     });
     setIsModalOpen(true);
   };
@@ -169,7 +173,8 @@ export default function Home() {
       quien_crea_equipos: p.quien_crea_equipos ?? 'creador',
       ids_creadores_equipos: p.ids_creadores_equipos ?? [],
       quien_agrega_miembros: p.quien_agrega_miembros ?? 'creador',
-      ids_gestores_miembros: p.ids_gestores_miembros ?? []
+      ids_gestores_miembros: p.ids_gestores_miembros ?? [],
+      ids_miembros: []
     });
     setIsModalOpen(true);
   };
@@ -218,7 +223,8 @@ export default function Home() {
           quien_crea_equipos: formData.quien_crea_equipos,
           ids_creadores_equipos: formData.ids_creadores_equipos,
           quien_agrega_miembros: formData.quien_agrega_miembros,
-          ids_gestores_miembros: formData.ids_gestores_miembros
+          ids_gestores_miembros: formData.ids_gestores_miembros,
+          ids_miembros: formData.ids_miembros
         });
         toast.success('Proyecto creado');
       }
@@ -505,13 +511,32 @@ export default function Home() {
               <label htmlFor="proyecto-descripcion" className={etiqueta}>Descripción</label>
               <textarea
                 id="proyecto-descripcion"
-                rows={5}
+                rows={editingProject ? 5 : 3}
                 placeholder="Describe brevemente el alcance u objetivos del proyecto..."
                 value={formData.descripcion}
                 onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                 className={`${campo} resize-none`}
               />
             </div>
+
+            {!editingProject && (
+              <SelectorMiembros
+                titulo="Miembros del proyecto (opcional)"
+                usuarios={usuarios.filter(u => u.id !== uid)}
+                valor={formData.ids_miembros}
+                onChange={(ids) =>
+                  // Quien deja de ser miembro también deja las listas de permisos que lo nombraban
+                  setFormData({
+                    ...formData,
+                    ids_miembros: ids,
+                    ids_creadores_equipos: formData.ids_creadores_equipos.filter(id => ids.includes(id)),
+                    ids_gestores_miembros: formData.ids_gestores_miembros.filter(id => ids.includes(id)),
+                    quien_crea_equipos: ids.length === 0 && formData.quien_crea_equipos === 'seleccionados' ? 'creador' : formData.quien_crea_equipos,
+                    quien_agrega_miembros: ids.length === 0 && formData.quien_agrega_miembros === 'seleccionados' ? 'creador' : formData.quien_agrega_miembros
+                  })
+                }
+              />
+            )}
             </div>
 
             {(!editingProject || editingProject.id_creador === uid) && (
@@ -522,8 +547,10 @@ export default function Home() {
                   quienAgregaMiembros: formData.quien_agrega_miembros,
                   idsGestoresMiembros: formData.ids_gestores_miembros
                 }}
-                // Los permisos "a miembros que elija" se reparten entre los miembros actuales (al crear no hay)
-                miembros={usuarios.filter(u => u.id !== uid && (editingProject?.ids_miembros ?? []).includes(u.id))}
+                // Los permisos "a miembros que elija" se reparten entre los miembros actuales (al crear, los elegidos arriba)
+                miembros={usuarios.filter(
+                  u => u.id !== uid && (editingProject ? editingProject.ids_miembros ?? [] : formData.ids_miembros).includes(u.id)
+                )}
                 onChange={(v) =>
                   setFormData({
                     ...formData,

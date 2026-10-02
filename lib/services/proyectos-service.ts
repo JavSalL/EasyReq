@@ -89,8 +89,11 @@ export async function createProyecto(data: {
   ids_creadores_equipos?: UUID[];
   quien_agrega_miembros?: QuienAgregaMiembros;
   ids_gestores_miembros?: UUID[];
+  // Miembros que entran al crear el proyecto (sin repetir y sin el creador, que siempre lo es)
+  ids_miembros?: UUID[];
 }): Promise<Proyecto> {
   const created_at = new Date().toISOString();
+  const ids_miembros = [...new Set(data.ids_miembros ?? [])].filter(id => id !== data.id_creador);
   const quien_crea_equipos = data.quien_crea_equipos ?? 'creador';
   const ids_creadores_equipos = quien_crea_equipos === 'seleccionados' ? data.ids_creadores_equipos ?? [] : [];
   const quien_agrega_miembros = data.quien_agrega_miembros ?? 'creador';
@@ -102,7 +105,7 @@ export async function createProyecto(data: {
     // UID del creador (política: cualquier autenticado puede crear; el
     // creador siempre puede editar/eliminar). Null si no se provee.
     id_creador: data.id_creador ?? null,
-    ids_miembros: [],
+    ids_miembros,
     quien_crea_equipos,
     ids_creadores_equipos,
     quien_agrega_miembros,
@@ -115,7 +118,7 @@ export async function createProyecto(data: {
     descripcion: data.descripcion || '',
     id_tipo_sistema: data.id_tipo_sistema || null,
     id_creador: data.id_creador ?? null,
-    ids_miembros: [],
+    ids_miembros,
     quien_crea_equipos,
     ids_creadores_equipos,
     quien_agrega_miembros,
