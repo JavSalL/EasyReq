@@ -44,6 +44,8 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
+import ModalHistorialLogs from '@/components/requerimientos/ModalHistorialLogs';
+import ModalEquiposProyecto from '@/components/requerimientos/ModalEquiposProyecto';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
@@ -1304,125 +1306,26 @@ export default function RequerimientosPage() {
       </Modal>
 
       {/* Modal Historial */}
-      <Modal
+      <ModalHistorialLogs
         open={currentReqForLogs !== null}
         onClose={() => setCurrentReqForLogs(null)}
-        title={
-          currentReqForLogs && codigoDe(currentReqForLogs)
-            ? `Historial de ${codigoDe(currentReqForLogs)}`
-            : 'Historial de Cambios'
-        }
-        description="Quién modificó el requerimiento y cuándo."
-        size="lg"
-      >
-        <ModalBody className="space-y-3">
-          {currentReqForLogs && (
-            <p className="font-mono text-xs text-ink-muted line-clamp-2 border-l-2 border-line-strong pl-2">
-              {currentReqForLogs.enunciado}
-            </p>
-          )}
-          {loadingLogs ? (
-            [1, 2].map(i => (
-              <div key={i} className="h-14 bg-sunken rounded-ui animate-pulse" />
-            ))
-          ) : selectedReqLogs.length === 0 ? (
-            <p className="text-xs text-ink-subtle text-center py-6">No hay registros de cambios todavía.</p>
-          ) : (
-            <ol className="space-y-2">
-              {selectedReqLogs.map((log) => {
-                const autor = log.autor ? (log.autor.nombre || log.autor.correo) : nombreUsuario(log.id_autor);
-                const campos: string[] = Array.isArray(log.detalles?.campos) ? log.detalles.campos : [];
-                return (
-                  <li key={log.id} className="p-3 bg-sunken rounded-ui border border-line text-xs space-y-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="font-semibold text-ink">{log.accion}</span>
-                      <time className="text-xs text-ink-subtle shrink-0" dateTime={log.fecha_hora}>
-                        {fechaCompleta(log.fecha_hora)}
-                      </time>
-                    </div>
-                    {log.detalles?.estado_anterior !== undefined && log.detalles?.estado_nuevo && (
-                      <p className="text-xs text-ink-subtle flex items-center gap-1">
-                        {log.detalles.estado_anterior || 'Sin estado'}
-                        <ArrowRight size={11} />
-                        {log.detalles.estado_nuevo}
-                      </p>
-                    )}
-                    {campos.length > 0 && (
-                      <p className="text-xs text-ink-subtle">Cambió: {campos.join(', ')}</p>
-                    )}
-                    {autor && (
-                      <p className="text-xs text-ink-subtle">
-                        Por <strong className="text-ink-muted">{autor}</strong>
-                      </p>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <button type="button" onClick={() => setCurrentReqForLogs(null)} className={btnSecundario}>
-            Cerrar
-          </button>
-        </ModalFooter>
-      </Modal>
+        requerimiento={currentReqForLogs}
+        logs={selectedReqLogs}
+        loading={loadingLogs}
+        nombreUsuario={nombreUsuario}
+        codigoDe={codigoDe}
+      />
 
       {/* Modal Equipos del Proyecto */}
-      <Modal
+      <ModalEquiposProyecto
         open={showEquiposModal}
         onClose={() => setShowEquiposModal(false)}
-        title="Equipos del Proyecto"
-        description={puedeGestionarVinculos
-          ? 'Invita equipos a este proyecto. El vínculo se crea cuando el líder del equipo acepta.'
-          : 'Equipos que trabajan en este proyecto. Solo el creador del proyecto invita equipos.'}
-      >
-        <ModalBody className="space-y-2">
-          {equipos.length === 0 ? (
-            <p className="text-ink-subtle text-xs text-center py-4">No hay equipos registrados todavía.</p>
-          ) : (
-            equiposOrdenados.map(eq => {
-              const isAssigned = equiposAsignados.includes(eq.equipo_id);
-              const pendiente = solicitudesEquiposPendientes.includes(eq.equipo_id);
-              if (!puedeGestionarVinculos && !isAssigned) return null;
-              return (
-                <div key={eq.equipo_id} className={`flex items-center justify-between gap-3 p-3 rounded-ui border ${isAssigned ? 'bg-brand-subtle border-brand-line' : 'bg-sunken border-line'}`}>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-ink text-xs sm:text-sm">{eq.nombre}</p>
-                    {eq.descripcion && <p className="text-xs text-ink-subtle truncate">{eq.descripcion}</p>}
-                  </div>
-                  {puedeGestionarVinculos && (
-                    pendiente ? (
-                      <span className="shrink-0 px-3 py-1.5 rounded-ui text-xs font-medium text-warning bg-warning-subtle border border-warning-line">
-                        Solicitud pendiente
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => solicitarVinculoEquipo(eq)}
-                        title={isAssigned ? 'Pedir al líder del equipo que acepte desvincularse' : 'Invitar al líder del equipo a vincularse'}
-                        className={`shrink-0 px-3 py-1.5 rounded-ui text-xs font-semibold transition-colors cursor-pointer ${isAssigned ? 'bg-surface border border-line text-ink-muted hover:text-danger hover:border-danger-line' : 'bg-brand-solid text-on-solid hover:bg-brand-solid-hover'}`}
-                      >
-                        {isAssigned ? 'Solicitar desvinculación' : 'Invitar equipo'}
-                      </button>
-                    )
-                  )}
-                </div>
-              );
-            })
-          )}
-          {!puedeGestionarVinculos && equipos.length > 0 && equiposAsignados.length === 0 && (
-            <p className="text-ink-subtle text-xs text-center py-4">Este proyecto aún no tiene equipos vinculados.</p>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <Link href="/equipos-global/" className="mr-auto text-xs font-semibold text-brand-text hover:underline">
-            Gestionar equipos
-          </Link>
-          <button type="button" onClick={() => setShowEquiposModal(false)} className={btnSecundario}>
-            Cerrar
-          </button>
-        </ModalFooter>
-      </Modal>
+        equipos={equipos}
+        equiposAsignados={equiposAsignados}
+        solicitudesEquiposPendientes={solicitudesEquiposPendientes}
+        puedeGestionarVinculos={puedeGestionarVinculos}
+        onSolicitarVinculo={solicitarVinculoEquipo}
+      />
     </div>
   );
 }
