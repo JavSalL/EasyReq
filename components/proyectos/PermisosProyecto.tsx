@@ -30,7 +30,7 @@ function GrupoPermiso<T extends string>({ nombre, titulo, opciones, valor, ids, 
     // `min-w-0`: un fieldset no se encoge por debajo de su contenido más ancho y se saldría del modal
     <fieldset className="min-w-0">
       <legend className={etiqueta}>{titulo}</legend>
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {opciones.map((opcion) => {
           const activa = valor === opcion.valor;
           // Elegir miembros concretos solo tiene sentido cuando ya hay miembros
@@ -38,7 +38,7 @@ function GrupoPermiso<T extends string>({ nombre, titulo, opciones, valor, ids, 
           return (
             <label
               key={opcion.valor}
-              className={`flex items-start gap-3 p-3 rounded-ui border transition-colors ${
+              className={`flex items-start gap-3 px-3 py-2.5 rounded-ui border transition-colors ${
                 deshabilitada
                   ? 'border-line bg-sunken opacity-60 cursor-not-allowed'
                   : activa
@@ -56,9 +56,12 @@ function GrupoPermiso<T extends string>({ nombre, titulo, opciones, valor, ids, 
               />
               <span className="min-w-0">
                 <span className="block text-sm font-medium text-ink">{opcion.titulo}</span>
-                <span className="block text-xs text-ink-subtle mt-0.5">
-                  {deshabilitada ? 'Disponible cuando el proyecto tenga miembros. Agrégalos en la pestaña Miembros.' : opcion.descripcion}
-                </span>
+                {/* La descripción solo se muestra en la opción elegida, para ocupar menos espacio */}
+                {deshabilitada ? (
+                  <span className="block text-xs text-ink-subtle mt-0.5">Cuando el proyecto tenga miembros.</span>
+                ) : (
+                  activa && <span className="block text-xs text-ink-subtle mt-0.5">{opcion.descripcion}</span>
+                )}
               </span>
             </label>
           );
@@ -122,7 +125,7 @@ interface PermisosProyectoProps {
 /** Permisos del proyecto que define su creador: quién crea equipos y quién agrega miembros. */
 export default function PermisosProyecto({ valor, miembros, onChange }: PermisosProyectoProps) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <GrupoPermiso
         nombre="quien-crea-equipos"
         titulo="¿Quién puede crear equipos en este proyecto?"

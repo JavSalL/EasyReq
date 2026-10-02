@@ -466,9 +466,11 @@ export default function Home() {
         onClose={intentarCerrar}
         cerrarConFondo={!hayCambios}
         title={editingProject ? 'Editar Proyecto' : 'Nuevo Proyecto'}
+        size="3xl"
       >
         <form onSubmit={handleSave} noValidate className="flex flex-col flex-1 min-h-0">
-          <ModalBody className="space-y-4">
+          <ModalBody className={`grid gap-x-8 gap-y-5 ${editingProject && editingProject.id_creador !== uid ? '' : 'md:grid-cols-2'}`}>
+            <div className="space-y-4 min-w-0">
             <div>
               <label htmlFor="proyecto-nombre" className={etiqueta}>
                 Nombre del Proyecto <span className="text-danger">*</span>
@@ -503,12 +505,13 @@ export default function Home() {
               <label htmlFor="proyecto-descripcion" className={etiqueta}>Descripción</label>
               <textarea
                 id="proyecto-descripcion"
-                rows={3}
+                rows={5}
                 placeholder="Describe brevemente el alcance u objetivos del proyecto..."
                 value={formData.descripcion}
                 onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                 className={`${campo} resize-none`}
               />
+            </div>
             </div>
 
             {(!editingProject || editingProject.id_creador === uid) && (
