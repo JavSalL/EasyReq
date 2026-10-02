@@ -774,28 +774,15 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    {gestionable ? (
-                      <>
-                        <button
-                          onClick={() => handleDeleteTeam(team)}
-                          title="Eliminar equipo"
-                          aria-label={`Eliminar ${team.nombre}`}
-                          className={btnIconoPeligro}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </>
-                    ) : !esMiembro(team) ? (
-                      <span
-                        title="Solo el líder del equipo puede editarlo"
-                        className="inline-flex items-center gap-1 px-2 text-xs font-medium text-ink-subtle"
-                      >
-                        <Lock size={14} aria-hidden />
-                        Solo lectura
-                      </span>
-                    ) : null}
-                  </div>
+                  {!gestionable && !esMiembro(team) && (
+                    <span
+                      title="Solo el líder del equipo puede editarlo"
+                      className="inline-flex items-center gap-1 px-2 text-xs font-medium text-ink-subtle shrink-0"
+                    >
+                      <Lock size={14} aria-hidden />
+                      Solo lectura
+                    </span>
+                  )}
                   <ChevronRight size={18} aria-hidden className="text-ink-muted group-hover:text-ink shrink-0" />
                 </div>
               </li>
