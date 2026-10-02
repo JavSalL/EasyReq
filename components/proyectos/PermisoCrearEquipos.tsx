@@ -27,8 +27,9 @@ export default function PermisoCrearEquipos({ quien, ids, usuarios, onChange }: 
   const alternar = (id: string) =>
     onChange({ quien, ids: ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id] });
 
+  // `min-w-0`: un fieldset no se encoge por debajo de su contenido más ancho y se saldría del modal
   return (
-    <fieldset>
+    <fieldset className="min-w-0">
       <legend className={etiqueta}>¿Quién puede crear equipos en este proyecto?</legend>
       <div className="space-y-2">
         {OPCIONES_CREAR_EQUIPOS.map((opcion) => {
