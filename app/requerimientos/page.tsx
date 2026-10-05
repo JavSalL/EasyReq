@@ -521,7 +521,10 @@ export default function RequerimientosPage() {
     setIsAILoading(true);
     try {
       const generated = await generateSingleRequirement(aiPrompt, patronSeleccionado?.promt);
-      if (generated && generated.name) {
+      if (generated && generated.valido === false) {
+        // La IA no inventa: si el texto no da base, se explica qué falta y se conserva lo escrito
+        toast.error(generated.motivo || 'No se pudo identificar qué debe hacer el sistema. Descríbelo con más detalle.');
+      } else if (generated && generated.name) {
         setFormData(prev => ({ ...prev, enunciado: generated.name }));
         toast.success("Requerimiento generado. Revísalo antes de guardar.");
         setAiPrompt('');
