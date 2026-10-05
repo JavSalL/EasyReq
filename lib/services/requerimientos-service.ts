@@ -58,11 +58,19 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
         id_proyecto: data.id_proyecto,
         id_autor: data.id_autor || null,
         id_aprobador: data.id_aprobador || null,
+        // KAN-18: sin esto, `id_equipo` llegaba siempre `undefined` y toda la
+        // aprobación se apagaba en silencio. Es el getter el que decide qué campos
+        // existen para la interfaz, así que añadir un campo al tipo no basta: si no
+        // se copia aquí, el documento sí lo tiene y la pantalla no lo ve. Por eso
+        // `tests/lib/requerimientos-aprobacion.test.ts` lee de este getter y no del
+        // documento crudo.
+        id_equipo: data.id_equipo || null,
         id_modalidad: data.id_modalidad || null,
         id_estado: data.id_estado || null,
         id_modelo: data.id_modelo || null,
         numero: typeof data.numero === 'number' ? data.numero : null,
         codigo: typeof data.codigo === 'string' ? data.codigo : null,
+        reenviado_at: data.reenviado_at || null,
         created_at: data.created_at || new Date().toISOString(),
 
         tipo_requerimiento: data.id_tipo_requerimiento ? tipoMap.get(data.id_tipo_requerimiento) || null : null,
