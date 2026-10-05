@@ -111,8 +111,26 @@ export interface Requerimiento {
   enunciado: string;
   id_tipo_requerimiento: UUID | null;
   id_proyecto: UUID;
+  /**
+   * Equipo al que pertenece el requerimiento (KAN-18). De él depende qué líder
+   * aprueba, y las reglas no pueden deducirlo: un proyecto puede tener varios
+   * equipos y los vínculos de `proyecto_equipos` tienen ID compuesto
+   * (`proyecto_equipo`), que no se puede enumerar desde una regla.
+   *
+   * Nulo en los requerimientos creados antes de KAN-18. No son migrables a mano:
+   * el texto guardado no dice a qué equipo pertenecían.
+   */
+  id_equipo?: UUID | null;
+  /** Quién lo redactó. Lo pone el sistema al crear; nunca el formulario. */
   id_autor: UUID | null;
+  /**
+   * Quién lo aprobó (KAN-18). Lo escribe el líder al aprobar y queda en `null` al
+   * rechazar: quien rechaza no aprobó, y dejarlo puesto haría que un rechazo se
+   * leyera como "Aprobado por" en la tarjeta.
+   */
   id_aprobador: UUID | null;
+  /** Momento del último reenvío a aprobación tras un rechazo (KAN-18). */
+  reenviado_at?: string;
   id_modalidad: UUID | null;
   id_estado: UUID | null;
   id_modelo: UUID | null;

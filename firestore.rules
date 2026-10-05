@@ -196,6 +196,166 @@ service cloud.firestore {
       return false;
     }
 
+    // ==========================================
+    // APROBACIÓN DE REQUERIMIENTOS (KAN-18)
+    // ==========================================
+    // Un requerimiento nuevo no entra al flujo: nace "Pendiente de aprobación" y
+    // solo avanza cuando el líder de SU equipo lo aprueba.
+    //
+    // Por eso `requerimiento` guarda `id_equipo`. Un proyecto puede tener varios
+    // equipos y los vínculos de `proyecto_equipos` tienen ID compuesto
+    // (`proyecto_equipo`), así que las reglas NO pueden deducir el equipo leyendo
+    // las relaciones: no hay forma de adivinar esos IDs desde el path. Con
+    // `id_equipo` en el documento, la comprobación es una lectura de clave conocida.
+    //
+    // Puntos de extensión para el sistema de roles: `esAprobador` decide quién
+    // aprueba, y las cuatro funciones de actualización de abajo son los únicos
+    // sitios que deciden quién puede tocar el documento. Sus equivalentes en la
+    // interfaz son las funciones de aprobación de `lib/permisos.ts`: se cambian
+    // juntos, o la UI y el backend discrepan.
+
+    // ¿Pertenece este equipo al proyecto del requerimiento?
+    //
+    // Desde KAN-24 los equipos que se crean dentro de un proyecto llevan
+    // `id_proyecto`, así que basta una lectura. Los equipos anteriores no lo
+    // tienen: se relacionan con el proyecto mediante el documento de
+    // `proyecto_equipos`, cuyo ID es compuesto pero sí se puede construir. Por eso
+    // se aceptan las dos formas.
+    function isEquipoDelProyecto(equipoId, proyectoId) {
+      let equipoPath = /databases/$(database)/documents/equipo/$(equipoId);
+      return equipoId != null &&
+        proyectoId != null &&
+        (
+          (
+            exists(equipoPath) &&
+            get(equipoPath).data.get('id_proyecto', null) == proyectoId
+          ) ||
+          exists(/databases/$(database)/documents/proyecto_equipos/$(proyectoId + "_" + equipoId))
+        );
+    }
+
+    // ¿Puede este usuario aprobar los requerimientos de este equipo? Hoy, solo el
+    // líder del propio equipo. Con roles, aquí se añadiría el criterio de rol.
+    function esAprobador(equipoId, userId) {
+      return isTeamLeaderUser(equipoId, userId);
+    }
+
+    // Los estados del ciclo de aprobación, comparados por su texto exacto.
+    //
+    // El catálogo guarda el nombre, no el significado: el significado de un ID
+    // depende de lo que diga el documento `estados` al que apunta. Por eso `estados`
+    // queda congelado como `roles`. Si alguien añadiera "Pendiente de aprobacion"
+    // sin tilde, los requerimientos dejarían de reconocerse como pendientes y el
+    // flujo se pararía sin error visible.
+    function esEstadoPendienteAprobacion(estadoId) {
+      let estadoPath = /databases/$(database)/documents/estados/$(estadoId);
+      return estadoId != null &&
+        exists(estadoPath) &&
+        get(estadoPath).data.nombre_estado == 'Pendiente de aprobación';
+    }
+
+    function esEstadoAprobado(estadoId) {
+      let estadoPath = /databases/$(database)/documents/estados/$(estadoId);
+      return estadoId != null &&
+        exists(estadoPath) &&
+        get(estadoPath).data.nombre_estado == 'Aprobado';
+    }
+
+    function esEstadoRechazado(estadoId) {
+      let estadoPath = /databases/$(database)/documents/estados/$(estadoId);
+      return estadoId != null &&
+        exists(estadoPath) &&
+        get(estadoPath).data.nombre_estado == 'Rechazado';
+    }
+
+    // Alta de un requerimiento. Es la regla que impide el autoapartado: el autor lo
+    // pone el sistema, el estado inicial lo pone la regla y el aprobador nace vacío.
+    function isValidRequerimientoCreate(data) {
+      return isAuthenticated() &&
+        // Estar en el proyecto, que es lo que la interfaz ya comprobaba antes de
+        // mostrar el botón de redactar. Antes bastaba `isAuthenticated()`, así que
+        // cualquier usuario con sesión podía colgar requerimientos en proyectos
+        // ajenos; esto es justo lo que este bloque deja de permitir.
+        esMiembroDelProyecto(data.id_proyecto, request.auth.uid) &&
+        isEquipoDelProyecto(data.id_equipo, data.id_proyecto) &&
+        data.id_autor == request.auth.uid &&
+        data.id_aprobador == null &&
+        esEstadoPendienteAprobacion(data.id_estado) &&
+        data.enunciado is string &&
+        data.enunciado.size() > 0 &&
+        data.enunciado.size() <= 5000 &&
+        // Sin esta lista, un cliente podría colar campos propios y saltarse la
+        // revisión de un schema que nadie ha visto. `numero` y `codigo` los escribe
+        // la transacción de `createRequerimiento`, no el formulario.
+        data.keys().hasOnly([
+          'enunciado', 'id_tipo_requerimiento', 'id_proyecto', 'id_equipo',
+          'id_autor', 'id_aprobador', 'id_modalidad', 'id_estado', 'id_modelo',
+          'numero', 'codigo', 'created_at'
+        ]);
+    }
+
+    // Un requerimiento se actualiza por UNA de estas cuatro situaciones. Se
+    // declaran por separado para que se lea cuál es cuál.
+
+    // 1. El autor corrige el suyo y lo devuelve a espera.
+    function esReenvioDelAutor(data) {
+      return isAuthenticated() &&
+        resource.data.id_autor == request.auth.uid &&
+        // `id_autor` es inmutable de por vida: es lo que demuestra quién pidió el
+        // cambio. `numero` y `codigo` los mueve la renumeración, no una corrección.
+        !data.diff(resource.data).affectedKeys().hasAny([
+          'id_autor', 'id_proyecto', 'id_equipo', 'id_aprobador', 'numero', 'codigo'
+        ]) &&
+        // El estado solo puede cambiar para volver a espera. Sin esta condición, un
+        // `updateDoc` a mano con el ID de "Aprobado" sería el autoapartado que este
+        // ticket viene a cerrar.
+        (
+          !data.diff(resource.data).affectedKeys().hasAny(['id_estado']) ||
+          esEstadoPendienteAprobacion(data.id_estado)
+        );
+    }
+
+    // 2. El líder del equipo aprueba o rechaza.
+    function esDecisionDelAprobador(data) {
+      return esAprobador(resource.data.id_equipo, request.auth.uid) &&
+        // Solo se decide lo que está esperando. Sin esto, un requerimiento ya
+        // implementado podría volver a "Rechazado" con una llamada a mano.
+        esEstadoPendienteAprobacion(resource.data.id_estado) &&
+        data.diff(resource.data).affectedKeys().hasOnly(['id_estado', 'id_aprobador']) &&
+        (esEstadoAprobado(data.id_estado) || esEstadoRechazado(data.id_estado)) &&
+        // Aprobar exige registrar quién aprobó; rechazar exige dejarlo vacío,
+        // porque quien rechaza no aprobó y si no el rechazo se mostraría como
+        // "Aprobado por" en la tarjeta.
+        (esEstadoAprobado(data.id_estado)
+          ? data.id_aprobador == request.auth.uid
+          : data.id_aprobador == null);
+    }
+
+    // 3. Superada la aprobación, el requerimiento vuelve al flujo normal y se edita
+    // como antes: por cualquier miembro del proyecto. Sin esta vía, aprobar un
+    // requerimiento lo dejaría congelado, que es lo contrario de lo que pide el
+    // ticket ("continuará con el flujo normal del sistema").
+    function esEdicionEnFlujoNormal(data) {
+      return esMiembroDelProyecto(resource.data.id_proyecto, request.auth.uid) &&
+        // Solo fuera del ciclo de aprobación: mientras esté pendiente o rechazado
+        // manda el líder, y aquí no se cuela nadie.
+        !esEstadoPendienteAprobacion(resource.data.id_estado) &&
+        !esEstadoRechazado(resource.data.id_estado) &&
+        !data.diff(resource.data).affectedKeys().hasAny([
+          'id_autor', 'id_proyecto', 'id_equipo'
+        ]);
+    }
+
+    // 4. Renumeración. Al insertar un requerimiento en medio, `insertarRequerimiento
+    // DespuesDe` sube un número a todos los posteriores, y
+    // `asignarNumerosRequerimientos` completa los que aún no lo tienen. Ninguna de
+    // las dos toca el contenido, así que se admite solo ese par de campos: con esto
+    // no se cuela ni un cambio de estado ni de autor por el mismo camino.
+    function esRenumeracion(data) {
+      return isAuthenticated() &&
+        data.diff(resource.data).affectedKeys().hasOnly(['numero', 'codigo']);
+    }
+
     // 1. Perfiles de usuario
     match /perfil_usuario/{userId} {
       // Cualquier usuario autenticado puede leer perfiles (necesario para listas de miembros, autores, etc.)
@@ -230,11 +390,38 @@ service cloud.firestore {
     }
     match /estados/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      // Catálogo congelado (KAN-18), con el mismo trato que `roles`. No es
+      // capricho: las reglas de aprobación comparan el nombre EXACTO del estado
+      // (`esEstadoPendienteAprobacion`). Si cualquiera pudiera añadir "Pendiente de
+      // aprobacion" sin tilde, renombrar el bueno o borrar el de "Aprobado", el
+      // flujo se rompería sin error visible, o alguien se colaría en él.
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly(['nombre_estado']) &&
+        request.resource.data.nombre_estado in [
+          'Borrador',
+          'En Revisión',
+          'Aprobado',
+          'Rechazado',
+          'Implementado',
+          'Pendiente de aprobación'
+        ];
+      allow update, delete: if false;
     }
     match /modalidades/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      // Congelado por el mismo motivo: 'Generado con IA' es la modalidad que el
+      // botón de la IA marca sola, y el servicio la busca por ese texto.
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly(['nombre_modalidad']) &&
+        request.resource.data.nombre_modalidad in [
+          'Presencial',
+          'Remoto',
+          'Híbrido',
+          'Obligatorio',
+          'Opcional',
+          'Generado con IA'
+        ];
+      allow update, delete: if false;
     }
     match /tipos_requerimientos/{docId} {
       allow read: if isAuthenticated();
@@ -486,12 +673,24 @@ service cloud.firestore {
       );
     }
 
-    // 5. Requerimientos
-    // TODO(control-acceso): crear/editar/eliminar y vincular equipos solo
-    // para relacionados al proyecto (ver TODO de proyectos). Lectura abierta
-    // a autenticados; enforcement en cliente+servicio (app/requerimientos/).
+    // 5. Requerimientos con aprobación del líder del equipo (KAN-18)
+    //
+    // Antes era `allow read, write: if isAuthenticated()`: cualquier autenticado
+    // podía crear, reescribir y borrar requerimientos, y autoaprobarse. Ahora el
+    // autor lo pone el sistema, el estado inicial lo pone la regla, y aprobar es
+    // solo del líder del equipo al que pertenece.
+    //
+    // Lo que sigue abierto: `delete`. KAN-18 habla de crear, editar y aprobar, no de
+    // borrar, así que no se toca. Cerrar ese hueco aquí escondería un cambio de
+    // comportamiento que nadie pidió, y dejaría KAN-18 mezclado con otro ticket.
     match /requerimiento/{requerimientoId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if isValidRequerimientoCreate(request.resource.data);
+      allow update: if esReenvioDelAutor(request.resource.data) ||
+        esDecisionDelAprobador(request.resource.data) ||
+        esEdicionEnFlujoNormal(request.resource.data) ||
+        esRenumeracion(request.resource.data);
+      allow delete: if isAuthenticated();
     }
 
     // 6. Logs de auditoría de requerimientos (Inmutables: se pueden leer y crear, pero no modificar ni borrar)

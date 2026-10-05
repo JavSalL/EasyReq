@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "easyreq-ai",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-01",
+  "observability": { "enabled": true },
+
+  // Variables no secretas. La key de Gemini NO va aquí:
+  //   npx wrangler secret put GEMINI_API_KEY
+  "vars": {
+    "FIREBASE_PROJECT_ID": "easy-req",
+    "ALLOWED_ORIGINS": "https://easy-req.web.app,https://easy-req.firebaseapp.com,http://localhost:3000",
+    "GEMINI_MODEL": "gemini-3.5-flash-lite",
+    "DAILY_LIMIT": "50",
+    "REQUIRE_EMAIL_VERIFIED": "false"
+  },
+
+  // Límite de ráfagas por usuario: 10 peticiones por minuto (period solo admite 10 o 60).
+  "ratelimits": [
+    {
+      "name": "USER_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 10, "period": 60 }
+    }
+  ],
+
+  // Cuota diaria por usuario. Reemplaza database_id con el valor que imprime:
+  //   npx wrangler d1 create easyreq-ai-quota
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "easyreq-ai-quota",
+      "database_id": "ee550114-6559-49e1-a41d-6df4fd43c3a1"
+    }
+  ]
+}

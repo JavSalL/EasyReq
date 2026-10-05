@@ -27,7 +27,10 @@ const SECCIONES = [
       'Elige un modelo (EARS, Sistemas Embebidos, Dr. Reyes) y un patrón; con "Usar plantilla" se copia su estructura al enunciado.',
       'Cada requerimiento tiene un identificador dentro de su proyecto (REQ-001, REQ-002...). Van en orden y, si borras uno, su número no se reutiliza. Haz clic en el identificador para copiarlo, o búscalo escribiendo su número.',
       'Con «Insertar después» (el icono de lista con un +, en cada fila) añades un requerimiento entre dos: se registra con el número siguiente y todos los que venían después suben un número.',
-      'Cambia el estado de un requerimiento directamente desde su fila.',
+      'Cada requerimiento pertenece a un equipo, y su líder es quien lo aprueba. El equipo se elige al redactar y no se cambia después: mover el requerimiento movería al que tiene que decidir sobre él.',
+      'Al registrarlo queda «Pendiente de aprobación»: no entra al flujo normal hasta que el líder de su equipo lo acepta.',
+      'El líder del equipo tiene dos botones en la fila: el de check verde para aprobar y el de aspa para rechazar.',
+      'Si lo rechazan, puedes corregir el texto y devolverlo con el botón de reenviar; vuelve a la cola del líder.',
       'El botón de historial muestra quién hizo cada cambio y cuándo.',
     ],
   },
@@ -37,6 +40,8 @@ const SECCIONES = [
     puntos: [
       'Dentro del formulario de un requerimiento, describe la funcionalidad y presiona "Generar".',
       'La IA redacta el enunciado siguiendo el patrón seleccionado; revísalo antes de guardar.',
+      'Lo generado con IA se registra con la modalidad «Generado con IA» puesta sola, para que se distinga de lo escrito a mano.',
+      'Un requerimiento generado con IA sigue el mismo camino: también espera la aprobación de su líder.',
     ],
   },
   {
@@ -67,7 +72,11 @@ const PERMISOS: Array<[string, string]> = [
   ['Crear equipos en un proyecto', 'Lo define el creador: solo él, miembros que elija o cualquier miembro'],
   ['Cambiar quién crea equipos o gestiona miembros', 'El creador del proyecto'],
   ['Editar o eliminar un proyecto', 'Su creador y sus miembros'],
-  ['Crear, editar o aprobar requerimientos', 'Su creador y sus miembros'],
+  ['Crear requerimientos', 'Los miembros del proyecto'],
+  ['Corregir un requerimiento en revisión', 'Su autor'],
+  ['Aprobar o rechazar un requerimiento', 'El líder del equipo al que pertenece'],
+  ['Reenviar un requerimiento rechazado', 'Su autor'],
+  ['Editar un requerimiento ya aprobado', 'Cualquier miembro del proyecto'],
   ['Editar un equipo, invitar miembros y cambiar roles', 'Los líderes del equipo'],
   ['Editar o eliminar patrones y modelos', 'Nadie por ahora. Se pueden copiar y crear nuevos'],
 ];
@@ -96,6 +105,26 @@ const FAQS = [
   {
     pregunta: '¿Cómo funcionan los proyectos, equipos y roles?',
     respuesta: 'Los proyectos agrupan requerimientos. Cada proyecto tiene miembros (los agrega su creador desde la pestaña “Miembros”) y se divide en equipos armados con esos miembros, cada uno con sus roles (por ejemplo, líder, analista). Los equipos se gestionan desde la pestaña “Equipos”, y las invitaciones que recibas para unirte a un equipo aparecen en la campana de la barra superior.',
+  },
+  {
+    pregunta: '¿Por qué mi requerimiento no aparece en el flujo normal todavía?',
+    respuesta: 'Porque está “Pendiente de aprobación”. Todo requerimiento nuevo nace así y solo avanza cuando el líder de su equipo lo aprueba. Si nadie lo aprueba, sigue visible con su estado en la lista: no se ha perdido ni se ha descartado.',
+  },
+  {
+    pregunta: 'Soy líder de un equipo y no me salen los botones de aprobar y rechazar.',
+    respuesta: 'Los botones solo aparecen en los requerimientos que están “Pendiente de aprobación” y que pertenecen a un equipo que tú lideras. Si el requerimiento ya está aprobado, implementado o en borrador, no se vuelve a decidir. Ten en cuenta también que el equipo no se puede cambiar al editar: si el requerimiento es de otro equipo, el líder de ese otro equipo es quien decide.',
+  },
+  {
+    pregunta: 'Me rechazaron un requerimiento. ¿Qué hago?',
+    respuesta: 'Corrige el texto con el botón de editar y devuélvelo con el de reenviar. Volverá a la cola de tu líder. El motivo queda en el historial del requerimiento, que se abre con el icono de reloj.',
+  },
+  {
+    pregunta: '¿Quién es el autor y el aprobador de un requerimiento?',
+    respuesta: 'El autor lo pone el sistema: es quien lo registró, y no se puede cambiar ni desde el formulario ni escribiendo directamente en la base. El aprobador lo escribe el líder al aprobar, y queda vacío mientras tanto o si lo rechaza, porque quien rechaza no aprobó.',
+  },
+  {
+    pregunta: 'Mi requerimiento dice “Sin equipo”. ¿Qué significa?',
+    respuesta: 'Que se creó antes de que existiera la aprobación por líder. Esos requerimientos no guardan a qué equipo pertenecían, así que no hay un líder concreto que pueda aprobarlos: se pueden editar como cualquier otro del proyecto. Los nuevos sí llevan equipo y sí pasan por aprobación.',
   },
   {
     pregunta: '¿A quién pido ayuda si algo falla?',

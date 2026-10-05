@@ -1,0 +1,3 @@
+# Copia este archivo como `.dev.vars` (está en .gitignore) para `npm run dev`.
+# Nunca subas la key real al repositorio.
+GEMINI_API_KEY=pega_aqui_la_key_nueva

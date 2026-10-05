@@ -6,12 +6,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Clock, Save,
-  Sparkles, CheckCheck, History, Lock, Wand2, ArrowRight, Copy, ListPlus, ListOrdered
+  Sparkles, CheckCheck, History, Lock, Wand2, ArrowRight, Copy, ListPlus, ListOrdered,
+  Check, XCircle, Send
 } from 'lucide-react';
-import { generateSingleRequirement } from '@/lib/ai-actions';
+import { generateSingleRequirement, AIError } from '@/lib/ai-actions';
 import type {
   Proyecto, Requerimiento, TipoRequerimiento, Estado,
-  Modalidad, Modelo, Patron, PerfilUsuario, LogRequerimiento
+  Modalidad, Modelo, Patron, PerfilUsuario, LogRequerimiento, Equipo
 } from '@/lib/database.types';
 import {
   getProyectoById,
@@ -29,9 +30,14 @@ import {
   deleteRequerimiento,
   addLogRequerimiento,
   getLogsRequerimientos,
-  getEquipos,
-  getProyectoEquipos,
-  isUsuarioRelacionadoAProyecto
+  getEquiposDelProyecto,
+  getEquiposLideradosPor,
+  reenviarRequerimientoAprobacion,
+  decidirAprobacionRequerimiento,
+  MODALIDAD_GENERADO_IA,
+  ESTADO_APROBADO,
+  ESTADO_RECHAZADO,
+  ESTADO_PENDIENTE_APROBACION
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
@@ -50,27 +56,45 @@ import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
 import { codigoDe, codigoRequerimiento, numeroDesdeBusqueda } from '@/lib/requerimientos';
+import { esMiembroDelProyecto } from '@/lib/equipos-proyecto';
+import {
+  estaPendienteDeAprobacion,
+  estaRechazado,
+  puedeAprobarRequerimientos,
+  puedeEditarRequerimiento,
+  puedeReenviarRequerimiento
+} from '@/lib/permisos';
+
+// ==========================================
+// APROBACIÓN DE REQUERIMIENTOS (KAN-18)
+// ==========================================
+// Lo que sigue es la parte de la interfaz del flujo de aprobación. Las decisiones
+// que cuentan son las de `lib/permisos.ts`, y esas son espejo de las reglas de
+// `firestore.rules`, que es donde manda. Aquí solo se decide qué botones se ven.
+//
+// El estado ya no se elige a mano: nace "Pendiente de aprobación" y lo mueve el
+// líder con Aprobar/Rechazar, o el autor con Reenviar tras corregir. El autor lo
+// pone el sistema. Por eso `FORM_VACIO` ya no lleva `id_autor` ni `id_aprobador`:
+// no hay nada que elegir.
 
 const FORM_VACIO = {
   enunciado: '',
   id_tipo_requerimiento: '',
-  id_estado: '',
   id_modalidad: '',
   id_modelo: '',
   id_patron_seleccionado: '',
-  id_autor: '',
-  id_aprobador: ''
+  id_equipo: ''
 };
 
-// Nombres legibles de los campos, para describir qué cambió en el historial
+// Nombres legibles de los campos, para describir qué cambió en el historial.
+// Fuera los que KAN-18 congela: `id_autor`, `id_aprobador`, `id_equipo` e
+// `id_estado` no se editan desde el formulario, así que nunca aparecen como
+// "campos modificados". El estado tiene su propio historial en el log.
 const CAMPOS_EDITABLES: Array<[keyof typeof FORM_VACIO & keyof Requerimiento, string]> = [
   ['enunciado', 'enunciado'],
   ['id_tipo_requerimiento', 'tipo'],
-  ['id_estado', 'estado'],
   ['id_modalidad', 'modalidad'],
-  ['id_modelo', 'modelo'],
-  ['id_autor', 'autor'],
-  ['id_aprobador', 'aprobador']
+  ['id_modelo', 'modelo']
 ];
 
 type Orden = 'recientes' | 'antiguos' | 'estado' | 'numero';
@@ -85,13 +109,28 @@ const FILTROS_INICIALES = {
   agrupar: 'ninguno' as Agrupar
 };
 
+// Los colores se eligen por el nombre EXACTO del estado, no por que el texto
+// "contenga" algo. Con `includes`, "Pendiente de aprobación" no casa con
+// 'aprobado' (no es subcadena) y un estado nuevo se quedaría en gris sin que nadie
+// lo notara. La comparación literal obliga a decidir el color al añadir un estado,
+// que es justo cuando hay que hacerlo.
+const COLORES_ESTADO: Array<[string, string]> = [
+  ['Aprobado', 'bg-success-subtle text-success border-success-line'],
+  ['Devuelto', 'bg-danger-subtle text-danger border-danger-line'],
+  ['Pendiente de aprobación', 'bg-warning-subtle text-warning border-warning-line'],
+  ['En Revisión', 'bg-warning-subtle text-warning border-warning-line'],
+  ['Implementado', 'bg-brand-subtle text-brand-text border-brand-line'],
+  ['Borrador', 'bg-sunken text-ink-muted border-line']
+];
+
 const getBadgeColorEstado = (nombre?: string) => {
-  const n = (nombre || '').toLowerCase();
-  if (n.includes('aprobado')) return 'bg-success-subtle text-success border-success-line';
-  if (n.includes('rechazado')) return 'bg-danger-subtle text-danger border-danger-line';
-  if (n.includes('revisión') || n.includes('revision')) return 'bg-warning-subtle text-warning border-warning-line';
-  if (n.includes('implementado')) return 'bg-brand-subtle text-brand-text border-brand-line';
-  return 'bg-sunken text-ink-muted border-line';
+  const n = (nombre || '').trim().toLowerCase();
+  const exacto = COLORES_ESTADO.find(([estado]) => estado.toLowerCase() === n);
+  if (exacto) return exacto[1];
+  // Un estado que no esté en la lista (catálogo antigo, entorno a medio sembrar)
+  // no se queda sin color: se busca por coincidencia parcial.
+  const parcial = COLORES_ESTADO.find(([estado]) => n.includes(estado.toLowerCase()));
+  return parcial ? parcial[1] : 'bg-sunken text-ink-muted border-line';
 };
 
 export default function RequerimientosPage() {
@@ -124,6 +163,13 @@ export default function RequerimientosPage() {
   const [modelos, setModelos] = useState<Array<Modelo>>([]);
   const [patrones, setPatrones] = useState<Array<Patron>>([]);
   const [usuarios, setUsuarios] = useState<Array<PerfilUsuario>>([]);
+  // Equipos del proyecto: el selector de "a qué equipo pertenece" y el que cuenta
+  // para la pestaña. Vienen del mismo getter, así que el número de la pestaña y las
+  // opciones del formulario nunca discrepan.
+  const [equiposProyecto, setEquiposProyecto] = useState<Array<Equipo>>([]);
+  // Equipos donde el usuario es líder. Se cargan una vez y sirven para los tres
+  // sitios que necesitan saber si puede aprobar.
+  const [equiposLiderados, setEquiposLiderados] = useState<Array<string>>([]);
 
   // Filtros
   // Se recuerdan por proyecto mientras dure la sesión del navegador
@@ -162,28 +208,37 @@ export default function RequerimientosPage() {
   // Cantidad de miembros: la pestaña la ajusta al cargar (suma a quienes entraron por un equipo)
   const [cantidadMiembros, setCantidadMiembros] = useState<number | null>(null);
 
-  // Control de acceso: lectura total; crear/editar requerimientos solo si el
-  // usuario está relacionado al proyecto (creador o miembro de uno de sus equipos).
-  const [puedeEditar, setPuedeEditar] = useState(false);
-  const [permisoCargado, setPermisoCargado] = useState(false);
+  // Control de acceso (KAN-18). Lectura total para cualquiera con sesión; escribir
+  // requiere ser miembro del proyecto.
+//
+// Se usa `esMiembroDelProyecto` de `lib/equipos-proyecto.ts`, que es el espejo
+// exacto del helper homónimo de `firestore.rules`: creador, o estar en
+// `ids_miembros`. Antes se llamaba a `isUsuarioRelacionadoAProyecto`, que además
+// daba por bueno a quien llega por un equipo vinculado de los proyectos anteriores
+// a KAN-24. Esos proyectos no tienen `ids_miembros`, y las reglas no pueden
+// enumerar las membresías de equipo (no hay `getAll` y una consulta sin índice por
+// `id_usuario` no es legal en una regla), así que para el backend ese usuario no
+// existe. Con el criterio antiguo la interfaz ofrecía botones que el backend
+// denegaba; este los esconde. Es una pérdida de capacidad real, pero solo sobre
+// datos previos a KAN-24, y prefiero una limitación visible a un error de permisos.
+  const esMiembroProyecto = esMiembroDelProyecto(proyecto, uid);
+
+  // KAN-18: los equipos donde el usuario es líder, que son los únicos que puede
+  // aprobar. Se piden una sola vez por sesión, y en paralelo al resto de la carga.
   useEffect(() => {
     let activo = true;
-    const cargarPermiso = async () => {
-      try {
-        const ok = uid && proyectoId
-          ? await isUsuarioRelacionadoAProyecto(uid, proyectoId)
-          : false;
-        if (activo) setPuedeEditar(ok);
-      } catch (err) {
-        console.error('Error al verificar permiso sobre el proyecto:', err);
-        if (activo) setPuedeEditar(false);
-      } finally {
-        if (activo) setPermisoCargado(true);
-      }
-    };
-    cargarPermiso();
+    if (!uid) {
+      setEquiposLiderados([]);
+      return;
+    }
+    getEquiposLideradosPor(uid)
+      .then(ids => { if (activo) setEquiposLiderados(ids); })
+      .catch(e => {
+        console.error('No se pudieron cargar los equipos liderados:', e);
+        if (activo) setEquiposLiderados([]);
+      });
     return () => { activo = false; };
-  }, [uid, proyectoId]);
+  }, [uid]);
 
   // AI Generation State
   const [isAILoading, setIsAILoading] = useState(false);
@@ -203,7 +258,7 @@ export default function RequerimientosPage() {
       enunciado: formData.enunciado,
       ia: aiPrompt,
       resto: editingReq
-        ? [formData.id_tipo_requerimiento, formData.id_estado, formData.id_modalidad, formData.id_modelo, formData.id_autor, formData.id_aprobador]
+        ? [formData.id_tipo_requerimiento, formData.id_modalidad, formData.id_modelo, formData.id_equipo]
         : null
     },
     () => setIsModalOpen(false)
@@ -222,7 +277,7 @@ export default function RequerimientosPage() {
     setLoading(true);
 
     try {
-      const [found, trData, estData, modData, modelData, patData, userData, todosEquipos, vinculos] = await Promise.all([
+      const [found, trData, estData, modData, modelData, patData, userData, equipos] = await Promise.all([
         getProyectoById(proyectoId),
         getTiposRequerimientos(),
         getEstados(),
@@ -230,8 +285,10 @@ export default function RequerimientosPage() {
         getModelos(),
         getPatrones(),
         getAllUsers(),
-        getEquipos(),
-        getProyectoEquipos(),
+        // KAN-24/KAN-18: los equipos del proyecto, no los de toda la aplicación. Antes
+        // se leían las colecciones `equipo` y `proyecto_equipos` enteras y se filtraba
+        // aquí; con este getter el filtro vive en Firestore y llega ya lo que se usa.
+        getEquiposDelProyecto(proyectoId),
         fetchRequerimientos()
       ]);
 
@@ -248,12 +305,10 @@ export default function RequerimientosPage() {
       setModelos(modelData);
       setPatrones(patData);
       setUsuarios([...userData].sort((a, b) => (a.nombre || a.correo).localeCompare(b.nombre || b.correo)));
-      setCantidadEquipos(
-        new Set([
-          ...vinculos.filter(v => v.id_proyecto === proyectoId).map(v => v.id_equipo),
-          ...todosEquipos.filter(e => e.id_proyecto === proyectoId).map(e => e.equipo_id)
-        ]).size
-      );
+      // Un proyecto sin equipos no puede registrar requerimientos: `id_equipo` decide
+      // qué líder aprueba, así que sin equipo no hay a quién preguntarle.
+      setEquiposProyecto(equipos);
+      setCantidadEquipos(equipos.length);
     } catch (e) {
       console.error(e);
       toast.error(mensajeError(e, 'No se pudieron cargar los datos del proyecto'));
@@ -303,6 +358,12 @@ export default function RequerimientosPage() {
     return u ? (u.nombre || u.correo) : null;
   };
 
+  /** Nombre del equipo por su ID. Sale del proyecto en curso, no de toda la app. */
+  const nombreEquipoDe = (id: string | null | undefined) => {
+    const e = equiposProyecto.find(x => x.equipo_id === id);
+    return e ? e.nombre : null;
+  };
+
   const copiarCodigo = async (codigo: string) => {
     try {
       await navigator.clipboard.writeText(codigo);
@@ -321,10 +382,62 @@ export default function RequerimientosPage() {
     }
   };
 
+  // ==========================================
+  // CONSULTAS DE PERMISOS POR REQUERIMIENTO (KAN-18)
+  // ==========================================
+  // El nombre del estado es lo que decide, porque es lo que comparan las reglas
+  // (`esEstadoPendienteAprobacion` y compañía leen `nombre_estado`). Los IDs los
+  // asigna Firestore y no significan nada por sí solos.
+  const nombreEstadoDe = (req: Requerimiento) => req.estado?.nombre_estado ?? null;
+
+  /** ¿Este usuario lidera el equipo al que pertenece el requerimiento? */
+  const lideraSuEquipo = (req: Requerimiento) =>
+    !!req.id_equipo && equiposLiderados.includes(req.id_equipo);
+
+  /** ¿Puede aprobar o rechazar este requerimiento? Ver `puedeAprobarRequerimientos`. */
+  const puedeDecidir = (req: Requerimiento) =>
+    puedeAprobarRequerimientos(lideraSuEquipo(req), nombreEstadoDe(req));
+
+  /** ¿Puede corregir el texto? Ver `puedeEditarRequerimiento`. */
+  const puedeEditarEste = (req: Requerimiento) =>
+    puedeEditarRequerimiento(req.id_autor != null && req.id_autor === uid);
+
+  /** ¿Puede devolverlo al flujo tras un rechazo? Ver `puedeReenviarRequerimiento`. */
+  const puedeReenviarEste = (req: Requerimiento) =>
+    puedeReenviarRequerimiento(req.id_autor != null && req.id_autor === uid, nombreEstadoDe(req));
+
+  /**
+   * ¿Aparece el botón de editar? Es el OR de las dos reglas de actualización:
+   *
+   * - dentro del ciclo de aprobación (`esReenvioDelAutor`): solo el autor. El líder
+   *   no edita el texto, decide.
+   * - fuera del ciclo (`esEdicionEnFlujoNormal`): cualquier miembro del proyecto.
+   * - sin equipo (creado antes de KAN-18): entra por la segunda vía. No hay a quién
+   * preguntarle, así que no hay puerta que saltarse; queda como estaba.
+   */
+  const puedeAbrirEditor = (req: Requerimiento) => {
+    if (!esMiembroProyecto) return false;
+    if (!req.id_equipo) return true;
+    return puedeEditarEste(req) || !enCicloAprobacion(req);
+  };
+
+  /** ¿Está en "Pendiente de aprobación" o en "Rechazado"? */
+  const enCicloAprobacion = (req: Requerimiento) => {
+    const nombre = nombreEstadoDe(req);
+    return estaPendienteDeAprobacion(nombre) || estaRechazado(nombre);
+  };
+
   // Apertura de modal nuevo
   const abrirNuevo = (despuesDe: Requerimiento | null) => {
-    if (!puedeEditar) {
-      toast.error('Solo el creador o miembros de un equipo vinculado pueden crear requerimientos');
+    if (!esMiembroProyecto) {
+      toast.error('Solo los miembros del proyecto pueden registrar requerimientos');
+      return;
+    }
+    // Sin equipo no hay líder que apruebe, así que un requerimiento sin equipo se
+    // quedaría esperando para siempre. Se dice aquí, no en un error de permisos
+    // cinco clics más adelante.
+    if (equiposProyecto.length === 0) {
+      toast.error('Este proyecto no tiene equipos. Crea al menos uno antes de registrar requerimientos.');
       return;
     }
     setEditingReq(null);
@@ -344,15 +457,18 @@ export default function RequerimientosPage() {
       id_tipo_requerimiento: sigueExistiendo(tiposReq.map(t => t.tipo_req), previa?.id_tipo_requerimiento)
         ? previa!.id_tipo_requerimiento!
         : tiposReq[0]?.tipo_req || '',
-      id_estado: estados.find(e => e.nombre_estado === 'Borrador')?.id || estados[0]?.id || '',
       id_modalidad: sigueExistiendo(modalidades.map(m => m.id), previa?.id_modalidad)
         ? previa!.id_modalidad!
         : modalidades[0]?.id || '',
       id_modelo: modeloInicial,
       id_patron_seleccionado: patronInicial?.patron_id || '',
-      // Por defecto el autor es quien lo redacta
-      id_autor: usuarios.some(u => u.id === uid) ? uid! : '',
-      id_aprobador: sigueExistiendo(usuarios.map(u => u.id), previa?.id_aprobador) ? previa!.id_aprobador! : ''
+      // Si el proyecto tiene un solo equipo no hay nada que decidir; con varios se
+      // recuerda el último, que es lo que se viene eligendo al encadenar altas.
+      id_equipo: equiposProyecto.length === 1
+        ? equiposProyecto[0].equipo_id
+        : sigueExistiendo(equiposProyecto.map(e => e.equipo_id), previa?.id_equipo)
+          ? previa!.id_equipo!
+          : ''
     });
     setAiPrompt('');
     setIsModalOpen(true);
@@ -363,8 +479,19 @@ export default function RequerimientosPage() {
 
   // Apertura de modal editar
   const openEditModal = (req: Requerimiento) => {
-    if (!puedeEditar) {
-      toast.error('Solo el creador o miembros de un equipo vinculado pueden editar requerimientos');
+    if (!esMiembroProyecto) {
+      toast.error('Solo los miembros del proyecto pueden editar requerimientos');
+      return;
+    }
+    // El autor no cambia al editar: `id_autor` es inmutable en las reglas
+    // (`esReenvioDelAutor` y `esEdicionEnFlujoNormal` lo excluyen de las claves
+    // que se pueden tocar). Aquí solo se lleva al formulario para poder mostrarlo.
+    if (!puedeAbrirEditor(req)) {
+      toast.error(
+        estaPendienteDeAprobacion(nombreEstadoDe(req))
+          ? 'Este requerimiento está esperando aprobación. Solo quien puede aprobarlo puede decidir su futuro; para corregir el texto hay que esperar la respuesta.'
+          : 'Solo su autor puede corregir este requerimiento mientras está en revisión.'
+      );
       return;
     }
     setEditingReq(req);
@@ -372,12 +499,10 @@ export default function RequerimientosPage() {
     setFormData({
       enunciado: req.enunciado,
       id_tipo_requerimiento: req.id_tipo_requerimiento || '',
-      id_estado: req.id_estado || '',
       id_modalidad: req.id_modalidad || '',
       id_modelo: req.id_modelo || '',
       id_patron_seleccionado: patrones.find(p => p.id_modelo === req.id_modelo)?.patron_id || '',
-      id_autor: req.id_autor || '',
-      id_aprobador: req.id_aprobador || ''
+      id_equipo: req.id_equipo || ''
     });
     setAiPrompt('');
     setIsModalOpen(true);
@@ -411,23 +536,39 @@ export default function RequerimientosPage() {
     e.preventDefault();
     const crearOtro = crearOtroRef.current;
     crearOtroRef.current = false;
-    if (!puedeEditar) {
+    if (!esMiembroProyecto) {
       toast.error('No tienes permiso para modificar requerimientos de este proyecto');
+      return;
+    }
+    // El formulario es el único camino normal para editar, pero esta comprobación
+    // también cubre el envío directo (Enter en el campo). `esReenvioDelAutor` en
+    // `firestore.rules` denegaría igual, pero con un mensaje que no explica nada.
+    if (editingReq && !puedeAbrirEditor(editingReq)) {
+      toast.error('Solo su autor puede corregir este requerimiento.');
       return;
     }
     if (!formData.enunciado.trim()) {
       toast.error('El enunciado del requerimiento es obligatorio');
       return;
     }
+    // El equipo decide quién aprueba, así que sin él el requerimiento no se puede
+    // registrar. Se valida aquí además de en las reglas para que el error llegue
+    // con su explicación y no como un `permission-denied` mudo.
+    if (!formData.id_equipo) {
+      toast.error('Elige el equipo al que pertenece el requerimiento: su líder es quien lo aprueba.');
+      return;
+    }
 
+    // Ni estado, ni autor, ni aprobador. El estado inicial lo pone el servicio, el
+    // autor lo pone el servicio y el aprobador solo lo escribe quien aprueba. Si se
+    // mandaran aquí, `datosDeAlta` los sobrescribiría igualmente y el historial
+    // describiría un cambio que no ocurrió.
     const datos = {
       enunciado: formData.enunciado.trim(),
       id_tipo_requerimiento: formData.id_tipo_requerimiento || null,
-      id_estado: formData.id_estado || null,
       id_modalidad: formData.id_modalidad || null,
       id_modelo: formData.id_modelo || null,
-      id_autor: formData.id_autor || null,
-      id_aprobador: formData.id_aprobador || null
+      id_equipo: formData.id_equipo
     };
 
     setSaving(true);
@@ -443,7 +584,17 @@ export default function RequerimientosPage() {
           return;
         }
 
-        await updateRequerimiento(editingReq.id, datos);
+        // El equipo no se manda al editar. Es inmutable por dos motivos: las reglas lo
+        // excluyen de las claves editables (`esReenvioDelAutor` y
+        // `esEdicionEnFlujoNormal`), y cambiarlo movería al juez: un requerimiento
+        // rechazado que pasa al equipo de otro líder se esquivaría de la revisión que
+        // letocaba. El selector está deshabilitado mientras se edita por lo mismo.
+        await updateRequerimiento(editingReq.id, {
+          enunciado: datos.enunciado,
+          id_tipo_requerimiento: datos.id_tipo_requerimiento,
+          id_modalidad: datos.id_modalidad,
+          id_modelo: datos.id_modelo
+        });
         await addLogRequerimiento({
           id_requerimiento: editingReq.id,
           accion: 'Edición de requerimiento',
@@ -459,14 +610,16 @@ export default function RequerimientosPage() {
             proyectoId!,
             insertarDespuesDe.numero,
             { ...datos, id_proyecto: proyectoId! },
-            uid
+            uid!
           );
           newReq = resultado.requerimiento;
           renumerados = resultado.renumerados;
           // Para "insertar y añadir otro": el siguiente va justo después del que se acaba de insertar
           siguientePosicion = { numero: newReq.numero!, codigo: codigoDe(newReq)! };
         } else {
-          newReq = await createRequerimiento({ ...datos, id_proyecto: proyectoId! });
+          // KAN-18: `uid` es el autor y el requerimiento nace pendiente de aprobación. El
+        // servicio lo impone, no esta página.
+        newReq = await createRequerimiento({ ...datos, id_proyecto: proyectoId! }, uid!);
         }
         if (newReq?.id) {
           await addLogRequerimiento({
@@ -482,14 +635,14 @@ export default function RequerimientosPage() {
           insertarDespuesDe
             ? `Registrado como ${codigoDe(newReq)}.` +
               (renumerados > 0 ? ` Los ${renumerados} siguientes subieron un número.` : '')
-            : 'Requerimiento registrado'
+            : `Requerimiento registrado. Queda pendiente de que lo apruebe el líder de ${nombreEquipoDe(formData.id_equipo)}.`
         );
         ultimaClasificacionRef.current = {
           id_tipo_requerimiento: formData.id_tipo_requerimiento,
           id_modalidad: formData.id_modalidad,
           id_modelo: formData.id_modelo,
           id_patron_seleccionado: formData.id_patron_seleccionado,
-          id_aprobador: formData.id_aprobador
+          id_equipo: formData.id_equipo
         };
       }
 
@@ -525,54 +678,105 @@ export default function RequerimientosPage() {
         // La IA no inventa: si el texto no da base, se explica qué falta y se conserva lo escrito
         toast.error(generated.motivo || 'No se pudo identificar qué debe hacer el sistema. Descríbelo con más detalle.');
       } else if (generated && generated.name) {
-        setFormData(prev => ({ ...prev, enunciado: generated.name }));
-        toast.success("Requerimiento generado. Revísalo antes de guardar.");
+        // KAN-18: "Generar req con IA" marca la modalidad "Generado con IA" sin
+        // que nadie la elija. Si el catálogo no la tiene, se avisa y se deja la
+        // modalidad como estaba: es información de la tarjeta, no un dato que
+        // impida registrar el requerimiento.
+        const idGeneradoConIA = modalidades.find(m => m.nombre_modalidad === MODALIDAD_GENERADO_IA)?.id;
+        setFormData(prev => ({
+          ...prev,
+          enunciado: generated.name,
+          id_modalidad: idGeneradoConIA ?? prev.id_modalidad
+        }));
+        toast.success(
+          idGeneradoConIA
+            ? "Requerimiento generado. Revísalo antes de guardar."
+            : "Requerimiento generado, pero falta la modalidad \"Generado con IA\" en el catálogo: pídela a quien administre el proyecto para que la marca se vea."
+        );
         setAiPrompt('');
       } else {
         toast.error("La IA no devolvió un requerimiento. Intenta describirlo con más detalle.");
       }
-    } catch {
-      toast.error("No se pudo conectar con el servicio de IA. Inténtalo de nuevo.");
+    } catch (err) {
+      toast.error(err instanceof AIError ? err.message : "No se pudo conectar con el servicio de IA. Inténtalo de nuevo.");
     } finally {
       setIsAILoading(false);
     }
   };
 
-  // Cambio de estado directo desde la tarjeta
-  const handleCambioEstado = async (req: Requerimiento, nuevoEstadoId: string) => {
-    if (!puedeEditar) {
-      toast.error('Solo el creador o miembros de un equipo vinculado pueden cambiar el estado');
+  // ==========================================
+// DECISIÓN DE APROBACIÓN (KAN-18)
+// ==========================================
+  // El estado ya no se cambia con un desplegable. Antes cualquier miembro del
+  // proyecto podía poner el que quisiera, incluido "Aprobado", y su propio
+  // requerimiento se saltaba la revisión solo. Ahora hay dos verbos y cada uno
+  // responde a una pregunta distinta: el líder acepta o rechaza; el autor devuelve
+  // el suyo tras corregirlo.
+  const handleDecision = async (req: Requerimiento, decision: 'aprobar' | 'rechazar') => {
+    if (!puedeDecidir(req)) {
+      toast.error('Solo el líder del equipo de este requerimiento puede aprobarlo o devolverlo.');
       return;
     }
-    const targetEstado = estados.find(e => e.id === nuevoEstadoId);
-    if (!targetEstado || targetEstado.id === req.id_estado) return;
+    const anterior = nombreEstadoDe(req);
+    const ok = await confirmar({
+      titulo: decision === 'aprobar' ? '¿Aprobar requerimiento?' : '¿Devolver requerimiento?',
+      mensaje: decision === 'aprobar'
+        ? 'El requerimiento entra al flujo normal y a partir de aquí lo edita cualquier miembro del proyecto.'
+        : 'Vuelve al autor para que lo corrija y lo reenvíe. El motivo queda en el historial del requerimiento.',
+      textoConfirmar: decision === 'aprobar' ? 'Aprobar' : 'Devolver',
+      peligro: decision === 'rechazar'
+    });
+    if (!ok) return;
 
     try {
-      const updateData: Partial<Requerimiento> = { id_estado: targetEstado.id };
-      // Quien aprueba queda registrado como aprobador
-      if (targetEstado.nombre_estado.toLowerCase() === 'aprobado' && uid) {
-        updateData.id_aprobador = uid;
-      }
-
-      await updateRequerimiento(req.id, updateData);
+      await decidirAprobacionRequerimiento(req.id, decision, uid!);
       await addLogRequerimiento({
         id_requerimiento: req.id,
-        accion: `Cambio de estado a ${targetEstado.nombre_estado}`,
+        accion: decision === 'aprobar' ? 'Aprobación del líder' : 'Rechazo del líder',
         id_autor: uid,
-        detalles: { estado_anterior: req.estado?.nombre_estado ?? null, estado_nuevo: targetEstado.nombre_estado }
+        detalles: {
+          estado_anterior: anterior,
+          estado_nuevo: decision === 'aprobar' ? ESTADO_APROBADO : ESTADO_RECHAZADO
+        }
       });
-
-      toast.success(`Estado cambiado a ${targetEstado.nombre_estado}`);
+      toast.success(
+        decision === 'aprobar'
+          ? `${codigoDe(req) ?? 'Requerimiento'} aprobado. Ya continúa con el flujo normal.`
+          : `${codigoDe(req) ?? 'Requerimiento'} devuelto. Su autor puede corregirlo y reenviarlo.`
+      );
       fetchRequerimientos();
     } catch (e) {
-      toast.error(mensajeError(e, 'No se pudo cambiar el estado'));
+      toast.error(mensajeError(e, 'No se pudo registrar la decisión'));
+    }
+  };
+
+  /** El autor devuelve su requerimiento devuelto al ciclo de aprobación. */
+  const handleReenviar = async (req: Requerimiento) => {
+    if (!puedeReenviarEste(req)) {
+      toast.error('Solo su autor puede reenviar un requerimiento devuelto.');
+      return;
+    }
+    try {
+      await reenviarRequerimientoAprobacion(req.id);
+      await addLogRequerimiento({
+        id_requerimiento: req.id,
+        accion: 'Reenvío a aprobación',
+        id_autor: uid,
+        detalles: { estado_anterior: nombreEstadoDe(req), estado_nuevo: ESTADO_PENDIENTE_APROBACION }
+      });
+      toast.success('Reenviado. Vuelve a estar pendiente de aprobación.');
+      fetchRequerimientos();
+    } catch (e) {
+      toast.error(mensajeError(e, 'No se pudo reenviar el requerimiento'));
     }
   };
 
   // Eliminar Requerimiento
   const handleDeleteReq = async (req: Requerimiento) => {
-    if (!puedeEditar) {
-      toast.error('Solo el creador o miembros de un equipo vinculado pueden eliminar requerimientos');
+    // Borrar sigue igual que antes de KAN-18: lo que las reglas permiten es a
+    // cualquier autenticado, así que el botón no se estrecha más de lo que ya estaba.
+    if (!esMiembroProyecto) {
+      toast.error('Solo los miembros del proyecto pueden eliminar requerimientos');
       return;
     }
     const extracto = req.enunciado.length > 120 ? `${req.enunciado.slice(0, 120)}…` : req.enunciado;
@@ -629,9 +833,21 @@ export default function RequerimientosPage() {
   const requerimientosBase = requerimientos.filter(coincideSinEstado);
   const conteoEstado = (id: string) => requerimientosBase.filter(r => esDelEstado(r, id)).length;
   const filteredRequerimientos = requerimientosBase.filter(r => esDelEstado(r, filterEstado));
+  // El orden deseado de izquierda a derecha. Comparamos en minúsculas.
+  // "devuelt" atrapará "Devuelto" o "Devueltos", y si sigue llamándose "Rechazado" lo atrapará también.
+  const ORDEN_PESTANAS = ['pendiente', 'devuelt', 'aprobado'];
+
+  const getPesoPestana = (nombre: string) => {
+    const min = nombre.toLowerCase();
+    const index = ORDEN_PESTANAS.findIndex(k => min.includes(k));
+    return index === -1 ? 99 : index; // Si hay otros estados extraños, los manda al final
+  };
+
+  const estadosOrdenados = [...estados].sort((a, b) => getPesoPestana(a.nombre_estado) - getPesoPestana(b.nombre_estado));
+
   const pestanasEstado = [
     { id: 'todos', nombre: 'Todos' },
-    ...estados.map(e => ({ id: e.id, nombre: e.nombre_estado })),
+    ...estadosOrdenados.map(e => ({ id: e.id, nombre: e.nombre_estado })),
     ...(requerimientos.some(r => !r.id_estado) ? [{ id: 'sin-estado', nombre: 'Sin estado' }] : [])
   ];
   // La carga ya viene del más nuevo al más antiguo
@@ -697,23 +913,33 @@ export default function RequerimientosPage() {
                       {codigoDe(req)}
                     </button>
                   )}
-                  {puedeEditar ? (
-                    <select
-                      value={req.id_estado || ''}
-                      onChange={(e) => handleCambioEstado(req, e.target.value)}
-                      aria-label="Cambiar estado"
-                      title="Cambiar estado"
-                      className={`pl-2.5 pr-1 py-0.5 rounded-full font-medium border cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-text/30 ${getBadgeColorEstado(req.estado?.nombre_estado)}`}
+                  {/* El estado ya no es un desplegable (KAN-18). Antes cualquiera con permiso de
+                    edición podía elegir "Aprobado" sobre su propio requerimiento.
+                    Ahora es una etiqueta y lo mueve el líder o el autor. */}
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-medium border ${getBadgeColorEstado(req.estado?.nombre_estado)}`}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                    {req.estado?.nombre_estado || 'Sin estado'}
+                  </span>
+
+                  {/* Sin equipo no hay líder que apruebe. Los requerimientos de antes
+                      de KAN-18 están así y no se pueden migrar: el texto guardado no
+                      dice a qué equipo pertenecían. */}
+                  {!req.id_equipo && (
+                    <span
+                      className="px-2 py-0.5 rounded-ui bg-sunken text-ink-muted font-medium border border-line"
+                      title="Creado antes de la aprobación por líder: no tiene equipo, así que nadie puede aprobarlo. Se puede editar como cualquier otro requerimiento del proyecto."
                     >
-                      {!req.id_estado && <option value="">Sin estado</option>}
-                      {estados.map((e) => (
-                        <option key={e.id} value={e.id} className="text-ink">{e.nombre_estado}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-medium border ${getBadgeColorEstado(req.estado?.nombre_estado)}`}>
-                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                      {req.estado?.nombre_estado || 'Sin estado'}
+                      Sin equipo
+                    </span>
+                  )}
+                  {estaPendienteDeAprobacion(req.estado?.nombre_estado) && (
+                    <span className="px-2 py-0.5 rounded-ui bg-sunken text-ink-muted font-medium border border-line">
+                      Esperando al líder de {nombreEquipoDe(req.id_equipo) ?? 'su equipo'}
+                    </span>
+                  )}
+                  {estaRechazado(req.estado?.nombre_estado) && (
+                    <span className="px-2 py-0.5 rounded-ui bg-sunken text-ink-muted font-medium border border-line">
+                      {req.id_autor === uid ? 'Corrígelo y vuelve a enviarlo' : 'Corregido por su autor, pendiente de reenvío'}
                     </span>
                   )}
 
@@ -780,7 +1006,37 @@ export default function RequerimientosPage() {
                 >
                   <History size={16} />
                 </button>
-                {puedeEditar && (
+                {puedeDecidir(req) && (
+                  <>
+                    <button
+                      onClick={() => handleDecision(req, 'aprobar')}
+                      title="Aprobar requerimiento"
+                      aria-label={`Aprobar requerimiento ${codigoDe(req) ?? ''}`.trim()}
+                      className={`${btnIcono} text-success`}
+                    >
+                      <Check size={16} />
+                    </button>
+                    <button
+                      onClick={() => handleDecision(req, 'rechazar')}
+                      title="Devolver requerimiento"
+                      aria-label={`Devolver requerimiento ${codigoDe(req) ?? ''}`.trim()}
+                      className={`${btnIcono} text-danger`}
+                    >
+                      <XCircle size={16} />
+                    </button>
+                  </>
+                )}
+                {puedeReenviarEste(req) && (
+                  <button
+                    onClick={() => handleReenviar(req)}
+                    title="Reenviar a aprobación"
+                    aria-label={`Reenviar a aprobación el requerimiento ${codigoDe(req) ?? ''}`.trim()}
+                    className={btnIcono}
+                  >
+                    <Send size={16} />
+                  </button>
+                )}
+                {esMiembroProyecto && (
                   <>
                     {req.numero != null && (
                       <button
@@ -792,14 +1048,16 @@ export default function RequerimientosPage() {
                         <ListPlus size={16} />
                       </button>
                     )}
-                    <button
-                      onClick={() => openEditModal(req)}
-                      title="Editar requerimiento"
-                      aria-label="Editar requerimiento"
-                      className={btnIcono}
-                    >
-                      <Edit2 size={16} />
-                    </button>
+                    {puedeAbrirEditor(req) && (
+                      <button
+                        onClick={() => openEditModal(req)}
+                        title="Editar requerimiento"
+                        aria-label="Editar requerimiento"
+                        className={btnIcono}
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDeleteReq(req)}
                       title="Eliminar requerimiento"
@@ -842,7 +1100,7 @@ export default function RequerimientosPage() {
         }
         description={proyecto ? proyecto.descripcion || 'Sin descripción' : undefined}
         actions={
-          vista === 'requerimientos' && puedeEditar && (
+          vista === 'requerimientos' && esMiembroProyecto && (
             <button onClick={openCreateModal} className={btnPrimario}>
               <Plus size={16} />
               Nuevo requerimiento
@@ -892,13 +1150,13 @@ export default function RequerimientosPage() {
         )
       ) : (
       <>
-      {/* Aviso de solo lectura para no relacionados */}
-      {permisoCargado && !puedeEditar && (
+      {/* Aviso de solo lectura para no miembros del proyecto */}
+      {!loading && !esMiembroProyecto && (
         <div className="bg-warning-subtle border border-warning-line rounded-ui p-3.5 flex items-center gap-2.5 text-xs text-warning">
           <Lock size={15} className="shrink-0" />
           <span>
-            Tienes acceso de lectura. Solo el creador del proyecto o miembros de uno de sus equipos pueden
-            crear o editar requerimientos.
+            Tienes acceso de lectura. Solo los miembros del proyecto pueden registrar o editar
+            requerimientos, y quien lo aprueba es el líder del equipo al que pertenece.
           </span>
         </div>
       )}
@@ -1023,15 +1281,15 @@ export default function RequerimientosPage() {
           <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
             {hayFiltros
               ? 'Ningún requerimiento coincide con los filtros seleccionados.'
-              : puedeEditar
-                ? 'Redacta el primero usando las sintaxis de los modelos o genéralo con IA.'
+              : esMiembroProyecto
+                ? 'Redacta el primero usando las sintaxis de los modelos o genéralo con IA. Quedará pendiente de que lo apruebe el líder de su equipo.'
                 : 'Cuando el equipo redacte requerimientos, aparecerán aquí.'}
           </p>
           <div className="mt-4 flex justify-center gap-2">
             {hayFiltros && (
               <button onClick={limpiarFiltros} className={btnSecundario}>Quitar filtros</button>
             )}
-            {!hayFiltros && puedeEditar && (
+            {!hayFiltros && esMiembroProyecto && (
               <button onClick={openCreateModal} className={btnPrimario}>
                 <Plus size={15} />
                 Redactar Requerimiento
@@ -1219,21 +1477,6 @@ export default function RequerimientosPage() {
               </div>
 
               <div>
-                <label htmlFor="req-estado" className={etiqueta}>Estado</label>
-                <select
-                  id="req-estado"
-                  value={formData.id_estado}
-                  onChange={(e) => setFormData({ ...formData, id_estado: e.target.value })}
-                  className={campo}
-                >
-                  <option value="">Sin estado</option>
-                  {estados.map((e) => (
-                    <option key={e.id} value={e.id}>{e.nombre_estado}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
                 <label htmlFor="req-modalidad" className={etiqueta}>Modalidad</label>
                 <select
                   id="req-modalidad"
@@ -1249,38 +1492,64 @@ export default function RequerimientosPage() {
               </div>
             </div>
 
-            {/* Responsables */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="req-autor" className={etiqueta}>Autor</label>
-                <select
-                  id="req-autor"
-                  value={formData.id_autor}
-                  onChange={(e) => setFormData({ ...formData, id_autor: e.target.value })}
-                  className={campo}
-                >
-                  <option value="">Sin autor asignado</option>
-                  {usuarios.map((u) => (
-                    <option key={u.id} value={u.id}>{u.nombre || u.correo}{u.id === uid ? ' (tú)' : ''}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="req-aprobador" className={etiqueta}>Aprobador</label>
-                <select
-                  id="req-aprobador"
-                  value={formData.id_aprobador}
-                  onChange={(e) => setFormData({ ...formData, id_aprobador: e.target.value })}
-                  className={campo}
-                >
-                  <option value="">Sin aprobador asignado</option>
-                  {usuarios.map((u) => (
-                    <option key={u.id} value={u.id}>{u.nombre || u.correo}{u.id === uid ? ' (tú)' : ''}</option>
-                  ))}
-                </select>
-              </div>
+            {/* Equipo: decide qué líder aprueba (KAN-18) */}
+            <div>
+              <label htmlFor="req-equipo" className={etiqueta}>Equipo</label>
+              <select
+                id="req-equipo"
+                value={formData.id_equipo}
+                onChange={(e) => setFormData({ ...formData, id_equipo: e.target.value })}
+                disabled={editingReq !== null}
+                aria-describedby="req-equipo-ayuda"
+                className={`${campo} disabled:opacity-60 disabled:cursor-not-allowed`}
+              >
+                <option value="">Sin equipo</option>
+                {equiposProyecto.map((e) => (
+                  <option key={e.equipo_id} value={e.equipo_id}>{e.nombre}</option>
+                ))}
+              </select>
+              <p id="req-equipo-ayuda" className="text-xs text-ink-subtle mt-1">
+                {editingReq
+                  ? 'El equipo no se puede cambiar al editar: de él depende qué líder aprueba, y moverlo movería al juez.'
+                  : 'Su líder es quien aprueba este requerimiento. No se puede cambiar después.'}
+              </p>
             </div>
+
+            {/* Estado, autor y aprobador: información de solo lectura.
+                Solo se muestra al editar para dar contexto; al crear es redundante. */}
+            {editingReq && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label htmlFor="req-estado-info" className={etiqueta}>Estado</label>
+                  <input
+                    id="req-estado-info"
+                    readOnly
+                    value={editingReq.estado?.nombre_estado ?? 'Sin estado'}
+                    className={`${campo} opacity-70 cursor-default`}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="req-autor-info" className={etiqueta}>Autor</label>
+                  <input
+                    id="req-autor-info"
+                    readOnly
+                    value={nombreUsuario(editingReq.id_autor) ?? 'Sin autor'}
+                    className={`${campo} opacity-70 cursor-default`}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="req-aprobador-info" className={etiqueta}>Aprobador</label>
+                  <input
+                    id="req-aprobador-info"
+                    readOnly
+                    value={nombreUsuario(editingReq.id_aprobador) ?? 'Sin asignar todavía'}
+                    className={`${campo} opacity-70 cursor-default`}
+                  />
+                </div>
+              </div>
+            )}
           </ModalBody>
 
           <ModalFooter>
