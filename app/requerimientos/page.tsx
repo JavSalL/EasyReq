@@ -116,7 +116,7 @@ const FILTROS_INICIALES = {
 // que es justo cuando hay que hacerlo.
 const COLORES_ESTADO: Array<[string, string]> = [
   ['Aprobado', 'bg-success-subtle text-success border-success-line'],
-  ['Rechazado', 'bg-danger-subtle text-danger border-danger-line'],
+  ['Devuelto', 'bg-danger-subtle text-danger border-danger-line'],
   ['Pendiente de aprobación', 'bg-warning-subtle text-warning border-warning-line'],
   ['En Revisión', 'bg-warning-subtle text-warning border-warning-line'],
   ['Implementado', 'bg-brand-subtle text-brand-text border-brand-line'],
@@ -711,16 +711,16 @@ export default function RequerimientosPage() {
   // el suyo tras corregirlo.
   const handleDecision = async (req: Requerimiento, decision: 'aprobar' | 'rechazar') => {
     if (!puedeDecidir(req)) {
-      toast.error('Solo el líder del equipo de este requerimiento puede aprobarlo o rechazarlo.');
+      toast.error('Solo el líder del equipo de este requerimiento puede aprobarlo o devolverlo.');
       return;
     }
     const anterior = nombreEstadoDe(req);
     const ok = await confirmar({
-      titulo: decision === 'aprobar' ? '¿Aprobar requerimiento?' : '¿Rechazar requerimiento?',
+      titulo: decision === 'aprobar' ? '¿Aprobar requerimiento?' : '¿Devolver requerimiento?',
       mensaje: decision === 'aprobar'
         ? 'El requerimiento entra al flujo normal y a partir de aquí lo edita cualquier miembro del proyecto.'
         : 'Vuelve al autor para que lo corrija y lo reenvíe. El motivo queda en el historial del requerimiento.',
-      textoConfirmar: decision === 'aprobar' ? 'Aprobar' : 'Rechazar',
+      textoConfirmar: decision === 'aprobar' ? 'Aprobar' : 'Devolver',
       peligro: decision === 'rechazar'
     });
     if (!ok) return;
@@ -739,7 +739,7 @@ export default function RequerimientosPage() {
       toast.success(
         decision === 'aprobar'
           ? `${codigoDe(req) ?? 'Requerimiento'} aprobado. Ya continúa con el flujo normal.`
-          : `${codigoDe(req) ?? 'Requerimiento'} rechazado. Su autor puede corregirlo y reenviarlo.`
+          : `${codigoDe(req) ?? 'Requerimiento'} devuelto. Su autor puede corregirlo y reenviarlo.`
       );
       fetchRequerimientos();
     } catch (e) {
@@ -747,10 +747,10 @@ export default function RequerimientosPage() {
     }
   };
 
-  /** El autor devuelve su requerimiento rechazado al ciclo de aprobación. */
+  /** El autor devuelve su requerimiento devuelto al ciclo de aprobación. */
   const handleReenviar = async (req: Requerimiento) => {
     if (!puedeReenviarEste(req)) {
-      toast.error('Solo su autor puede reenviar un requerimiento rechazado.');
+      toast.error('Solo su autor puede reenviar un requerimiento devuelto.');
       return;
     }
     try {
@@ -830,9 +830,21 @@ export default function RequerimientosPage() {
   const requerimientosBase = requerimientos.filter(coincideSinEstado);
   const conteoEstado = (id: string) => requerimientosBase.filter(r => esDelEstado(r, id)).length;
   const filteredRequerimientos = requerimientosBase.filter(r => esDelEstado(r, filterEstado));
+  // El orden deseado de izquierda a derecha. Comparamos en minúsculas.
+  // "devuelt" atrapará "Devuelto" o "Devueltos", y si sigue llamándose "Rechazado" lo atrapará también.
+  const ORDEN_PESTANAS = ['pendiente', 'devuelt', 'aprobado'];
+
+  const getPesoPestana = (nombre: string) => {
+    const min = nombre.toLowerCase();
+    const index = ORDEN_PESTANAS.findIndex(k => min.includes(k));
+    return index === -1 ? 99 : index; // Si hay otros estados extraños, los manda al final
+  };
+
+  const estadosOrdenados = [...estados].sort((a, b) => getPesoPestana(a.nombre_estado) - getPesoPestana(b.nombre_estado));
+
   const pestanasEstado = [
     { id: 'todos', nombre: 'Todos' },
-    ...estados.map(e => ({ id: e.id, nombre: e.nombre_estado })),
+    ...estadosOrdenados.map(e => ({ id: e.id, nombre: e.nombre_estado })),
     ...(requerimientos.some(r => !r.id_estado) ? [{ id: 'sin-estado', nombre: 'Sin estado' }] : [])
   ];
   // La carga ya viene del más nuevo al más antiguo
@@ -1003,8 +1015,8 @@ export default function RequerimientosPage() {
                     </button>
                     <button
                       onClick={() => handleDecision(req, 'rechazar')}
-                      title="Rechazar requerimiento"
-                      aria-label={`Rechazar requerimiento ${codigoDe(req) ?? ''}`.trim()}
+                      title="Devolver requerimiento"
+                      aria-label={`Devolver requerimiento ${codigoDe(req) ?? ''}`.trim()}
                       className={`${btnIcono} text-danger`}
                     >
                       <XCircle size={16} />
@@ -1500,41 +1512,41 @@ export default function RequerimientosPage() {
               </p>
             </div>
 
-            {/* Estado, autor y aprobador: información, no campos.
-                El estado nace en "Pendiente de aprobación" y lo mueven el líder o el
-                autor; el autor lo pone el sistema y el aprobador solo lo escribe quien
-                aprueba. Por eso son de solo lectura y no hay nada que elegir. */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label htmlFor="req-estado-info" className={etiqueta}>Estado</label>
-                <input
-                  id="req-estado-info"
-                  readOnly
-                  value={editingReq ? (editingReq.estado?.nombre_estado ?? 'Sin estado') : 'Pendiente de aprobación'}
-                  className={`${campo} opacity-70 cursor-default`}
-                />
-              </div>
+            {/* Estado, autor y aprobador: información de solo lectura.
+                Solo se muestra al editar para dar contexto; al crear es redundante. */}
+            {editingReq && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label htmlFor="req-estado-info" className={etiqueta}>Estado</label>
+                  <input
+                    id="req-estado-info"
+                    readOnly
+                    value={editingReq.estado?.nombre_estado ?? 'Sin estado'}
+                    className={`${campo} opacity-70 cursor-default`}
+                  />
+                </div>
 
-              <div>
-                <label htmlFor="req-autor-info" className={etiqueta}>Autor</label>
-                <input
-                  id="req-autor-info"
-                  readOnly
-                  value={editingReq ? (nombreUsuario(editingReq.id_autor) ?? 'Sin autor') : (nombreUsuario(uid) ?? 'Tú')}
-                  className={`${campo} opacity-70 cursor-default`}
-                />
-              </div>
+                <div>
+                  <label htmlFor="req-autor-info" className={etiqueta}>Autor</label>
+                  <input
+                    id="req-autor-info"
+                    readOnly
+                    value={nombreUsuario(editingReq.id_autor) ?? 'Sin autor'}
+                    className={`${campo} opacity-70 cursor-default`}
+                  />
+                </div>
 
-              <div>
-                <label htmlFor="req-aprobador-info" className={etiqueta}>Aprobador</label>
-                <input
-                  id="req-aprobador-info"
-                  readOnly
-                  value={editingReq ? (nombreUsuario(editingReq.id_aprobador) ?? 'Sin asignar todavía') : 'Lo asigna su líder al aprobar'}
-                  className={`${campo} opacity-70 cursor-default`}
-                />
+                <div>
+                  <label htmlFor="req-aprobador-info" className={etiqueta}>Aprobador</label>
+                  <input
+                    id="req-aprobador-info"
+                    readOnly
+                    value={nombreUsuario(editingReq.id_aprobador) ?? 'Sin asignar todavía'}
+                    className={`${campo} opacity-70 cursor-default`}
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </ModalBody>
 
           <ModalFooter>

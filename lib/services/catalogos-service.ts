@@ -24,7 +24,7 @@ export const ESTADO_PENDIENTE_APROBACION = 'Pendiente de aprobación';
 /** Estado al que pasa cuando el líder del equipo lo aprueba. */
 export const ESTADO_APROBADO = 'Aprobado';
 /** Estado al que pasa cuando el líder lo rechaza. */
-export const ESTADO_RECHAZADO = 'Rechazado';
+export const ESTADO_RECHAZADO = 'Devuelto';
 /** Modalidad que el botón de generar con IA marca solo. */
 export const MODALIDAD_GENERADO_IA = 'Generado con IA';
 
