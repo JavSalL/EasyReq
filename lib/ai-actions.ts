@@ -16,6 +16,9 @@ export interface AIRequirement {
     resultado: boolean;
   };
   ai_observations?: string;
+  /** false cuando la entrada no da base para un requerimiento; entonces `motivo` explica qué falta. */
+  valido?: boolean;
+  motivo?: string;
 }
 
 export type AIErrorCode =

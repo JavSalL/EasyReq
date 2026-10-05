@@ -2,12 +2,13 @@ import { getBearerToken, verifyFirebaseToken } from './auth';
 import { consumeDailyQuota } from './quota';
 import { callGemini } from './gemini';
 import {
-  AIRequirement,
   buildBulkPrompt,
   buildEvaluatePrompt,
   buildSinglePrompt,
-  limpiarRedaccion,
-  safeJsonParse,
+  entradaSinSentido,
+  interpretarEvaluacion,
+  interpretarGeneracion,
+  interpretarGeneracionMasiva,
 } from './prompts';
 
 interface RateLimiter {
@@ -80,6 +81,15 @@ function requiredText(value: unknown, field: string): string {
   return value;
 }
 
+// Texto sin significado (solo símbolos, una letra repetida...): se rechaza aquí, antes de gastar
+// cuota y sin llamar a Gemini (KAN-25).
+function meaningfulText(value: unknown, field: string): string {
+  const text = requiredText(value, field);
+  const motivo = entradaSinSentido(text);
+  if (motivo) throw new HttpError(400, 'INVALID_INPUT', motivo);
+  return text;
+}
+
 function optionalPattern(value: unknown): string | undefined {
   if (value === undefined || value === null || value === '') return undefined;
   if (typeof value !== 'string') throw new HttpError(400, 'INVALID_INPUT', 'El patrón debe ser texto.');
@@ -117,29 +127,23 @@ type Executor = (env: Env) => Promise<unknown>;
 type Handler = (body: Record<string, unknown>) => Executor;
 
 const handleGenerateSingle: Handler = (body) => {
-  const userPrompt = requiredText(body.userPrompt, 'userPrompt');
+  const userPrompt = meaningfulText(body.userPrompt, 'userPrompt');
   const pattern = optionalPattern(body.pattern);
 
   return async (env) => {
     const text = await runGemini(buildSinglePrompt(userPrompt, pattern), env);
-    const generado = safeJsonParse<AIRequirement | null>(text, null);
-    return generado && typeof generado.name === 'string'
-      ? { ...generado, name: limpiarRedaccion(generado.name, pattern) }
-      : generado;
+    return interpretarGeneracion(text, pattern);
   };
 };
 
 const handleGenerateBulk: Handler = (body) => {
-  const projectDesc = requiredText(body.projectDesc, 'projectDesc');
+  const projectDesc = meaningfulText(body.projectDesc, 'projectDesc');
   const pattern = optionalPattern(body.pattern);
   const count = optionalCount(body.count);
 
   return async (env) => {
     const text = await runGemini(buildBulkPrompt(projectDesc, pattern, count), env);
-    const generados = safeJsonParse<AIRequirement[]>(text, []);
-    return Array.isArray(generados)
-      ? generados.map((r) => (r && typeof r.name === 'string' ? { ...r, name: limpiarRedaccion(r.name, pattern) } : r))
-      : [];
+    return interpretarGeneracionMasiva(text, pattern);
   };
 };
 
@@ -149,7 +153,7 @@ const handleEvaluate: Handler = (body) => {
 
   return async (env) => {
     const text = await runGemini(buildEvaluatePrompt(requirementText, pattern), env);
-    return safeJsonParse<Partial<AIRequirement>>(text, {});
+    return interpretarEvaluacion(text);
   };
 };
 

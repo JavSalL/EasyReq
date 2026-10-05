@@ -674,7 +674,10 @@ export default function RequerimientosPage() {
     setIsAILoading(true);
     try {
       const generated = await generateSingleRequirement(aiPrompt, patronSeleccionado?.promt);
-      if (generated && generated.name) {
+      if (generated && generated.valido === false) {
+        // La IA no inventa: si el texto no da base, se explica qué falta y se conserva lo escrito
+        toast.error(generated.motivo || 'No se pudo identificar qué debe hacer el sistema. Descríbelo con más detalle.');
+      } else if (generated && generated.name) {
         // KAN-18: "Generar req con IA" marca la modalidad "Generado con IA" sin
         // que nadie la elija. Si el catálogo no la tiene, se avisa y se deja la
         // modalidad como estaba: es información de la tarjeta, no un dato que

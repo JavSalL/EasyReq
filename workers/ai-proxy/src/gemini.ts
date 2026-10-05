@@ -14,7 +14,8 @@ export async function callGemini(prompt: string, apiKey: string, model: string):
     },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json' },
+      // temperature baja a propósito: se busca fidelidad al texto del usuario, no creatividad (KAN-25)
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
     }),
   });
 
