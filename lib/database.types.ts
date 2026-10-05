@@ -63,8 +63,17 @@ export interface Equipo {
   nombre: string;
   descripcion?: string;
   id_creador?: UUID | null;
+  // Proyecto al que pertenece el equipo (KAN-24). Null en equipos anteriores,
+  // que se relacionan con proyectos por los vínculos de `proyecto_equipos`.
+  id_proyecto?: UUID | null;
   created_at?: string;
 }
+
+/** Quién puede crear equipos dentro de un proyecto. */
+export type QuienCreaEquipos = 'creador' | 'seleccionados' | 'miembros';
+
+/** Quién puede agregar y quitar miembros de un proyecto. */
+export type QuienAgregaMiembros = 'creador' | 'seleccionados';
 
 export interface Proyecto {
   proyecto_id: UUID;
@@ -76,6 +85,15 @@ export interface Proyecto {
   // en documentos legacy creados antes de este campo): esos se tratan como
   // hoy, solo miembros de equipos vinculados pueden editarlos.
   id_creador?: UUID | null;
+  // Miembros del proyecto (KAN-24), además del creador, que siempre lo es. Se agregan directamente.
+  ids_miembros?: UUID[];
+  // Permiso para crear equipos en el proyecto. Por defecto, solo el creador.
+  quien_crea_equipos?: QuienCreaEquipos;
+  // Miembros autorizados cuando `quien_crea_equipos` es 'seleccionados'.
+  ids_creadores_equipos?: UUID[];
+  // Miembros autorizados (además del creador) para agregar y quitar miembros.
+  quien_agrega_miembros?: QuienAgregaMiembros;
+  ids_gestores_miembros?: UUID[];
   created_at?: string;
 }
 

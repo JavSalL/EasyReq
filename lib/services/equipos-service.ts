@@ -35,6 +35,7 @@ export async function getEquipos(): Promise<Equipo[]> {
       nombre: d.data().nombre,
       descripcion: d.data().descripcion || '',
       id_creador: d.data().id_creador || null,
+      id_proyecto: (d.data().id_proyecto as string | undefined) ?? null,
       created_at: d.data().created_at || new Date().toISOString()
     }));
   } catch (e) {
@@ -77,6 +78,54 @@ export async function createEquipo(data: {
     nombre: data.nombre,
     descripcion: data.descripcion || '',
     id_creador: data.id_creador,
+    created_at: createdAt
+  };
+}
+
+/**
+ * Crea un equipo dentro de un proyecto (KAN-24): el equipo, su líder inicial y el
+ * vínculo con el proyecto se escriben en un solo lote, sin la invitación de
+ * vinculación que usaban los equipos independientes. Quién puede hacerlo lo
+ * decide el permiso del proyecto (`puedeCrearEquipos`), y lo exige `firestore.rules`.
+ */
+export async function createEquipoEnProyecto(data: {
+  nombre: string;
+  descripcion?: string;
+  id_proyecto: string;
+  id_creador: string;
+  id_rol_lider: string;
+}): Promise<Equipo> {
+  if (!data.id_proyecto || !data.id_creador || !data.id_rol_lider) {
+    throw new Error('Se requiere un proyecto, un creador y un rol de líder para crear el equipo');
+  }
+
+  const docRef = doc(collection(db, 'equipo'));
+  const memberRef = doc(db, 'miembros_equipo', `${docRef.id}_${data.id_creador}`);
+  const vinculoRef = doc(db, 'proyecto_equipos', `${data.id_proyecto}_${docRef.id}`);
+  const createdAt = new Date().toISOString();
+  const batch = writeBatch(db);
+  batch.set(docRef, {
+    nombre: data.nombre,
+    descripcion: data.descripcion ?? '',
+    id_creador: data.id_creador,
+    id_proyecto: data.id_proyecto,
+    created_at: createdAt
+  });
+  batch.set(memberRef, {
+    id_equipo: docRef.id,
+    id_usuario: data.id_creador,
+    id_rol: data.id_rol_lider,
+    id_roles: [data.id_rol_lider]
+  });
+  batch.set(vinculoRef, { id_proyecto: data.id_proyecto, id_equipo: docRef.id });
+  await batch.commit();
+
+  return {
+    equipo_id: docRef.id,
+    nombre: data.nombre,
+    descripcion: data.descripcion || '',
+    id_creador: data.id_creador,
+    id_proyecto: data.id_proyecto,
     created_at: createdAt
   };
 }

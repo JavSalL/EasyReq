@@ -7,7 +7,7 @@ import {
   Plus, Edit2, Trash2, FolderGit2, ChevronRight, Search,
   Layers, Users, Save, Cpu, Smartphone, Globe, Laptop, Server, Lock
 } from 'lucide-react';
-import type { Proyecto, TipoSistema } from '@/lib/database.types';
+import type { Proyecto, TipoSistema, PerfilUsuario, QuienCreaEquipos, QuienAgregaMiembros } from '@/lib/database.types';
 import {
   getProyectos,
   getTiposSistema,
@@ -16,7 +16,8 @@ import {
   deleteProyecto,
   getRequerimientos,
   getProyectoEquipos,
-  getProyectosRelacionados
+  getProyectosRelacionados,
+  getAllUsers
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
@@ -25,7 +26,8 @@ import PageHeader from '@/components/ui/PageHeader';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import ProjectTeamRequestInbox from '@/components/ProjectTeamRequestInbox';
+import PermisosProyecto from '@/components/proyectos/PermisosProyecto';
+import SelectorMiembros from '@/components/proyectos/SelectorMiembros';
 import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
 } from '@/components/ui/estilos';
@@ -75,10 +77,23 @@ export default function Home() {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Proyecto | null>(null);
+  // Usuarios elegibles para el permiso "quién puede crear equipos"
+  const [usuarios, setUsuarios] = useState<Array<PerfilUsuario>>([]);
+  useEffect(() => {
+    getAllUsers()
+      .then(lista => setUsuarios(lista))
+      .catch(err => console.error('Error al cargar usuarios:', err));
+  }, []);
   const [formData, setFormData] = useState({
     nombre: '',
     descripcion: '',
-    id_tipo_sistema: ''
+    id_tipo_sistema: '',
+    quien_crea_equipos: 'creador' as QuienCreaEquipos,
+    ids_creadores_equipos: [] as string[],
+    quien_agrega_miembros: 'creador' as QuienAgregaMiembros,
+    ids_gestores_miembros: [] as string[],
+    // Solo al crear: miembros que entran con el proyecto (luego se administran en la pestaña Miembros)
+    ids_miembros: [] as string[]
   });
   const [saving, setSaving] = useState(false);
   const { hayCambios, intentarCerrar } = useCierreSeguro(isModalOpen, formData, () => setIsModalOpen(false));
@@ -135,7 +150,12 @@ export default function Home() {
     setFormData({
       nombre: '',
       descripcion: '',
-      id_tipo_sistema: tiposSistema[0]?.id || ''
+      id_tipo_sistema: tiposSistema[0]?.id || '',
+      quien_crea_equipos: 'creador',
+      ids_creadores_equipos: [],
+      quien_agrega_miembros: 'creador',
+      ids_gestores_miembros: [],
+      ids_miembros: []
     });
     setIsModalOpen(true);
   };
@@ -149,7 +169,12 @@ export default function Home() {
     setFormData({
       nombre: p.nombre,
       descripcion: p.descripcion || '',
-      id_tipo_sistema: p.id_tipo_sistema || ''
+      id_tipo_sistema: p.id_tipo_sistema || '',
+      quien_crea_equipos: p.quien_crea_equipos ?? 'creador',
+      ids_creadores_equipos: p.ids_creadores_equipos ?? [],
+      quien_agrega_miembros: p.quien_agrega_miembros ?? 'creador',
+      ids_gestores_miembros: p.ids_gestores_miembros ?? [],
+      ids_miembros: []
     });
     setIsModalOpen(true);
   };
@@ -176,7 +201,16 @@ export default function Home() {
         await updateProyecto(editingProject.proyecto_id, {
           nombre: formData.nombre.trim(),
           descripcion: formData.descripcion.trim(),
-          id_tipo_sistema: formData.id_tipo_sistema || null
+          id_tipo_sistema: formData.id_tipo_sistema || null,
+          // Solo el creador cambia quién puede crear equipos (las reglas lo exigen)
+          ...(editingProject.id_creador === uid
+            ? {
+                quien_crea_equipos: formData.quien_crea_equipos,
+                ids_creadores_equipos: formData.ids_creadores_equipos,
+                quien_agrega_miembros: formData.quien_agrega_miembros,
+                ids_gestores_miembros: formData.ids_gestores_miembros
+              }
+            : {})
         });
         toast.success('Proyecto actualizado');
       } else {
@@ -185,7 +219,12 @@ export default function Home() {
           nombre: formData.nombre.trim(),
           descripcion: formData.descripcion.trim(),
           id_tipo_sistema: formData.id_tipo_sistema || null,
-          id_creador: uid
+          id_creador: uid,
+          quien_crea_equipos: formData.quien_crea_equipos,
+          ids_creadores_equipos: formData.ids_creadores_equipos,
+          quien_agrega_miembros: formData.quien_agrega_miembros,
+          ids_gestores_miembros: formData.ids_gestores_miembros,
+          ids_miembros: formData.ids_miembros
         });
         toast.success('Proyecto creado');
       }
@@ -271,12 +310,6 @@ export default function Home() {
         description="Sistemas de software y la especificación de sus requerimientos."
         actions={
           <>
-            <ProjectTeamRequestInbox
-              userId={uid}
-              onResponded={async () => {
-                await Promise.all([fetchProjects(), cargarPermisos()]);
-              }}
-            />
             <button onClick={openCreateModal} className={btnPrimario}>
               <Plus size={16} />
               Nuevo proyecto
@@ -439,9 +472,11 @@ export default function Home() {
         onClose={intentarCerrar}
         cerrarConFondo={!hayCambios}
         title={editingProject ? 'Editar Proyecto' : 'Nuevo Proyecto'}
+        size="3xl"
       >
         <form onSubmit={handleSave} noValidate className="flex flex-col flex-1 min-h-0">
-          <ModalBody className="space-y-4">
+          <ModalBody className={`grid gap-x-8 gap-y-5 ${editingProject && editingProject.id_creador !== uid ? '' : 'md:grid-cols-2'}`}>
+            <div className="space-y-4 min-w-0">
             <div>
               <label htmlFor="proyecto-nombre" className={etiqueta}>
                 Nombre del Proyecto <span className="text-danger">*</span>
@@ -476,13 +511,57 @@ export default function Home() {
               <label htmlFor="proyecto-descripcion" className={etiqueta}>Descripción</label>
               <textarea
                 id="proyecto-descripcion"
-                rows={3}
+                rows={editingProject ? 5 : 3}
                 placeholder="Describe brevemente el alcance u objetivos del proyecto..."
                 value={formData.descripcion}
                 onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                 className={`${campo} resize-none`}
               />
             </div>
+
+            {!editingProject && (
+              <SelectorMiembros
+                titulo="Miembros del proyecto (opcional)"
+                usuarios={usuarios.filter(u => u.id !== uid)}
+                valor={formData.ids_miembros}
+                onChange={(ids) =>
+                  // Quien deja de ser miembro también deja las listas de permisos que lo nombraban
+                  setFormData({
+                    ...formData,
+                    ids_miembros: ids,
+                    ids_creadores_equipos: formData.ids_creadores_equipos.filter(id => ids.includes(id)),
+                    ids_gestores_miembros: formData.ids_gestores_miembros.filter(id => ids.includes(id)),
+                    quien_crea_equipos: ids.length === 0 && formData.quien_crea_equipos === 'seleccionados' ? 'creador' : formData.quien_crea_equipos,
+                    quien_agrega_miembros: ids.length === 0 && formData.quien_agrega_miembros === 'seleccionados' ? 'creador' : formData.quien_agrega_miembros
+                  })
+                }
+              />
+            )}
+            </div>
+
+            {(!editingProject || editingProject.id_creador === uid) && (
+              <PermisosProyecto
+                valor={{
+                  quienCreaEquipos: formData.quien_crea_equipos,
+                  idsCreadoresEquipos: formData.ids_creadores_equipos,
+                  quienAgregaMiembros: formData.quien_agrega_miembros,
+                  idsGestoresMiembros: formData.ids_gestores_miembros
+                }}
+                // Los permisos "a miembros que elija" se reparten entre los miembros actuales (al crear, los elegidos arriba)
+                miembros={usuarios.filter(
+                  u => u.id !== uid && (editingProject ? editingProject.ids_miembros ?? [] : formData.ids_miembros).includes(u.id)
+                )}
+                onChange={(v) =>
+                  setFormData({
+                    ...formData,
+                    quien_crea_equipos: v.quienCreaEquipos,
+                    ids_creadores_equipos: v.idsCreadoresEquipos,
+                    quien_agrega_miembros: v.quienAgregaMiembros,
+                    ids_gestores_miembros: v.idsGestoresMiembros
+                  })
+                }
+              />
+            )}
           </ModalBody>
           <ModalFooter>
             <button type="button" onClick={intentarCerrar} className={btnSecundario}>

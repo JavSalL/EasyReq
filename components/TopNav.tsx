@@ -4,13 +4,13 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import UserMenu from '@/components/UserMenu';
+import InvitacionesBell from '@/components/InvitacionesBell';
 import Logo from '@/components/Logo';
 
 const enlaces = [
   // `rutas`: pantallas que marcan activa la opción (p. ej. los requerimientos
   // son una subpantalla de Proyectos)
   { nombre: 'Proyectos', href: '/', rutas: ['/', '/requerimientos'] },
-  { nombre: 'Equipos', href: '/equipos-global/', rutas: ['/equipos-global'] },
   { nombre: 'Patrones y Modelos', href: '/patrones/', rutas: ['/patrones'] },
   { nombre: 'Ayuda', href: '/ayuda/', rutas: ['/ayuda'] },
 ];
@@ -56,7 +56,8 @@ export default function TopNav() {
         <nav aria-label="Navegación principal" className="hidden md:block h-full">
           {lista}
         </nav>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <InvitacionesBell />
           <UserMenu />
         </div>
       </div>

@@ -11,6 +11,7 @@ const ANCHOS = {
   md: 'max-w-md',
   lg: 'max-w-lg',
   xl: 'max-w-2xl',
+  '3xl': 'max-w-4xl',
 } as const;
 
 interface ModalProps {
@@ -21,6 +22,8 @@ interface ModalProps {
   size?: keyof typeof ANCHOS;
   /** Si es false, un clic en el fondo no cierra el modal (formularios con cambios sin guardar). */
   cerrarConFondo?: boolean;
+  /** Si es false, el modal no se puede cerrar (ni Esc, ni clic fuera, ni X): es un paso obligatorio. */
+  cerrable?: boolean;
   children: React.ReactNode;
 }
 
@@ -29,13 +32,15 @@ interface ModalProps {
  * la X. El contenido va en `ModalBody` (con scroll) y `ModalFooter`; si hay un
  * formulario, debe envolver a ambos para que el botón de enviar funcione.
  */
-export function Modal({ open, onClose, title, description, size = 'md', cerrarConFondo = true, children }: ModalProps) {
+export function Modal({ open, onClose, title, description, size = 'md', cerrarConFondo = true, cerrable = true, children }: ModalProps) {
   const id = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
+  const cerrableRef = useRef(cerrable);
   useEffect(() => {
     onCloseRef.current = onClose;
-  }, [onClose]);
+    cerrableRef.current = cerrable;
+  }, [onClose, cerrable]);
 
   useEffect(() => {
     if (!open) return;
@@ -47,7 +52,7 @@ export function Modal({ open, onClose, title, description, size = 'md', cerrarCo
       if (pilaModales[pilaModales.length - 1] !== id) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onCloseRef.current();
+        if (cerrableRef.current) onCloseRef.current();
       } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         // Ctrl/Cmd + Enter envía el formulario del modal desde cualquier campo
         const formulario = panelRef.current?.querySelector('form');
@@ -79,7 +84,7 @@ export function Modal({ open, onClose, title, description, size = 'md', cerrarCo
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-scrim animate-in fade-in"
       onMouseDown={(e) => {
-        if (cerrarConFondo && e.target === e.currentTarget) onClose();
+        if (cerrable && cerrarConFondo && e.target === e.currentTarget) onClose();
       }}
     >
       <div
@@ -99,15 +104,17 @@ export function Modal({ open, onClose, title, description, size = 'md', cerrarCo
               <p className="text-xs text-ink-subtle mt-0.5">{description}</p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Cerrar"
-            title="Cerrar (Esc)"
-            className="p-1.5 -mr-1.5 rounded-ui text-ink-subtle hover:text-ink-muted hover:bg-sunken transition-colors cursor-pointer shrink-0"
-          >
-            <X size={18} />
-          </button>
+          {cerrable && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar"
+              title="Cerrar (Esc)"
+              className="p-1.5 -mr-1.5 rounded-ui text-ink-subtle hover:text-ink-muted hover:bg-sunken transition-colors cursor-pointer shrink-0"
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
         {children}
       </div>

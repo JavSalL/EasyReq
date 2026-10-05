@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   signInWithEmailAndPassword,
@@ -8,17 +8,17 @@ import {
   updateProfile,
   signInWithPopup,
   sendPasswordResetEmail,
-  signOut,
   GoogleAuthProvider,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { getProfesiones, saveUserProfile, getUserProfile } from '@/lib/firestore-service';
+import { getProfesiones, saveUserProfile } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { toast } from 'react-hot-toast';
-import { Lock, Mail, User, Briefcase, ChevronDown, X, ArrowRight, CheckCircle2, Check, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { Lock, Mail, User, ArrowRight, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
 import { Profesion } from '@/lib/database.types';
 import ThemeToggle from '@/components/ThemeToggle';
 import Logo from '@/components/Logo';
+import SelectorProfesiones from '@/components/SelectorProfesiones';
 import { btnIcono } from '@/components/ui/estilos';
 
 // Mensaje para API key inválida. El env NEXT_PUBLIC_* se congela en build,
@@ -52,47 +52,11 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [profesiones, setProfesiones] = useState<Profesion[]>([]);
 
-  // Estados para onboarding al crear cuenta con Google
-  const [isCompletingGoogleProfile, setIsCompletingGoogleProfile] = useState(false);
-  const [googleUser, setGoogleUser] = useState<{ uid: string; displayName: string; email: string } | null>(null);
-
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nombre, setNombre] = useState('');
   const [idsProfesiones, setIdsProfesiones] = useState<string[]>([]);
-  const [profMenuOpen, setProfMenuOpen] = useState(false);
-  const profMenuRef = useRef<HTMLDivElement>(null);
-
-  // Cerrar el desplegable de profesiones al hacer clic fuera o con Escape
-  useEffect(() => {
-    if (!profMenuOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (profMenuRef.current && !profMenuRef.current.contains(e.target as Node)) {
-        setProfMenuOpen(false);
-      }
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setProfMenuOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [profMenuOpen]);
-
-  const toggleProfesion = (id: string) => {
-    setIdsProfesiones((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
-  };
-
-  const profesionesBotonTexto =
-    idsProfesiones.length === 0
-      ? 'Seleccionar profesiones...'
-      : idsProfesiones.length === 1
-        ? (profesiones.find((p) => p.id === idsProfesiones[0])?.nombre ?? '1 seleccionada')
-        : `${idsProfesiones.length} profesiones seleccionadas`;
 
   // Password validation rules
   const passMinLength = password.length >= 8;
@@ -101,11 +65,11 @@ export default function LoginPage() {
   const passHasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
 
   useEffect(() => {
-    // Si ya hay sesión activa y no estamos en onboarding de Google, redirigir al dashboard
-    if (!authLoading && authUser && !isCompletingGoogleProfile) {
+    // Si ya hay sesión activa, ir al dashboard (si falta el registro, la app lo pide al entrar)
+    if (!authLoading && authUser) {
       router.replace('/');
     }
-  }, [authUser, authLoading, router, isCompletingGoogleProfile]);
+  }, [authUser, authLoading, router]);
 
   useEffect(() => {
     // Cargar catálogo de profesiones
@@ -249,35 +213,11 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
-      const provider = new GoogleAuthProvider();
-      const res = await signInWithPopup(auth, provider);
-      const user = res.user;
-
-      const existing = await getUserProfile(user.uid);
-      const tieneProfesiones = existing && Array.isArray(existing.ids_profesiones) && existing.ids_profesiones.length > 0;
-
-      // Si es una cuenta nueva de Google o aún no tiene profesiones seleccionadas,
-      // mostramos la pantalla para completar su perfil (nombre y especialidades)
-      if (!existing || !tieneProfesiones) {
-        if (!existing) {
-          await saveUserProfile(user.uid, {
-            nombre: user.displayName || 'Usuario',
-            correo: user.email || '',
-          });
-        }
-        setGoogleUser({
-          uid: user.uid,
-          displayName: user.displayName || '',
-          email: user.email || '',
-        });
-        setNombre(user.displayName || '');
-        setIdsProfesiones(existing?.ids_profesiones || []);
-        setIsCompletingGoogleProfile(true);
-        toast('¡Autenticado con Google! Por favor completa tu perfil para continuar.', { icon: '👋' });
-      } else {
-        toast.success('¡Sesión iniciada con Google!');
-        window.location.href = '/';
-      }
+      await signInWithPopup(auth, new GoogleAuthProvider());
+      // Una cuenta nueva (o sin profesiones) pasa por el paso de registro al entrar a la app,
+      // con los mismos datos que el registro normal.
+      toast.success('¡Sesión iniciada con Google!');
+      window.location.href = '/';
     } catch (err: unknown) {
       const code = getFirebaseErrorCode(err);
       if (code === 'auth/popup-closed-by-user') {
@@ -289,60 +229,6 @@ export default function LoginPage() {
       }
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleFinishGoogleOnboarding = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!googleUser) return;
-
-    const nombreLimpio = nombre.trim();
-    if (!nombreLimpio) {
-      toast.error('Por favor ingresa tu nombre completo');
-      return;
-    }
-
-    if (idsProfesiones.length === 0) {
-      toast.error('Por favor selecciona al menos una profesión');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      if (auth.currentUser && auth.currentUser.displayName !== nombreLimpio) {
-        await updateProfile(auth.currentUser, { displayName: nombreLimpio });
-      }
-
-      const profesionesSeleccionadas = profesiones.filter((p) => idsProfesiones.includes(p.id));
-      await saveUserProfile(googleUser.uid, {
-        nombre: nombreLimpio,
-        correo: googleUser.email,
-        ids_profesiones: profesionesSeleccionadas.map((p) => p.id),
-        profesiones_nombres: profesionesSeleccionadas.map((p) => p.nombre),
-        profesiones: profesionesSeleccionadas,
-        id_profesion: profesionesSeleccionadas[0]?.id || undefined,
-        profesion_nombre: profesionesSeleccionadas[0]?.nombre || undefined,
-      });
-
-      toast.success(`¡Bienvenido a EasyReq, ${nombreLimpio}!`);
-      window.location.href = '/';
-    } catch (err: unknown) {
-      console.error('Error al guardar perfil de Google:', err);
-      toast.error('No se pudo completar el perfil. Intenta de nuevo.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCancelGoogleOnboarding = async () => {
-    try {
-      await signOut(auth);
-      setIsCompletingGoogleProfile(false);
-      setGoogleUser(null);
-      setNombre('');
-      setIdsProfesiones([]);
-    } catch (err) {
-      console.error('Error al cancelar onboarding de Google:', err);
     }
   };
 
@@ -363,196 +249,6 @@ export default function LoginPage() {
 
         {/* Tarjeta de Autenticación */}
         <div className="bg-surface border border-line rounded-ui p-6 sm:p-8 shadow-sm">
-          {isCompletingGoogleProfile && googleUser ? (
-            /* Vista de Onboarding para Cuenta de Google */
-            <div className="space-y-5 animate-in fade-in">
-              <div className="text-center">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-brand-subtle text-brand-text border border-brand-line mb-3">
-                  <Sparkles size={13} />
-                  Paso final de registro
-                </span>
-                <h2 className="text-lg font-bold text-ink">Completa tu perfil</h2>
-                <p className="text-xs text-ink-subtle mt-1 max-w-sm mx-auto">
-                  Para personalizar tu experiencia, confírmanos tu nombre y selecciona tus especialidades profesionales.
-                </p>
-              </div>
-
-              <form onSubmit={handleFinishGoogleOnboarding} className="space-y-4">
-                {/* Campo Correo de Google (Lectura) */}
-                <div>
-                  <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
-                    Cuenta de Google
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-subtle">
-                      <Mail size={16} />
-                    </div>
-                    <input
-                      type="email"
-                      disabled
-                      value={googleUser.email}
-                      className="block w-full pl-9 pr-4 py-2.5 bg-sunken border border-line rounded-ui text-sm text-ink-muted cursor-not-allowed opacity-80"
-                    />
-                  </div>
-                </div>
-
-                {/* Campo Nombre Completo */}
-                <div>
-                  <label htmlFor="google-nombre" className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
-                    Nombre Completo <span className="text-danger">*</span>
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-subtle">
-                      <User size={16} />
-                    </div>
-                    <input
-                      id="google-nombre"
-                      type="text"
-                      required
-                      autoFocus
-                      value={nombre}
-                      onChange={(e) => setNombre(e.target.value)}
-                      placeholder="Ej. Ana María Gómez"
-                      className="block w-full pl-9 pr-4 py-2.5 bg-surface border border-line-strong rounded-ui text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand-text transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Campo Profesiones (Multi-selección) */}
-                <div>
-                  <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
-                    Profesión / Especialidad <span className="text-danger">*</span>
-                  </label>
-                  <div ref={profMenuRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setProfMenuOpen((v) => !v)}
-                      aria-haspopup="listbox"
-                      aria-expanded={profMenuOpen}
-                      className={`relative block w-full pl-9 pr-10 py-2.5 bg-surface border rounded-ui text-sm text-left focus:outline-none focus:ring-2 focus:ring-brand-text transition-all cursor-pointer ${
-                        idsProfesiones.length === 0 ? 'text-ink-subtle border-line-strong' : 'text-ink border-line-strong'
-                      } ${profMenuOpen ? 'ring-2 ring-brand-text border-brand-text' : ''}`}
-                    >
-                      <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-subtle">
-                        <Briefcase size={16} />
-                      </span>
-                      <span className="block truncate">{profesionesBotonTexto}</span>
-                      <span className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-ink-subtle">
-                        <ChevronDown size={16} className={`transition-transform ${profMenuOpen ? 'rotate-180' : ''}`} />
-                      </span>
-                    </button>
-
-                    {profMenuOpen && (
-                      <div className="absolute z-20 mt-2 w-full rounded-ui border border-line bg-surface shadow-lg overflow-hidden animate-in fade-in">
-                        <div className="flex items-center justify-between px-3 py-2 border-b border-line">
-                          <span className="text-xs font-medium text-ink-subtle">
-                            Elige una o más ({idsProfesiones.length})
-                          </span>
-                          {idsProfesiones.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => setIdsProfesiones([])}
-                              className="text-xs font-semibold text-brand-text hover:underline cursor-pointer"
-                            >
-                              Limpiar
-                            </button>
-                          )}
-                        </div>
-                        <div role="listbox" aria-multiselectable className="max-h-56 overflow-y-auto p-1.5 space-y-0.5 custom-scrollbar">
-                          {profesiones.length === 0 && (
-                            <p className="text-xs text-ink-subtle px-2.5 py-2">Cargando profesiones...</p>
-                          )}
-                          {profesiones.map((p) => {
-                            const checked = idsProfesiones.includes(p.id);
-                            return (
-                              <label
-                                key={p.id}
-                                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-ui text-sm cursor-pointer transition-colors ${
-                                  checked ? 'bg-brand-subtle text-ink font-medium' : 'text-ink-muted hover:bg-sunken'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleProfesion(p.id)}
-                                  className="w-4 h-4 rounded-ui accent-brand-text shrink-0 cursor-pointer"
-                                />
-                                <span className="flex-1 truncate">{p.nombre}</span>
-                                {checked && <Check size={14} className="text-brand-text shrink-0" />}
-                              </label>
-                            );
-                          })}
-                        </div>
-                        <div className="px-2.5 py-2 border-t border-line bg-sunken">
-                          <button
-                            type="button"
-                            onClick={() => setProfMenuOpen(false)}
-                            className="w-full py-1.5 rounded-ui bg-brand-solid hover:bg-brand-solid-hover text-on-solid text-xs font-semibold transition-colors cursor-pointer"
-                          >
-                            Aceptar{idsProfesiones.length > 0 ? ` (${idsProfesiones.length})` : ''}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Chips de Profesiones Seleccionadas */}
-                  {idsProfesiones.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {idsProfesiones.map((id) => {
-                        const prof = profesiones.find((p) => p.id === id);
-                        if (!prof) return null;
-                        return (
-                          <span
-                            key={id}
-                            className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 text-xs font-medium bg-brand-subtle text-brand-text border border-brand-line rounded-full"
-                          >
-                            <span className="max-w-40 truncate">{prof.nombre}</span>
-                            <button
-                              type="button"
-                              aria-label={`Quitar ${prof.nombre}`}
-                              onClick={() => toggleProfesion(id)}
-                              className="w-4 h-4 rounded-full hover:bg-brand-line flex items-center justify-center cursor-pointer transition-colors"
-                            >
-                              <X size={11} />
-                            </button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Botones de acción */}
-                <div className="pt-2 space-y-2">
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-3 px-4 bg-brand-solid hover:bg-brand-solid-hover disabled:opacity-50 text-on-solid rounded-ui font-semibold text-sm transition-all flex items-center justify-center gap-2 group cursor-pointer"
-                  >
-                    {loading ? (
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <span>Guardar y Entrar a EasyReq</span>
-                        <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
-                      </>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCancelGoogleOnboarding}
-                    disabled={loading}
-                    className="w-full py-2 text-xs font-medium text-ink-subtle hover:text-ink transition-colors cursor-pointer"
-                  >
-                    Cancelar y volver
-                  </button>
-                </div>
-              </form>
-            </div>
-          ) : (
-            /* Vista Regular de Login / Registro */
-            <>
               {/* Tabs Selector */}
               <div className="flex p-1 bg-sunken rounded-ui mb-6">
                 <button
@@ -604,113 +300,14 @@ export default function LoginPage() {
                   </div>
                 )}
 
-                {/* Campo Profesiones (Solo en Registro, desplegable multi-selección) */}
+                {/* Campo Profesiones (solo en registro) */}
                 {!isLogin && (
-                  <div>
-                    <label className="block text-sm font-medium text-ink mb-2">
-                      Profesión / Especialidad
-                    </label>
-                    <div ref={profMenuRef} className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setProfMenuOpen((v) => !v)}
-                        aria-haspopup="listbox"
-                        aria-expanded={profMenuOpen}
-                        className={`relative block w-full pl-10 pr-10 py-2.5 bg-sunken border rounded-ui text-sm text-left focus:outline-none focus:ring-2 focus:ring-brand-text transition-all cursor-pointer ${
-                          idsProfesiones.length === 0
-                            ? 'text-ink-subtle border-line'
-                            : 'text-ink border-line'
-                        } ${profMenuOpen ? 'ring-2 ring-brand-text border-brand-text' : ''}`}
-                      >
-                        <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-subtle">
-                          <Briefcase size={18} />
-                        </span>
-                        <span className="block truncate">{profesionesBotonTexto}</span>
-                        <span className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-ink-subtle">
-                          <ChevronDown size={18} className={`transition-transform ${profMenuOpen ? 'rotate-180' : ''}`} />
-                        </span>
-                      </button>
-
-                      {profMenuOpen && (
-                        <div className="absolute z-20 mt-2 w-full rounded-ui border border-line bg-surface overflow-hidden">
-                          <div className="flex items-center justify-between px-3 py-2 border-b border-line">
-                            <span className="text-xs font-medium text-ink-subtle">
-                              Elige una o más ({idsProfesiones.length})
-                            </span>
-                            {idsProfesiones.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setIdsProfesiones([])}
-                                className="text-xs font-semibold text-brand-text hover:underline cursor-pointer"
-                              >
-                                Limpiar
-                              </button>
-                            )}
-                          </div>
-                          <div role="listbox" aria-multiselectable className="max-h-56 overflow-y-auto p-1.5 space-y-0.5">
-                            {profesiones.length === 0 && (
-                              <p className="text-xs text-ink-subtle px-2.5 py-2">Cargando profesiones...</p>
-                            )}
-                            {profesiones.map((p) => {
-                              const checked = idsProfesiones.includes(p.id);
-                              return (
-                                <label
-                                  key={p.id}
-                                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded-ui text-sm cursor-pointer transition-colors ${
-                                    checked
-                                      ? 'bg-brand-subtle text-ink'
-                                      : 'text-ink-muted hover:bg-sunken'
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => toggleProfesion(p.id)}
-                                    className="w-4 h-4 rounded-ui accent-blue-600 shrink-0 cursor-pointer"
-                                  />
-                                  <span className="flex-1 truncate">{p.nombre}</span>
-                                  {checked && <Check size={14} className="text-brand-text shrink-0" />}
-                                </label>
-                              );
-                            })}
-                          </div>
-                          <div className="px-2.5 py-2 border-t border-line">
-                            <button
-                              type="button"
-                              onClick={() => setProfMenuOpen(false)}
-                              className="w-full py-2 rounded-ui bg-brand-solid hover:bg-brand-solid-hover text-on-solid text-xs font-semibold transition-colors cursor-pointer"
-                            >
-                              Listo{idsProfesiones.length > 0 ? ` (${idsProfesiones.length})` : ''}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {idsProfesiones.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {idsProfesiones.map((id) => {
-                          const prof = profesiones.find((p) => p.id === id);
-                          if (!prof) return null;
-                          return (
-                            <span
-                              key={id}
-                              className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 text-xs font-medium bg-brand-subtle text-brand-text border border-brand-line rounded-full"
-                            >
-                              <span className="max-w-40 truncate">{prof.nombre}</span>
-                              <button
-                                type="button"
-                                aria-label={`Quitar ${prof.nombre}`}
-                                onClick={() => toggleProfesion(id)}
-                                className="w-4 h-4 rounded-full hover:bg-brand-line flex items-center justify-center cursor-pointer"
-                              >
-                                <X size={11} />
-                              </button>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  <SelectorProfesiones
+                    id="login-profesiones"
+                    profesiones={profesiones}
+                    valor={idsProfesiones}
+                    onChange={setIdsProfesiones}
+                  />
                 )}
 
                 {/* Campo Correo Electrónico */}
@@ -923,8 +520,6 @@ export default function LoginPage() {
                   </button>
                 </p>
               </div>
-            </>
-          )}
         </div>
 
         {/* Info extra */}
