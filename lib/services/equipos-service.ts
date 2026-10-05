@@ -7,6 +7,7 @@ import {
   updateDoc, 
   query, 
   where, 
+  documentId,
   writeBatch, 
   runTransaction 
 } from 'firebase/firestore';
@@ -169,6 +170,52 @@ export async function getProyectoEquipos(): Promise<ProyectoEquipo[]> {
     return snap.docs.map(d => d.data() as ProyectoEquipo);
   } catch (e) {
     console.error('Error fetching proyecto_equipos:', e);
+    return [];
+  }
+}
+
+/** Tope de valores en una consulta `in` de Firestore. */
+const MAX_EN_UNA_IN = 30;
+
+/**
+ * Equipos que pertenecen a un proyecto (KAN-18).
+ *
+ * Desde KAN-24 un equipo lleva `id_proyecto`, así que se consultan directamente. Los
+ * equipos anteriores a KAN-24 no lo tienen: se relacionan con el proyecto mediante
+ * los documentos de `proyecto_equipos`. Un proyecto puede tener los dos tipos a la
+ * vez, así que se unen y se deduplican por ID.
+ *
+ * Lo usa el formulario de requerimientos para elegir a qué equipo pertenece uno, de
+ * donde sale el líder que tiene que aprobarlo. `firestore.rules` acepta las dos
+ * formas de vínculo (`isEquipoDelProyecto`), así que esta función tiene que traer
+ * las dos también: si dejara fuera un equipo, la interfaz ocultaría una opción que
+ * el backend sí admitiría.
+ */
+export async function getEquiposDelProyecto(id_proyecto: string): Promise<Equipo[]> {
+  if (!id_proyecto) return [];
+  try {
+    const [directos, vinculos] = await Promise.all([
+      getDocs(query(collection(db, 'equipo'), where('id_proyecto', '==', id_proyecto))),
+      getDocs(query(collection(db, 'proyecto_equipos'), where('id_proyecto', '==', id_proyecto)))
+    ]);
+
+    const yaTraidos = new Set(directos.docs.map(d => d.id));
+    const faltan: string[] = [];
+    for (const vinculo of vinculos.docs) {
+      const idEquipo = vinculo.data().id_equipo as UUID | undefined;
+      if (idEquipo && !yaTraidos.has(idEquipo) && !faltan.includes(idEquipo)) faltan.push(idEquipo);
+    }
+
+    const legacy: Array<{ id: string; data: () => Record<string, unknown> }> = [];
+    for (let i = 0; i < faltan.length; i += MAX_EN_UNA_IN) {
+      const lote = faltan.slice(i, i + MAX_EN_UNA_IN);
+      const snap = await getDocs(query(collection(db, 'equipo'), where(documentId(), 'in', lote)));
+      legacy.push(...snap.docs);
+    }
+
+    return [...directos.docs, ...legacy].map(d => ({ ...d.data(), equipo_id: d.id } as Equipo));
+  } catch (e) {
+    console.error('Error fetching los equipos del proyecto:', e);
     return [];
   }
 }

@@ -1,4 +1,4 @@
-import { collection, getDocs, addDoc, limit, query } from 'firebase/firestore';
+import { collection, getDocs, addDoc, limit, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
   Profesion, 
@@ -9,6 +9,24 @@ import {
   TipoRequerimiento, 
   Modelo 
 } from '../database.types';
+
+// ==========================================
+// ESTADOS Y MODALIDADES DE LA APROBACIÓN (KAN-18)
+// ==========================================
+// Estos dos textos no son etiquetas: `firestore.rules` los compara literalmente
+// (`esEstadoPendienteAprobacion`) y el servicio los busca por nombre. Si cambia
+// uno, hay que cambiarlo en tres sitios: aquí, en las reglas y en la lista blanca
+// de `match /estados`. Están juntos y comentados para que el trío no se rompa en
+// silencio.
+
+/** Estado en el que nace un requerimiento y al que vuelve tras un rechazo. */
+export const ESTADO_PENDIENTE_APROBACION = 'Pendiente de aprobación';
+/** Estado al que pasa cuando el líder del equipo lo aprueba. */
+export const ESTADO_APROBADO = 'Aprobado';
+/** Estado al que pasa cuando el líder lo rechaza. */
+export const ESTADO_RECHAZADO = 'Rechazado';
+/** Modalidad que el botón de generar con IA marca solo. */
+export const MODALIDAD_GENERADO_IA = 'Generado con IA';
 
 // ==========================================
 // SEEDING DE CATÁLOGOS BASE
@@ -60,7 +78,12 @@ export async function seedCatalogsIfEmpty() {
       'En Revisión',
       'Aprobado',
       'Rechazado',
-      'Implementado'
+      'Implementado',
+      // KAN-18: estado de espera. Nace aquí todo requerimiento nuevo y solo avanza
+      // cuando el líder del equipo lo aprueba. `firestore.rules` compara este texto
+      // literalmente, así que también tiene que estar en la lista blanca de
+      // `match /estados`.
+      ESTADO_PENDIENTE_APROBACION
     ];
     for (const nombre_estado of defaultEstados) {
       await addDoc(collection(db, 'estados'), { nombre_estado });
@@ -71,7 +94,10 @@ export async function seedCatalogsIfEmpty() {
       'Remoto',
       'Híbrido',
       'Obligatorio',
-      'Opcional'
+      'Opcional',
+      // KAN-18: la marca que el botón "Generar req con IA" pone sola. Mismo
+      // cuidado que el estado: el servicio la busca por este texto.
+      MODALIDAD_GENERADO_IA
     ];
     for (const nombre_modalidad of defaultModalidades) {
       await addDoc(collection(db, 'modalidades'), { nombre_modalidad });
@@ -151,6 +177,64 @@ export async function seedCatalogsIfEmpty() {
     console.log('Catálogos sembrados exitosamente.');
   } catch (error) {
     console.error('Error al inicializar catálogos en Firestore:', error);
+  }
+}
+
+/**
+ * ID del documento de un catálogo cuyo campo de nombre vale `nombre`, o `null` si
+ * no existe (KAN-18).
+ *
+ * Existe porque el flujo de aprobación necesita IDs de catálogo, y los IDs los
+ * asigna Firestore: no hay constantes a las que referirse. Se busca por nombre en
+ * lugar de suponerlo, para que el servicio y las reglas partan de la misma fuente:
+ * el texto del documento.
+ */
+export async function idCatalogoPorNombre(
+  coleccion: 'estados' | 'modalidades',
+  campo: 'nombre_estado' | 'nombre_modalidad',
+  nombre: string
+): Promise<string | null> {
+  try {
+    const q = query(collection(db, coleccion), where(campo, '==', nombre), limit(1));
+    const snap = await getDocs(q);
+    return snap.empty ? null : snap.docs[0].id;
+  } catch (e) {
+    console.error(`Error buscando "${nombre}" en ${coleccion}:`, e);
+    return null;
+  }
+}
+
+/**
+ * Añade los valores de catálogo que KAN-18 necesita, y solo si faltan.
+ *
+ * `seedCatalogsIfEmpty()` es todo o nada: si una sola colección ya tiene algo, no
+ * siembra ninguna. Así que un entorno sembrado antes de este ticket se quedaría sin
+ * 'Pendiente de aprobación' ni 'Generado con IA', y la creación de requerimientos
+ * fallaría con un error de permisos que no explica la causa. Esta función cubre ese
+ * caso sin tocar lo que ya existe.
+ *
+ * Es idempotente: preguntar por nombre antes de escribir evita duplicados si se
+ * llama en cada carga, que es lo que hace quien la invoca.
+ */
+export async function asegurarCatalogosAprobacion(): Promise<void> {
+  const pendientes: Array<['estados' | 'modalidades', 'nombre_estado' | 'nombre_modalidad', string]> = [
+    ['estados', 'nombre_estado', ESTADO_PENDIENTE_APROBACION],
+    ['modalidades', 'nombre_modalidad', MODALIDAD_GENERADO_IA]
+  ];
+
+  for (const [coleccion, campo, nombre] of pendientes) {
+    try {
+      const id = await idCatalogoPorNombre(coleccion, campo, nombre);
+      if (!id) {
+        await addDoc(collection(db, coleccion), { [campo]: nombre });
+        console.log(`Catálogo ${coleccion}: añadido "${nombre}".`);
+      }
+    } catch (error) {
+      // Que falle un catálogo no debe impedir entrar en la app: se avisa por
+      // consola, y el error real saltará al crear un requerimiento, que sí puede
+      // explicarle al usuario qué hacer.
+      console.error(`No se pudo añadir "${nombre}" a ${coleccion}:`, error);
+    }
   }
 }
 

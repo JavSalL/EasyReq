@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signOut as fbSignOut } from 'firebase/auth';
 import { auth } from './firebase';
-import { getUserProfile, seedCatalogsIfEmpty } from './firestore-service';
+import { getUserProfile, seedCatalogsIfEmpty, asegurarCatalogosAprobacion } from './firestore-service';
 import { PerfilUsuario } from './database.types';
 
 interface AuthContextType {
@@ -47,6 +47,11 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
       if (currentUser) {
         await fetchProfile(currentUser);
         seedCatalogsIfEmpty();
+        // KAN-18: `seedCatalogsIfEmpty()` es todo o nada, así que un entorno
+        // sembrado antes de este ticket no recibe 'Pendiente de aprobación' ni
+        // 'Generado con IA'. Sin el estado pendiente, la regla de creación
+        // denegaría todo alta y el usuario vería un error de permisos sin causa.
+        asegurarCatalogosAprobacion();
       } else {
         setProfile(null);
         setProfileLoaded(false);

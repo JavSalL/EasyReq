@@ -17,7 +17,11 @@ import {
   getTiposRequerimientos, 
   getEstados, 
   getModalidades, 
-  getModelos 
+  getModelos,
+  idCatalogoPorNombre,
+  ESTADO_PENDIENTE_APROBACION,
+  ESTADO_APROBADO,
+  ESTADO_RECHAZADO
 } from './catalogos-service';
 import { getAllUsers } from './usuarios-service';
 
@@ -80,11 +84,44 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
 const CONTADOR_REQUERIMIENTOS = 'contador_requerimientos';
 
 /**
+ * Los campos que el sistema impone al dar de alta un requerimiento (KAN-18).
+ *
+ * El autor es quien tiene la sesión y el estado inicial es "Pendiente de
+ * aprobación": ninguno de los dos se le pregunta al formulario. Se resuelve en un
+ * solo sitio y lo usan los dos caminos de alta, para que no puedan divergir.
+ *
+ * Los valores que traiga `data` en esos campos se descartan a propósito. La
+ * interfaz ya no los ofrece, pero esto es la segunda línea: un cliente modificado
+ * que los mandara escribiría algo distinto de lo que dice el documento.
+ *
+ * Si el catálogo no tiene el estado pendiente se lanza un error que lo explica. Las
+ * reglas lo comparan por su texto, así que sin él la escritura sería denegada y el
+ * usuario vería un `permission-denied` sin causa aparente.
+ */
+async function datosDeAlta(data: Partial<Requerimiento>, uid: string): Promise<Partial<Requerimiento>> {
+  const idEstado = await idCatalogoPorNombre('estados', 'nombre_estado', ESTADO_PENDIENTE_APROBACION);
+  if (!idEstado) {
+    throw new Error(
+      `Falta el estado "${ESTADO_PENDIENTE_APROBACION}" en el catálogo de estados. ` +
+      'Pídeselo a quien administre el proyecto: sin él no se puede registrar ningún requerimiento.'
+    );
+  }
+  return { ...data, id_autor: uid, id_estado: idEstado, id_aprobador: null };
+}
+
+/**
  * Crea el requerimiento con el siguiente número consecutivo de su proyecto. El
  * contador y el requerimiento se escriben en una sola transacción, así dos
  * personas que guardan a la vez nunca obtienen el mismo número.
+ *
+ * KAN-18: `uid` es el autor y el requerimiento nace pendiente de aprobación. Ninguno
+ * de los dos se toma de `data`.
  */
-export async function createRequerimiento(data: Partial<Requerimiento>): Promise<Requerimiento> {
+export async function createRequerimiento(
+  data: Partial<Requerimiento>,
+  uid: string
+): Promise<Requerimiento> {
+  const alta = await datosDeAlta(data, uid);
   const created_at = new Date().toISOString();
   const reqRef = doc(collection(db, 'requerimiento'));
   const proyectoRef = data.id_proyecto ? doc(db, 'proyecto', data.id_proyecto) : null;
@@ -99,7 +136,7 @@ export async function createRequerimiento(data: Partial<Requerimiento>): Promise
       }
     }
     transaction.set(reqRef, {
-      ...data,
+      ...alta,
       ...(siguiente !== null ? { numero: siguiente, codigo: codigoRequerimiento(siguiente) } : {}),
       created_at
     });
@@ -107,8 +144,8 @@ export async function createRequerimiento(data: Partial<Requerimiento>): Promise
   });
 
   return {
+    ...(alta as Requerimiento),
     id: reqRef.id,
-    ...(data as any),
     numero,
     codigo: numero !== null ? codigoRequerimiento(numero) : null,
     created_at
@@ -128,9 +165,13 @@ export async function insertarRequerimientoDespuesDe(
   id_proyecto: string,
   despuesDeNumero: number,
   data: Partial<Requerimiento>,
-  id_autor: string | null
+  autor: string
 ): Promise<{ requerimiento: Requerimiento; renumerados: number }> {
   const MENSAJE_CONFLICTO = 'Otra persona cambió los requerimientos mientras guardabas. Recarga la página e inténtalo de nuevo.';
+  // KAN-18: mismo tratamiento que `createRequerimiento`. Insertar en medio es otro
+  // camino de alta y si se dejara sin forzar, quien lo usara podría crearse un
+  // requerimiento ya aprobado saltándose la fila de la tabla.
+  const alta = await datosDeAlta(data, autor);
   const proyectoRef = doc(db, 'proyecto', id_proyecto);
 
   // El contador se lee ANTES que la lista: una alta posterior moverá el contador y se detectará
@@ -171,7 +212,7 @@ export async function insertarRequerimientoDespuesDe(
     siguientes.forEach(s => {
       transaction.update(s.ref, { numero: s.numero + 1, codigo: codigoRequerimiento(s.numero + 1) });
     });
-    transaction.set(reqRef, { ...data, numero: nuevoNumero, codigo: codigoRequerimiento(nuevoNumero), created_at });
+    transaction.set(reqRef, { ...alta, numero: nuevoNumero, codigo: codigoRequerimiento(nuevoNumero), created_at });
     transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: contador + 1 });
   });
 
@@ -183,7 +224,7 @@ export async function insertarRequerimientoDespuesDe(
           addLogRequerimiento({
             id_requerimiento: s.ref.id,
             accion: 'Renumeración',
-            id_autor,
+            id_autor: autor,
             detalles: {
               de: codigoRequerimiento(s.numero),
               a: codigoRequerimiento(s.numero + 1),
@@ -197,7 +238,7 @@ export async function insertarRequerimientoDespuesDe(
 
   return {
     requerimiento: {
-      ...data,
+      ...alta,
       id: reqRef.id,
       numero: nuevoNumero,
       codigo: codigoRequerimiento(nuevoNumero),
@@ -247,6 +288,54 @@ export async function asignarNumerosRequerimientos(
 
 export async function updateRequerimiento(id: string, data: Partial<Requerimiento>): Promise<void> {
   await updateDoc(doc(db, 'requerimiento', id), data);
+}
+
+/**
+ * Devuelve un requerimiento rechazado al ciclo de aprobación (KAN-18).
+ *
+ * Lo llama su autor después de corregirlo. El estado vuelve a "Pendiente de
+ * aprobación" y se sella `reenviado_at`, que la tarjeta usa para distinguir un
+ * reenvío de un alta. No toca autor ni aprobador: son de otras reglas.
+ */
+export async function reenviarRequerimientoAprobacion(id: string): Promise<void> {
+  const idEstado = await idCatalogoPorNombre('estados', 'nombre_estado', ESTADO_PENDIENTE_APROBACION);
+  if (!idEstado) {
+    throw new Error(
+      `Falta el estado "${ESTADO_PENDIENTE_APROBACION}" en el catálogo de estados. ` +
+      'Pídeselo a quien administre el proyecto.'
+    );
+  }
+  await updateDoc(doc(db, 'requerimiento', id), {
+    id_estado: idEstado,
+    reenviado_at: new Date().toISOString()
+  });
+}
+
+/**
+ * Aprueba o rechaza un requerimiento pendiente (KAN-18).
+ *
+ * `aprobar` deja el líder como aprobador; `rechazar` lo deja en `null` y así se
+ * escribe a propósito: quien rechaza no aprobó, y un rechazo con nombre de
+ * aprobador se mostraría como "Aprobado por" en la tarjeta.
+ *
+ * No se comprueba aquí si quien llama es líder del equipo: eso lo decide
+ * `esDecisionDelAprobador` en `firestore.rules`, que es donde manda. Esta función
+ * solo compone la escritura; si el permiso falta, el backend deniega.
+ */
+export async function decidirAprobacionRequerimiento(
+  id: string,
+  decision: 'aprobar' | 'rechazar',
+  uid: string
+): Promise<void> {
+  const nombreEstado = decision === 'aprobar' ? ESTADO_APROBADO : ESTADO_RECHAZADO;
+  const idEstado = await idCatalogoPorNombre('estados', 'nombre_estado', nombreEstado);
+  if (!idEstado) {
+    throw new Error(`Falta el estado "${nombreEstado}" en el catálogo de estados. Pídeselo a quien administre el proyecto.`);
+  }
+  await updateDoc(doc(db, 'requerimiento', id), {
+    id_estado: idEstado,
+    id_aprobador: decision === 'aprobar' ? uid : null
+  });
 }
 
 export async function deleteRequerimiento(id: string): Promise<void> {
