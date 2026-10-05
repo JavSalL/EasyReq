@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signOut as fbSignOut } from 'firebase/auth';
 import { auth } from './firebase';
-import { getUserProfile, seedCatalogsIfEmpty } from './firestore-service';
+import { getUserProfile, seedCatalogsIfEmpty, asegurarCatalogosAprobacion } from './firestore-service';
 import { PerfilUsuario } from './database.types';
 
 interface AuthContextType {
@@ -46,7 +46,19 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
       setUser(currentUser);
       if (currentUser) {
         await fetchProfile(currentUser);
-        seedCatalogsIfEmpty();
+        // Las dos siembras son deliberadamente "suelta y sigue": no bloquean el
+        // arranque de la app y cada una captura sus propios errores, avisando por
+        // consola (`asegurarCatalogosAprobacion` lo hace por catálogo, uno a uno).
+        // El `void` no es para callar al linter: deja escrito que el resultado se
+        // ignora a propósito, que es lo mismo que hacen `EquiposDelProyecto`,
+        // `MiembrosDelProyecto` y `app/patrones` con sus cargas. Sin él, un
+        // rechazo aquí sería una promesa no capturada sin que nadie la viera.
+        void seedCatalogsIfEmpty();
+        // KAN-18: `seedCatalogsIfEmpty()` es todo o nada, así que un entorno
+        // sembrado antes de este ticket no recibe 'Pendiente de aprobación' ni
+        // 'Generado con IA'. Sin el estado pendiente, la regla de creación
+        // denegaría todo alta y el usuario vería un error de permisos sin causa.
+        void asegurarCatalogosAprobacion();
       } else {
         setProfile(null);
         setProfileLoaded(false);
