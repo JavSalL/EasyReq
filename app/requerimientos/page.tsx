@@ -8,7 +8,7 @@ import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Clock, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, ArrowRight, Copy, ListPlus, ListOrdered
 } from 'lucide-react';
-import { generateSingleRequirement } from '@/lib/ai-actions';
+import { generateSingleRequirement, AIError } from '@/lib/ai-actions';
 import type {
   Proyecto, Requerimiento, TipoRequerimiento, Estado,
   Modalidad, Modelo, Patron, PerfilUsuario, LogRequerimiento
@@ -528,8 +528,8 @@ export default function RequerimientosPage() {
       } else {
         toast.error("La IA no devolvió un requerimiento. Intenta describirlo con más detalle.");
       }
-    } catch {
-      toast.error("No se pudo conectar con el servicio de IA. Inténtalo de nuevo.");
+    } catch (err) {
+      toast.error(err instanceof AIError ? err.message : "No se pudo conectar con el servicio de IA. Inténtalo de nuevo.");
     } finally {
       setIsAILoading(false);
     }
