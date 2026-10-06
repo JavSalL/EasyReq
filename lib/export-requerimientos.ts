@@ -3,15 +3,11 @@
 // como Blob y PDF se genera con jsPDF en el cliente.
 
 import type { Patron, Proyecto, Requerimiento } from './database.types';
+import { codigoDe } from './requerimientos';
 
 export type FormatoExportacion = 'pdf' | 'markdown' | 'word';
 export type AlcanceExportacion = 'visibles' | 'todos';
 export type AgrupacionExportacion = 'ninguna' | 'tipo';
-
-export interface NumeroRequerimiento {
-  codigo: string;
-  orden: number;
-}
 
 export interface ItemExportacion {
   codigo: string;
@@ -21,26 +17,6 @@ export interface ItemExportacion {
   patron: string;
   modelo: string;
   estado: string;
-}
-
-/** Código visible del requerimiento según su posición en pantalla (REQ-001...). */
-export function codigoRequerimiento(indiceBaseCero: number): string {
-  return `REQ-${String(indiceBaseCero + 1).padStart(3, '0')}`;
-}
-
-/**
- * Numeración estable según el orden que se ve en pantalla. `listaBase` debe
- * venir ya ordenada como en la pantalla; el mapa conserva código y orden para
- * que la exportación coincida aunque se exporte un subconjunto filtrado.
- */
-export function numerarRequerimientos(
-  listaBase: Array<Requerimiento>
-): Map<string, NumeroRequerimiento> {
-  const mapa = new Map<string, NumeroRequerimiento>();
-  listaBase.forEach((req, i) => {
-    mapa.set(req.id, { codigo: codigoRequerimiento(i), orden: i + 1 });
-  });
-  return mapa;
 }
 
 export function nombreTipoFurps(req: Requerimiento): string {
@@ -71,28 +47,26 @@ export function nombreEstado(req: Requerimiento): string {
   return req.estado?.nombre_estado?.trim() || 'Sin estado';
 }
 
-/** Convierte la lista a exportar en items con código, orden y nombres legibles. */
+/**
+ * Convierte la lista a exportar en items con código, orden y nombres legibles.
+ * `listaAExportar` debe venir en el orden de la pantalla. El identificador es
+ * el mismo que se ve (`codigo` guardado en la base); los requerimientos
+ * anteriores a la numeración muestran "Sin código", igual que en la pantalla
+ * no tienen insignia.
+ */
 export function prepararItems(
-  listaBaseOrdenada: Array<Requerimiento>,
   listaAExportar: Array<Requerimiento>,
   patrones: Array<Patron>
 ): Array<ItemExportacion> {
-  const numeracion = numerarRequerimientos(listaBaseOrdenada);
-  return listaAExportar.map((req) => {
-    const numero = numeracion.get(req.id) ?? {
-      codigo: req.id.slice(0, 8).toUpperCase(),
-      orden: 0,
-    };
-    return {
-      codigo: numero.codigo,
-      orden: numero.orden,
-      requerimiento: req,
-      tipoFurps: nombreTipoFurps(req),
-      patron: nombrePatron(req, patrones),
-      modelo: nombreModelo(req),
-      estado: nombreEstado(req),
-    };
-  });
+  return listaAExportar.map((req, i) => ({
+    codigo: codigoDe(req) ?? 'Sin código',
+    orden: i + 1,
+    requerimiento: req,
+    tipoFurps: nombreTipoFurps(req),
+    patron: nombrePatron(req, patrones),
+    modelo: nombreModelo(req),
+    estado: nombreEstado(req),
+  }));
 }
 
 /** Agrupa items por tipo FURPS manteniendo el orden de primera aparición. */

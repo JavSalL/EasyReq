@@ -1,17 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Menu } from 'lucide-react';
 import { FirebaseAuthProvider, useAuth } from '@/lib/firebase-auth-provider';
-import Sidebar from './Sidebar';
+import TopNav from './TopNav';
+import ProfileModal from './ProfileModal';
 import { ConfirmProvider } from './ui/ConfirmProvider';
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading } = useAuth();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user, profile, profileLoaded, loading } = useAuth();
   // Con trailingSlash:true (exportación estática para Firebase Hosting) la ruta real
   // es "/login/", así que se normaliza quitando la barra final antes de comparar.
   const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname;
@@ -27,14 +26,35 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, isLoginPage, router]);
 
-  // Cerrar menú móvil al cambiar de ruta
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [pathname]);
+  // Registro pendiente: la cuenta existe pero falta el perfil o no tiene profesiones (p. ej. una
+  // cuenta nueva de Google). Se piden los mismos datos que en el registro normal y no se puede omitir.
+  const registroPendiente =
+    !!user &&
+    profileLoaded &&
+    (!profile || !Array.isArray(profile.ids_profesiones) || profile.ids_profesiones.length === 0) &&
+    !(profile?.id_profesion);
 
-  // Si estamos en la página de login, renderizamos a pantalla completa sin Sidebar
+  // Atajo "/": lleva el cursor al buscador de la pantalla (si hay uno)
+  useEffect(() => {
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      const buscador = document.querySelector<HTMLInputElement>('input[type="search"]');
+      if (buscador) {
+        e.preventDefault();
+        buscador.focus();
+        buscador.select();
+      }
+    };
+    document.addEventListener('keydown', alTeclear);
+    return () => document.removeEventListener('keydown', alTeclear);
+  }, []);
+
+  // Si estamos en la página de login, renderizamos a pantalla completa sin barra de navegación
   if (isLoginPage) {
-    return <main className="min-h-screen w-full">{children}</main>;
+    return <main className="min-h-dvh w-full">{children}</main>;
   }
 
   // Spinner mientras valida la sesión inicial. Sin usuario tampoco se renderiza
@@ -42,56 +62,37 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   // el efecto de arriba redirija a /login.
   if (loading || !user) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-zinc-500 font-medium tracking-wide">Cargando EasyReq...</span>
+      <div className="min-h-dvh w-full flex items-center justify-center bg-canvas">
+        <div role="status" className="flex flex-col items-center gap-3">
+          <div className="size-8 border-2 border-brand-solid border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-ink-subtle font-medium">Cargando EasyReq...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      {/* Overlay backdrop para menú móvil */}
-      {isMobileMenuOpen && (
-        <div 
-          onClick={() => setIsMobileMenuOpen(false)}
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs lg:hidden animate-in fade-in duration-200"
-        />
-      )}
+    <div className="min-h-dvh bg-canvas text-ink">
+      <a
+        href="#contenido"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60] focus:px-4 focus:py-2 focus:rounded-ui focus:bg-brand-solid focus:text-on-solid focus:text-sm focus:font-semibold"
+      >
+        Saltar al contenido
+      </a>
 
-      {/* Sidebar (Desktop + Mobile Drawer) */}
-      <Sidebar 
-        isOpen={isMobileMenuOpen} 
-        onClose={() => setIsMobileMenuOpen(false)} 
-      />
+      <TopNav />
 
-      {/* Top Header Bar (Solo pantallas pequeñas / móviles) */}
-      <header className="lg:hidden sticky top-0 z-30 w-full bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="p-2 rounded-xl text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 focus:outline-none"
-            aria-label="Abrir menú"
-          >
-            <Menu size={22} />
-          </button>
-          <div className="flex items-center space-x-2">
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs tracking-wider shadow-sm">
-              ER
-            </div>
-            <span className="font-bold text-base tracking-tight">EasyReq</span>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main className="flex-1 lg:ml-64 transition-all duration-300 min-h-screen">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-          {children}
-        </div>
+      <main id="contenido" tabIndex={-1} className="outline-none">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">{children}</div>
       </main>
+
+      <ProfileModal
+        open={registroPendiente}
+        obligatorio
+        onClose={() => {}}
+        title="Completa tu registro"
+        description="Para terminar de crear tu cuenta, confirma tu nombre y elige tus profesiones o especialidades."
+      />
     </div>
   );
 }

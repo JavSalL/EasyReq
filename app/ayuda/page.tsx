@@ -6,6 +6,7 @@ import {
   HelpCircle, FolderGit2, FileText, Users, BookOpen, Shield, Sparkles, Keyboard, ChevronRight, ChevronDown
 } from 'lucide-react';
 import { tarjeta } from '@/components/ui/estilos';
+import PageHeader from '@/components/ui/PageHeader';
 
 const SECCIONES = [
   {
@@ -16,7 +17,7 @@ const SECCIONES = [
       'Cualquier usuario puede crear un proyecto; quien lo crea puede editarlo y eliminarlo.',
       'Haz clic en la tarjeta de un proyecto para ver sus requerimientos.',
       'Arriba ves "Mis proyectos" (los que puedes editar) y abajo los de la comunidad.',
-      'Las solicitudes de equipos que recibas aparecen en el botón "Solicitudes de equipos".',
+      'Un proyecto tiene miembros y se divide en equipos. Tú, como creador, agregas a los miembros desde la pestaña Miembros, y al crearlo (o desde "Editar") eliges quién puede crear equipos y quién puede agregar miembros.',
     ],
   },
   {
@@ -24,7 +25,12 @@ const SECCIONES = [
     titulo: 'Requerimientos',
     puntos: [
       'Elige un modelo (EARS, Sistemas Embebidos, Dr. Reyes) y un patrón; con "Usar plantilla" se copia su estructura al enunciado.',
-      'Cambia el estado de un requerimiento directamente desde su tarjeta.',
+      'Cada requerimiento tiene un identificador dentro de su proyecto (REQ-001, REQ-002...). Van en orden y, si borras uno, su número no se reutiliza. Haz clic en el identificador para copiarlo, o búscalo escribiendo su número.',
+      'Con «Insertar después» (el icono de lista con un +, en cada fila) añades un requerimiento entre dos: se registra con el número siguiente y todos los que venían después suben un número.',
+      'Cada requerimiento pertenece a un equipo, y su líder es quien lo aprueba. El equipo se elige al redactar y no se cambia después: mover el requerimiento movería al que tiene que decidir sobre él.',
+      'Al registrarlo queda «Pendiente de aprobación»: no entra al flujo normal hasta que el líder de su equipo lo acepta.',
+      'El líder del equipo tiene dos botones en la fila: el de check verde para aprobar y el de aspa para rechazar.',
+      'Si lo rechazan, puedes corregir el texto y devolverlo con el botón de reenviar; vuelve a la cola del líder.',
       'El botón de historial muestra quién hizo cada cambio y cuándo.',
     ],
   },
@@ -34,17 +40,18 @@ const SECCIONES = [
     puntos: [
       'Dentro del formulario de un requerimiento, describe la funcionalidad y presiona "Generar".',
       'La IA redacta el enunciado siguiendo el patrón seleccionado; revísalo antes de guardar.',
+      'Lo generado con IA se registra con la modalidad «Generado con IA» puesta sola, para que se distinga de lo escrito a mano.',
+      'Un requerimiento generado con IA sigue el mismo camino: también espera la aprobación de su líder.',
     ],
   },
   {
     icono: Users,
     titulo: 'Equipos y roles',
-    href: '/equipos-global/',
     puntos: [
-      'Quien crea un equipo queda como su líder.',
-      'El líder invita a los usuarios con uno o varios roles; se unen al aceptar la invitación en "Invitaciones".',
+      'Los equipos viven dentro de cada proyecto y se arman solo con sus miembros: abre un proyecto y entra a su pestaña "Equipos".',
+      'Quien crea un equipo queda como su líder. Quién puede crear equipos en un proyecto lo define su creador: solo él, miembros que elija o cualquier miembro.',
+      'El líder invita a los usuarios con uno o varios roles. La invitación te llega a la campana de la barra superior y te unes al aceptarla.',
       'El líder puede cambiar los roles de un miembro. El equipo siempre debe conservar al menos un líder.',
-      'Para vincular un equipo a un proyecto, el creador del proyecto lo invita desde el botón "Equipos" y el líder del equipo acepta.',
     ],
   },
   {
@@ -60,12 +67,18 @@ const SECCIONES = [
 
 const PERMISOS: Array<[string, string]> = [
   ['Ver proyectos, requerimientos, equipos y patrones', 'Cualquier usuario con sesión'],
-  ['Crear proyectos y equipos', 'Cualquier usuario con sesión'],
-  ['Editar o eliminar un proyecto', 'Su creador o miembros de un equipo vinculado'],
-  ['Crear, editar o aprobar requerimientos', 'Su creador o miembros de un equipo vinculado'],
-  ['Invitar un equipo a un proyecto', 'El creador del proyecto (el líder del equipo acepta)'],
-  ['Pedir desvincular un equipo de un proyecto', 'El creador del proyecto o el líder del equipo'],
+  ['Crear proyectos', 'Cualquier usuario con sesión'],
+  ['Agregar o quitar miembros de un proyecto', 'El creador y los miembros que él autorice'],
+  ['Crear equipos en un proyecto', 'Lo define el creador: solo él, miembros que elija o cualquier miembro'],
+  ['Cambiar quién crea equipos o gestiona miembros', 'El creador del proyecto'],
+  ['Editar o eliminar un proyecto', 'Su creador y sus miembros'],
+  ['Crear requerimientos', 'Los miembros del proyecto'],
+  ['Corregir un requerimiento en revisión', 'Su autor'],
+  ['Aprobar o rechazar un requerimiento', 'El líder del equipo al que pertenece'],
+  ['Reenviar un requerimiento rechazado', 'Su autor'],
+  ['Editar un requerimiento ya aprobado', 'Cualquier miembro del proyecto'],
   ['Editar un equipo, invitar miembros y cambiar roles', 'Los líderes del equipo'],
+  ['Editar o eliminar patrones y modelos', 'Nadie por ahora. Se pueden copiar y crear nuevos'],
 ];
 
 const FAQS = [
@@ -91,7 +104,27 @@ const FAQS = [
   },
   {
     pregunta: '¿Cómo funcionan los proyectos, equipos y roles?',
-    respuesta: 'Los proyectos agrupan requerimientos. Cada proyecto tiene un equipo con miembros y roles (por ejemplo, administrador, analista). Gestiona los equipos desde la sección “Equipos” y asigna personas a cada proyecto para colaborar.',
+    respuesta: 'Los proyectos agrupan requerimientos. Cada proyecto tiene miembros (los agrega su creador desde la pestaña “Miembros”) y se divide en equipos armados con esos miembros, cada uno con sus roles (por ejemplo, líder, analista). Los equipos se gestionan desde la pestaña “Equipos”, y las invitaciones que recibas para unirte a un equipo aparecen en la campana de la barra superior.',
+  },
+  {
+    pregunta: '¿Por qué mi requerimiento no aparece en el flujo normal todavía?',
+    respuesta: 'Porque está “Pendiente de aprobación”. Todo requerimiento nuevo nace así y solo avanza cuando el líder de su equipo lo aprueba. Si nadie lo aprueba, sigue visible con su estado en la lista: no se ha perdido ni se ha descartado.',
+  },
+  {
+    pregunta: 'Soy líder de un equipo y no me salen los botones de aprobar y rechazar.',
+    respuesta: 'Los botones solo aparecen en los requerimientos que están “Pendiente de aprobación” y que pertenecen a un equipo que tú lideras. Si el requerimiento ya está aprobado, implementado o en borrador, no se vuelve a decidir. Ten en cuenta también que el equipo no se puede cambiar al editar: si el requerimiento es de otro equipo, el líder de ese otro equipo es quien decide.',
+  },
+  {
+    pregunta: 'Me rechazaron un requerimiento. ¿Qué hago?',
+    respuesta: 'Corrige el texto con el botón de editar y devuélvelo con el de reenviar. Volverá a la cola de tu líder. El motivo queda en el historial del requerimiento, que se abre con el icono de reloj.',
+  },
+  {
+    pregunta: '¿Quién es el autor y el aprobador de un requerimiento?',
+    respuesta: 'El autor lo pone el sistema: es quien lo registró, y no se puede cambiar ni desde el formulario ni escribiendo directamente en la base. El aprobador lo escribe el líder al aprobar, y queda vacío mientras tanto o si lo rechaza, porque quien rechaza no aprobó.',
+  },
+  {
+    pregunta: 'Mi requerimiento dice “Sin equipo”. ¿Qué significa?',
+    respuesta: 'Que se creó antes de que existiera la aprobación por líder. Esos requerimientos no guardan a qué equipo pertenecían, así que no hay un líder concreto que pueda aprobarlos: se pueden editar como cualquier otro del proyecto. Los nuevos sí llevan equipo y sí pasan por aprobación.',
   },
   {
     pregunta: '¿A quién pido ayuda si algo falla?',
@@ -102,32 +135,24 @@ const FAQS = [
 export default function AyudaPage() {
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="pb-4 border-b border-zinc-200/60 dark:border-zinc-800/60">
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2.5">
-          <HelpCircle className="text-zinc-700 dark:text-zinc-300" size={24} />
-          Ayuda
-        </h1>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-          Guía rápida para trabajar con EasyReq.
-        </p>
-      </div>
+    <div className="animate-in fade-in">
+      <PageHeader title="Ayuda" description="Guía rápida para trabajar con EasyReq." />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {SECCIONES.map(({ icono: Icono, titulo, href, puntos }) => (
           <section key={titulo} className={`${tarjeta} p-5`}>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                <Icono size={16} className="text-blue-600 dark:text-blue-400" />
+              <h2 className="text-base font-semibold text-ink flex items-center gap-2">
+                <Icono size={16} className="text-brand-text" />
                 {titulo}
               </h2>
               {href && (
-                <Link href={href} className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center">
+                <Link href={href} className="text-xs font-semibold text-brand-text hover:underline inline-flex items-center">
                   Ir <ChevronRight size={12} />
                 </Link>
               )}
             </div>
-            <ul className="space-y-1.5 text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed list-disc pl-4">
+            <ul className="space-y-1.5 text-xs text-ink-muted leading-relaxed list-disc pl-4">
               {puntos.map((p) => (
                 <li key={p}>{p}</li>
               ))}
@@ -137,16 +162,16 @@ export default function AyudaPage() {
       </div>
 
       <section className={`${tarjeta} overflow-hidden`}>
-        <h2 className="px-5 py-4 border-b border-zinc-200/60 dark:border-zinc-800/60 text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-          <Shield size={16} className="text-blue-600 dark:text-blue-400" />
+        <h2 className="px-5 py-4 border-b border-line text-base font-semibold text-ink flex items-center gap-2">
+          <Shield size={16} className="text-brand-text" />
           ¿Quién puede hacer qué?
         </h2>
         <table className="w-full text-xs">
-          <tbody className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
+          <tbody className="divide-y divide-line">
             {PERMISOS.map(([accion, quien]) => (
               <tr key={accion}>
-                <td className="px-5 py-2.5 text-zinc-800 dark:text-zinc-200">{accion}</td>
-                <td className="px-5 py-2.5 text-zinc-500 dark:text-zinc-400">{quien}</td>
+                <td className="px-5 py-2.5 text-ink">{accion}</td>
+                <td className="px-5 py-2.5 text-ink-subtle">{quien}</td>
               </tr>
             ))}
           </tbody>
@@ -154,40 +179,48 @@ export default function AyudaPage() {
       </section>
 
       <section className={`${tarjeta} p-5`}>
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
-          <Keyboard size={16} className="text-blue-600 dark:text-blue-400" />
+        <h2 className="text-base font-semibold text-ink flex items-center gap-2 mb-3">
+          <Keyboard size={16} className="text-brand-text" />
           Atajos
         </h2>
-        <ul className="space-y-1.5 text-xs text-zinc-600 dark:text-zinc-400">
+        <ul className="space-y-1.5 text-xs text-ink-muted">
           <li>
-            <kbd className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 font-mono text-[10px]">Esc</kbd>
-            {' '}cierra cualquier ventana abierta.
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">/</kbd>
+            {' '}lleva el cursor al buscador de la pantalla.
           </li>
           <li>
-            <kbd className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 font-mono text-[10px]">Ctrl</kbd>
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Esc</kbd>
+            {' '}cierra cualquier ventana abierta. Si tienes cambios sin guardar, te pregunta antes de descartarlos.
+          </li>
+          <li>
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Ctrl</kbd>
             {' + '}
-            <kbd className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 font-mono text-[10px]">Enter</kbd>
-            {' '}guarda el requerimiento que estás redactando.
+            <kbd className="px-1.5 py-0.5 rounded-ui border border-line-strong bg-sunken font-mono text-xs">Enter</kbd>
+            {' '}guarda el formulario abierto (proyecto, equipo, patrón o requerimiento).
+          </li>
+          <li>
+            Al registrar varios requerimientos seguidos, usa «Guardar y añadir otro»: la ventana se queda abierta
+            con el mismo modelo y tipo para que solo escribas el siguiente enunciado.
           </li>
         </ul>
       </section>
 
       <section className={`${tarjeta} p-5`}>
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 mb-3">
-          <HelpCircle size={16} className="text-blue-600 dark:text-blue-400" />
+        <h2 className="text-base font-semibold text-ink flex items-center gap-2 mb-3">
+          <HelpCircle size={16} className="text-brand-text" />
           Preguntas frecuentes
         </h2>
         <div className="space-y-2">
           {FAQS.map((faq) => (
             <details
               key={faq.pregunta}
-              className="group rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 p-3 text-xs open:bg-zinc-50 dark:open:bg-zinc-900/40 transition-colors"
+              className="group rounded-ui border border-line p-3 text-sm open:bg-sunken transition-colors"
             >
-              <summary className="font-medium text-zinc-800 dark:text-zinc-200 cursor-pointer list-none flex items-center justify-between gap-2">
+              <summary className="font-medium text-ink cursor-pointer list-none flex items-center justify-between gap-2">
                 <span>{faq.pregunta}</span>
-                <ChevronDown size={14} className="text-zinc-400 group-open:rotate-180 transition-transform shrink-0" />
+                <ChevronDown size={14} className="text-ink-subtle group-open:rotate-180 transition-transform shrink-0" />
               </summary>
-              <p className="mt-2 text-zinc-600 dark:text-zinc-400 leading-relaxed pl-1">
+              <p className="mt-2 text-ink-muted leading-relaxed pl-1">
                 {faq.respuesta}
               </p>
             </details>
