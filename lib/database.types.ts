@@ -98,6 +98,9 @@ export interface Requerimiento {
   id_modalidad: UUID | null;
   id_estado: UUID | null;
   id_modelo: UUID | null;
+  // Patrón (plantilla) elegido al redactar. Opcional porque los documentos
+  // anteriores a KAN-28 solo guardaban el modelo.
+  id_patron?: UUID | null;
   created_at?: string;
 
   // Joins relacionales
@@ -107,6 +110,7 @@ export interface Requerimiento {
   autor?: PerfilUsuario | null;
   aprobador?: PerfilUsuario | null;
   modelo?: Modelo | null;
+  patron?: Patron | null;
 }
 
 // 3. Tablas Intermedias

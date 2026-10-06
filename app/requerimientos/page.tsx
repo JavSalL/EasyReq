@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Users, Clock, Save,
-  Sparkles, CheckCheck, FileText, History, Lock, Wand2, ArrowRight
+  Sparkles, CheckCheck, FileText, History, Lock, Wand2, ArrowRight, Download
 } from 'lucide-react';
 import { generateSingleRequirement } from '@/lib/ai-actions';
 import type {
@@ -36,6 +36,16 @@ import {
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
 import { usePageTitle } from '@/lib/use-page-title';
+import {
+  numerarRequerimientos,
+  prepararItems,
+  exportarMarkdown,
+  exportarWord,
+  exportarPdf,
+  type FormatoExportacion,
+  type AlcanceExportacion,
+  type AgrupacionExportacion
+} from '@/lib/export-requerimientos';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import {
@@ -54,12 +64,16 @@ const FORM_VACIO = {
 };
 
 // Nombres legibles de los campos, para describir qué cambió en el historial
-const CAMPOS_EDITABLES: Array<[keyof typeof FORM_VACIO & keyof Requerimiento, string]> = [
+const CAMPOS_EDITABLES: Array<[
+  'enunciado' | 'id_tipo_requerimiento' | 'id_estado' | 'id_modalidad' | 'id_modelo' | 'id_patron' | 'id_autor' | 'id_aprobador',
+  string
+]> = [
   ['enunciado', 'enunciado'],
   ['id_tipo_requerimiento', 'tipo'],
   ['id_estado', 'estado'],
   ['id_modalidad', 'modalidad'],
   ['id_modelo', 'modelo'],
+  ['id_patron', 'patrón'],
   ['id_autor', 'autor'],
   ['id_aprobador', 'aprobador']
 ];
@@ -109,6 +123,13 @@ export default function RequerimientosPage() {
   const [filterEstado, setFilterEstado] = useState<string>("todos");
   const [filterTipo, setFilterTipo] = useState<string>("todos");
   const [filterModelo, setFilterModelo] = useState<string>("todos");
+
+  // Exportación a documento (KAN-28): todo se genera en el navegador.
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [formatoExport, setFormatoExport] = useState<FormatoExportacion>('pdf');
+  const [alcanceExport, setAlcanceExport] = useState<AlcanceExportacion>('visibles');
+  const [agrupacionExport, setAgrupacionExport] = useState<AgrupacionExportacion>('ninguna');
+  const [exportando, setExportando] = useState(false);
 
   // Modal State Requerimiento
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -265,7 +286,9 @@ export default function RequerimientosPage() {
       id_estado: req.id_estado || '',
       id_modalidad: req.id_modalidad || '',
       id_modelo: req.id_modelo || '',
-      id_patron_seleccionado: patrones.find(p => p.id_modelo === req.id_modelo)?.patron_id || '',
+      // Conserva el patrón guardado; solo como respaldo se infiere por modelo
+      // (documentos anteriores a KAN-28 no guardaban `id_patron`).
+      id_patron_seleccionado: req.id_patron || patrones.find(p => p.id_modelo === req.id_modelo)?.patron_id || '',
       id_autor: req.id_autor || '',
       id_aprobador: req.id_aprobador || ''
     });
@@ -314,6 +337,7 @@ export default function RequerimientosPage() {
       id_estado: formData.id_estado || null,
       id_modalidad: formData.id_modalidad || null,
       id_modelo: formData.id_modelo || null,
+      id_patron: formData.id_patron_seleccionado || null,
       id_autor: formData.id_autor || null,
       id_aprobador: formData.id_aprobador || null
     };
@@ -512,6 +536,51 @@ export default function RequerimientosPage() {
     return matchSearch && matchEstado && matchTipo && matchModelo;
   });
 
+  // Numeración visible (REQ-001...) según el orden en pantalla de la lista
+  // completa: los filtrados conservan su código original.
+  const numeracion = useMemo(() => numerarRequerimientos(requerimientos), [requerimientos]);
+  const codigoDe = (id: string) => numeracion.get(id)?.codigo ?? id.slice(0, 8).toUpperCase();
+
+  // Items a exportar según el alcance elegido, siempre en el orden en pantalla.
+  const itemsAExportar =
+    alcanceExport === 'visibles' ? filteredRequerimientos : requerimientos;
+  const conteoExport = itemsAExportar.length;
+
+  const handleExportar = async () => {
+    if (!proyecto) {
+      toast.error('Aún no se cargó el proyecto');
+      return;
+    }
+    if (conteoExport === 0) {
+      toast.error(
+        requerimientos.length === 0
+          ? 'Este proyecto aún no tiene requerimientos para exportar'
+          : 'Ningún requerimiento coincide con los filtros actuales'
+      );
+      return;
+    }
+    setExportando(true);
+    try {
+      const items = prepararItems(requerimientos, itemsAExportar, patrones);
+      if (formatoExport === 'markdown') {
+        const nombre = exportarMarkdown(proyecto, items, agrupacionExport);
+        toast.success(`Markdown descargado (${nombre})`);
+      } else if (formatoExport === 'word') {
+        const nombre = exportarWord(proyecto, items, agrupacionExport);
+        toast.success(`Documento Word descargado (${nombre})`);
+      } else {
+        const nombre = await exportarPdf(proyecto, items, agrupacionExport);
+        toast.success(`PDF descargado (${nombre})`);
+      }
+      setShowExportModal(false);
+    } catch (e) {
+      console.error('Error al exportar requerimientos:', e);
+      toast.error(mensajeError(e, 'No se pudo generar el documento'));
+    } finally {
+      setExportando(false);
+    }
+  };
+
   // Equipos vinculados primero en el modal
   const equiposOrdenados = [...equipos].sort(
     (a, b) => Number(equiposAsignados.includes(b.equipo_id)) - Number(equiposAsignados.includes(a.equipo_id))
@@ -572,6 +641,15 @@ export default function RequerimientosPage() {
           <button onClick={() => setShowEquiposModal(true)} className={btnSecundario}>
             <Users size={15} className="text-zinc-500" />
             Equipos ({equiposAsignados.length})
+          </button>
+
+          <button
+            onClick={() => setShowExportModal(true)}
+            className={btnSecundario}
+            title="Exportar requerimientos a PDF, Markdown o Word"
+          >
+            <Download size={15} className="text-zinc-500" />
+            Exportar
           </button>
 
           {puedeEditar && (
@@ -692,6 +770,12 @@ export default function RequerimientosPage() {
               <div className="space-y-2.5 flex-1 min-w-0">
                 {/* Badges de clasificación */}
                 <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span
+                    title={`Identificador del requerimiento (orden en pantalla ${numeracion.get(req.id)?.orden ?? '—'})`}
+                    className="px-2 py-0.5 rounded-md bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-mono font-semibold"
+                  >
+                    {codigoDe(req.id)}
+                  </span>
                   {puedeEditar ? (
                     <select
                       value={req.id_estado || ''}
@@ -1121,6 +1205,109 @@ export default function RequerimientosPage() {
           </Link>
           <button type="button" onClick={() => setShowEquiposModal(false)} className={btnSecundario}>
             Cerrar
+          </button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal Exportar especificación (KAN-28) */}
+      <Modal
+        open={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        title="Exportar requerimientos"
+        description="Genera el documento de especificación en el navegador, con el mismo orden y numeración de la pantalla."
+      >
+        <ModalBody className="space-y-4">
+          {requerimientos.length === 0 ? (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-xl p-3.5 text-xs text-amber-800 dark:text-amber-300">
+              Este proyecto aún no tiene requerimientos. Redacta el primero antes de exportar; no se genera
+              un documento vacío.
+            </div>
+          ) : (
+            <>
+              <div>
+                <span className={etiqueta}>Formato</span>
+                <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Formato de exportación">
+                  {([
+                    ['pdf', 'PDF'],
+                    ['markdown', 'Markdown'],
+                    ['word', 'Word (.doc)'],
+                  ] as Array<[FormatoExportacion, string]>).map(([valor, texto]) => (
+                    <button
+                      key={valor}
+                      type="button"
+                      role="radio"
+                      aria-checked={formatoExport === valor}
+                      onClick={() => setFormatoExport(valor)}
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${formatoExport === valor
+                        ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100'
+                        : 'bg-white dark:bg-zinc-900/60 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800'}`}
+                    >
+                      {texto}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="export-alcance" className={etiqueta}>Requerimientos a incluir</label>
+                <select
+                  id="export-alcance"
+                  value={alcanceExport}
+                  onChange={(e) => setAlcanceExport(e.target.value as AlcanceExportacion)}
+                  className={campo}
+                >
+                  <option value="visibles">
+                    Los visibles en pantalla ({filteredRequerimientos.length})
+                    {hayFiltros ? ' — respeta búsqueda y filtros' : ''}
+                  </option>
+                  <option value="todos">Todos los del proyecto ({requerimientos.length})</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="export-agrupacion" className={etiqueta}>Organización</label>
+                <select
+                  id="export-agrupacion"
+                  value={agrupacionExport}
+                  onChange={(e) => setAgrupacionExport(e.target.value as AgrupacionExportacion)}
+                  className={campo}
+                >
+                  <option value="ninguna">En el orden de la pantalla</option>
+                  <option value="tipo">Agrupados por tipo FURPS</option>
+                </select>
+              </div>
+
+              {conteoExport === 0 ? (
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-xl p-3.5 text-xs text-amber-800 dark:text-amber-300">
+                  Ningún requerimiento coincide con los filtros actuales. Ajusta la búsqueda o elige
+                  «Todos los del proyecto»; no se genera un documento vacío.
+                </div>
+              ) : (
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                  Se exportarán {conteoExport} {conteoExport === 1 ? 'requerimiento' : 'requerimientos'} con
+                  identificador, texto, tipo FURPS y patrón usado. El documento incluye el nombre y la
+                  descripción del proyecto.
+                </p>
+              )}
+            </>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <button type="button" onClick={() => setShowExportModal(false)} className={btnSecundario}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleExportar}
+            disabled={exportando || conteoExport === 0}
+            className={btnPrimario}
+          >
+            {exportando ? (
+              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Download size={14} />
+            )}
+            {exportando ? 'Generando...' : 'Descargar'}
           </button>
         </ModalFooter>
       </Modal>

@@ -1029,12 +1029,13 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
       : collection(db, 'requerimiento');
     const snap = await getDocs(q);
     
-    const [tipos, estados, modalidades, modelos, usuarios] = await Promise.all([
+    const [tipos, estados, modalidades, modelos, usuarios, patrones] = await Promise.all([
       getTiposRequerimientos(),
       getEstados(),
       getModalidades(),
       getModelos(),
-      getAllUsers()
+      getAllUsers(),
+      getPatrones()
     ]);
 
     const tipoMap = new Map(tipos.map(t => [t.tipo_req, t]));
@@ -1042,6 +1043,7 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
     const modMap = new Map(modalidades.map(m => [m.id, m]));
     const modelMap = new Map(modelos.map(m => [m.id, m]));
     const userMap = new Map(usuarios.map(u => [u.id, u]));
+    const patronMap = new Map(patrones.map(p => [p.patron_id, p]));
 
     return snap.docs.map(d => {
       const data = d.data();
@@ -1055,12 +1057,15 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
         id_modalidad: data.id_modalidad || null,
         id_estado: data.id_estado || null,
         id_modelo: data.id_modelo || null,
+        // Documentos previos a KAN-28 no tienen `id_patron`: se normaliza a null.
+        id_patron: (data.id_patron as string | null | undefined) ?? null,
         created_at: data.created_at || new Date().toISOString(),
 
         tipo_requerimiento: data.id_tipo_requerimiento ? tipoMap.get(data.id_tipo_requerimiento) || null : null,
         estado: data.id_estado ? estadoMap.get(data.id_estado) || null : null,
         modalidad: data.id_modalidad ? modMap.get(data.id_modalidad) || null : null,
         modelo: data.id_modelo ? modelMap.get(data.id_modelo) || null : null,
+        patron: data.id_patron ? patronMap.get(data.id_patron) || null : null,
         autor: data.id_autor ? userMap.get(data.id_autor) || null : null,
         aprobador: data.id_aprobador ? userMap.get(data.id_aprobador) || null : null
       };
