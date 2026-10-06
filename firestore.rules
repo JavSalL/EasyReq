@@ -286,11 +286,13 @@ service cloud.firestore {
         data.enunciado.size() <= 5000 &&
         // Sin esta lista, un cliente podría colar campos propios y saltarse la
         // revisión de un schema que nadie ha visto. `numero` y `codigo` los escribe
-        // la transacción de `createRequerimiento`, no el formulario.
+        // la transacción de `createRequerimiento`, no el formulario. `id_patron`
+        // (KAN-28) guarda la plantilla usada al redactar y se muestra en la
+        // especificación exportada.
         data.keys().hasOnly([
           'enunciado', 'id_tipo_requerimiento', 'id_proyecto', 'id_equipo',
           'id_autor', 'id_aprobador', 'id_modalidad', 'id_estado', 'id_modelo',
-          'numero', 'codigo', 'created_at'
+          'id_patron', 'numero', 'codigo', 'created_at'
         ]);
     }
 
