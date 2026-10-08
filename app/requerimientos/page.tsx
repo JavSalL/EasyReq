@@ -1061,7 +1061,7 @@ export default function RequerimientosPage() {
               </div>
 
               {/* Acciones */}
-              <div className="flex items-center gap-1 border-t md:border-t-0 pt-3 md:pt-0 border-line">
+              <div className="flex flex-wrap items-center gap-1 border-t md:border-t-0 pt-3 md:pt-0 border-line">
                 <button
                   onClick={() => copiarEnunciado(req)}
                   title="Copiar enunciado"
@@ -1173,7 +1173,7 @@ export default function RequerimientosPage() {
         description={proyecto ? proyecto.descripcion || 'Sin descripción' : undefined}
         actions={
           vista === 'requerimientos' && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               <button
                 onClick={() => setShowExportModal(true)}
                 className={btnSecundario}
@@ -1195,7 +1195,7 @@ export default function RequerimientosPage() {
 
       {/* Secciones del proyecto */}
       {proyecto && proyectoId && (
-        <nav aria-label="Secciones del proyecto" className="flex gap-1 border-b border-line">
+        <nav aria-label="Secciones del proyecto" className="flex gap-1 border-b border-line overflow-x-auto overflow-y-hidden custom-scrollbar">
           {[
             { id: 'requerimientos' as const, nombre: 'Requerimientos', cantidad: loading ? null : requerimientos.length },
             {
@@ -1306,45 +1306,52 @@ export default function RequerimientosPage() {
           </select>
         </div>
         {!loading && requerimientos.length > 0 && (
-          <div className="flex items-center justify-between gap-3 text-sm text-ink-subtle px-1">
-            <span aria-live="polite">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 text-sm text-ink-subtle px-1 py-3 sm:py-0 mt-2 bg-sunken sm:bg-transparent rounded-ui border border-line sm:border-none min-w-0">
+            <span aria-live="polite" className="font-medium px-2 sm:px-0">
               {hayFiltros
                 ? `Mostrando ${filteredRequerimientos.length} de ${requerimientos.length} requerimientos`
                 : `${requerimientos.length} ${requerimientos.length === 1 ? 'requerimiento' : 'requerimientos'}`}
             </span>
-            <div className="flex items-center gap-4">
+            
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-2 sm:px-0 min-w-0">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 min-w-0">
+                <label className="flex items-center gap-2">
+                  <span>Agrupar</span>
+                  <select
+                    value={agrupar}
+                    onChange={(e) => setAgrupar(e.target.value as Agrupar)}
+                    aria-label="Agrupar requerimientos"
+                    className="bg-transparent text-ink font-semibold text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
+                  >
+                    <option value="ninguno">Sin agrupar</option>
+                    <option value="tipo">Por tipo</option>
+                    <option value="modelo">Por modelo</option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-2">
+                  <span>Ordenar</span>
+                  <select
+                    value={orden}
+                    onChange={(e) => setOrden(e.target.value as Orden)}
+                    aria-label="Ordenar requerimientos"
+                    className="bg-transparent text-ink font-semibold text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
+                  >
+                    <option value="numero">Por número</option>
+                    <option value="recientes">Más recientes</option>
+                    <option value="antiguos">Más antiguos</option>
+                    <option value="estado">Por estado</option>
+                  </select>
+                </label>
+              </div>
+              
               {hayFiltros && (
-                <button onClick={limpiarFiltros} className="font-semibold text-brand-text hover:underline cursor-pointer">
+                <button 
+                  onClick={limpiarFiltros} 
+                  className="font-semibold text-brand-text hover:underline cursor-pointer text-left sm:text-right pt-2 sm:pt-0 border-t border-surface-border/50 sm:border-none w-full sm:w-auto mt-1 sm:mt-0"
+                >
                   Quitar filtros
                 </button>
               )}
-              <label className="flex items-center gap-2">
-                <span>Agrupar</span>
-                <select
-                  value={agrupar}
-                  onChange={(e) => setAgrupar(e.target.value as Agrupar)}
-                  aria-label="Agrupar requerimientos"
-                  className="bg-transparent text-ink font-medium text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
-                >
-                  <option value="ninguno">Sin agrupar</option>
-                  <option value="tipo">Por tipo</option>
-                  <option value="modelo">Por modelo</option>
-                </select>
-              </label>
-              <label className="flex items-center gap-2">
-                <span>Ordenar</span>
-                <select
-                  value={orden}
-                  onChange={(e) => setOrden(e.target.value as Orden)}
-                  aria-label="Ordenar requerimientos"
-                  className="bg-transparent text-ink font-medium text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
-                >
-                  <option value="numero">Por número</option>
-                  <option value="recientes">Más recientes</option>
-                  <option value="antiguos">Más antiguos</option>
-                  <option value="estado">Por estado</option>
-                </select>
-              </label>
             </div>
           </div>
         )}

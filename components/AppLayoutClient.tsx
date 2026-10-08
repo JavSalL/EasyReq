@@ -82,8 +82,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
 
       <TopNav />
 
-      <main id="contenido" tabIndex={-1} className="outline-none">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">{children}</div>
+      <main id="contenido" tabIndex={-1} className="outline-none overflow-x-clip">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 min-w-0">{children}</div>
       </main>
 
       <ProfileModal
