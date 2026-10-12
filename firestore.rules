@@ -695,10 +695,36 @@ service cloud.firestore {
       allow delete: if isAuthenticated();
     }
 
-    // 6. Logs de auditoría de requerimientos (Inmutables: se pueden leer y crear, pero no modificar ni borrar)
+    // 6. Historial de requerimientos: los miembros del proyecto pueden leer y
+    // agregar entradas; una entrada creada nunca se puede editar ni borrar.
     match /logs_requerimientos/{logId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
+      function isProjectMemberForLog(requirementId) {
+        let requirementPath = /databases/$(database)/documents/requerimiento/$(requirementId);
+        return existsAfter(requirementPath) &&
+          esMiembroDelProyecto(
+            getAfter(requirementPath).data.id_proyecto,
+            request.auth.uid
+          );
+      }
+
+      allow read: if isAuthenticated() &&
+        exists(/databases/$(database)/documents/requerimiento/$(resource.data.id_requerimiento)) &&
+        esMiembroDelProyecto(
+          get(/databases/$(database)/documents/requerimiento/$(resource.data.id_requerimiento)).data.id_proyecto,
+          request.auth.uid
+        );
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly([
+          'id_requerimiento', 'accion', 'id_autor', 'id_lider_en_momento',
+          'fecha_hora', 'detalles'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'id_requerimiento', 'accion', 'id_autor', 'fecha_hora'
+        ]) &&
+        request.resource.data.id_autor == request.auth.uid &&
+        request.resource.data.accion is string &&
+        request.resource.data.fecha_hora is string &&
+        isProjectMemberForLog(request.resource.data.id_requerimiento);
       allow update, delete: if false;
     }
 

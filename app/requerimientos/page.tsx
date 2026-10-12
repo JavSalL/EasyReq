@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Clock, Save,
-  Sparkles, CheckCheck, History, Lock, Wand2, ArrowRight, Copy, ListPlus, ListOrdered,
+  Sparkles, CheckCheck, History, Lock, Wand2, Copy, ListPlus, ListOrdered,
   Check, XCircle, Send, Download
 } from 'lucide-react';
 import { generateSingleRequirement, AIError } from '@/lib/ai-actions';
@@ -26,10 +26,11 @@ import {
   createRequerimiento,
   insertarRequerimientoDespuesDe,
   asignarNumerosRequerimientos,
-  updateRequerimiento,
   deleteRequerimiento,
   addLogRequerimiento,
   getLogsRequerimientos,
+  actualizarRequerimientoConHistorial,
+  restaurarEnunciadoRequerimiento,
   getEquiposDelProyecto,
   getEquiposLideradosPor,
   reenviarRequerimientoAprobacion,
@@ -216,6 +217,8 @@ export default function RequerimientosPage() {
   const [currentReqForLogs, setCurrentReqForLogs] = useState<Requerimiento | null>(null);
   const [selectedReqLogs, setSelectedReqLogs] = useState<Array<LogRequerimiento>>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
+  const [restoringLogId, setRestoringLogId] = useState<string | null>(null);
 
   // Vista del proyecto (requerimientos o equipos), reflejada en la URL
   const [vista, setVista] = useState<VistaProyecto>('requerimientos');
@@ -616,19 +619,13 @@ export default function RequerimientosPage() {
         // `esEdicionEnFlujoNormal`), y cambiarlo movería al juez: un requerimiento
         // rechazado que pasa al equipo de otro líder se esquivaría de la revisión que
         // letocaba. El selector está deshabilitado mientras se edita por lo mismo.
-        await updateRequerimiento(editingReq.id, {
+        await actualizarRequerimientoConHistorial(editingReq.id, {
           enunciado: datos.enunciado,
           id_tipo_requerimiento: datos.id_tipo_requerimiento,
           id_modalidad: datos.id_modalidad,
           id_modelo: datos.id_modelo,
           id_patron: datos.id_patron
-        });
-        await addLogRequerimiento({
-          id_requerimiento: editingReq.id,
-          accion: 'Edición de requerimiento',
-          id_autor: uid,
-          detalles: { campos: cambios }
-        });
+        }, uid!, cambios);
         toast.success('Requerimiento actualizado');
       } else {
         let newReq: Requerimiento;
@@ -655,8 +652,12 @@ export default function RequerimientosPage() {
             accion: 'Creación de requerimiento',
             id_autor: uid,
             detalles: insertarDespuesDe
-              ? { inicio: `Insertado después de ${insertarDespuesDe.codigo}`, renumerados }
-              : { inicio: 'Creación inicial' }
+              ? {
+                  inicio: `Insertado después de ${insertarDespuesDe.codigo}`,
+                  renumerados,
+                  enunciado_nuevo: newReq.enunciado
+                }
+              : { inicio: 'Creación inicial', enunciado_nuevo: newReq.enunciado }
           });
         }
         toast.success(
@@ -835,11 +836,63 @@ export default function RequerimientosPage() {
   const handleViewLogs = async (req: Requerimiento) => {
     setCurrentReqForLogs(req);
     setSelectedReqLogs([]);
+    setLogsError(null);
     setLoadingLogs(true);
     try {
       setSelectedReqLogs(await getLogsRequerimientos(req.id));
+    } catch (e) {
+      const mensaje = mensajeError(e, 'No se pudo cargar el historial');
+      setLogsError(mensaje);
+      toast.error(mensaje);
     } finally {
       setLoadingLogs(false);
+    }
+  };
+
+  const handleRestoreVersion = async (log: LogRequerimiento) => {
+    const req = currentReqForLogs;
+    const enunciadoAnterior = log.detalles?.enunciado_anterior;
+    if (
+      !req ||
+      !esMiembroProyecto ||
+      !puedeAbrirEditor(req) ||
+      typeof enunciadoAnterior !== 'string' ||
+      !uid
+    ) {
+      toast.error('No tienes permiso para restaurar esta versión.');
+      return;
+    }
+
+    const ok = await confirmar({
+      titulo: '¿Restaurar esta versión?',
+      mensaje: 'El enunciado actual se reemplazará. La restauración quedará registrada como un cambio nuevo.',
+      textoConfirmar: 'Restaurar versión'
+    });
+    if (!ok) return;
+
+    setRestoringLogId(log.id);
+    try {
+      const restaurado = await restaurarEnunciadoRequerimiento(req.id, enunciadoAnterior, uid);
+      if (!restaurado) {
+        toast('El requerimiento ya tiene este enunciado.');
+        return;
+      }
+      const [requerimientosActualizados] = await Promise.all([
+        getRequerimientos(req.id_proyecto),
+        getLogsRequerimientos(req.id).then(setSelectedReqLogs)
+      ]);
+      setRequerimientos(
+        requerimientosActualizados.sort((a, b) =>
+          (b.created_at || '').localeCompare(a.created_at || '')
+        )
+      );
+      const actualizado = requerimientosActualizados.find(item => item.id === req.id) ?? null;
+      if (actualizado) setCurrentReqForLogs(actualizado);
+      toast.success('Versión restaurada y registrada en el historial.');
+    } catch (e) {
+      toast.error(mensajeError(e, 'No se pudo restaurar la versión'));
+    } finally {
+      setRestoringLogId(null);
     }
   };
 
@@ -1070,14 +1123,16 @@ export default function RequerimientosPage() {
                 >
                   <Copy size={16} />
                 </button>
-                <button
-                  onClick={() => handleViewLogs(req)}
-                  title="Ver historial de cambios"
-                  aria-label="Ver historial de cambios"
-                  className={btnIcono}
-                >
-                  <History size={16} />
-                </button>
+                {esMiembroProyecto && (
+                  <button
+                    onClick={() => handleViewLogs(req)}
+                    title="Ver historial de cambios"
+                    aria-label="Ver historial de cambios"
+                    className={btnIcono}
+                  >
+                    <History size={16} />
+                  </button>
+                )}
                 {puedeDecidir(req) && (
                   <>
                     <button
@@ -1675,8 +1730,12 @@ export default function RequerimientosPage() {
         requerimiento={currentReqForLogs}
         logs={selectedReqLogs}
         loading={loadingLogs}
+        error={logsError}
         nombreUsuario={nombreUsuario}
         codigoDe={codigoDe}
+        puedeRestaurar={!!currentReqForLogs && esMiembroProyecto && puedeAbrirEditor(currentReqForLogs)}
+        restoringLogId={restoringLogId}
+        onRestore={handleRestoreVersion}
       />
 
       {/* Modal Exportar especificación (KAN-28) */}

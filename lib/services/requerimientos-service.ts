@@ -249,7 +249,9 @@ export async function insertarRequerimientoDespuesDe(
         )
       );
     }
-  })();
+  })().catch(error => {
+    console.error('Error recording requirement renumbering logs:', error);
+  });
 
   return {
     requerimiento: {
@@ -303,6 +305,83 @@ export async function asignarNumerosRequerimientos(
 
 export async function updateRequerimiento(id: string, data: Partial<Requerimiento>): Promise<void> {
   await updateDoc(doc(db, 'requerimiento', id), data);
+}
+
+/**
+ * Guarda una edición y su auditoría juntas. Así una modificación del enunciado
+ * nunca queda sin los textos anterior y nuevo en el historial.
+ */
+export async function actualizarRequerimientoConHistorial(
+  id: string,
+  data: Partial<Requerimiento>,
+  id_autor: string,
+  campos: string[]
+): Promise<void> {
+  const requerimientoRef = doc(db, 'requerimiento', id);
+  const logRef = doc(collection(db, 'logs_requerimientos'));
+  const fecha_hora = new Date().toISOString();
+
+  await runTransaction(db, async transaction => {
+    const requerimiento = await transaction.get(requerimientoRef);
+    if (!requerimiento.exists()) {
+      throw new Error('No se encontró el requerimiento que intentas editar.');
+    }
+
+    const enunciadoAnterior = requerimiento.data().enunciado;
+    const detalles: NonNullable<LogRequerimiento['detalles']> = { campos };
+    if (typeof data.enunciado === 'string' && typeof enunciadoAnterior === 'string') {
+      detalles.enunciado_anterior = enunciadoAnterior;
+      detalles.enunciado_nuevo = data.enunciado;
+    }
+
+    transaction.update(requerimientoRef, data);
+    transaction.set(logRef, {
+      id_requerimiento: id,
+      accion: 'Edición de requerimiento',
+      id_autor,
+      fecha_hora,
+      detalles
+    });
+  });
+}
+
+/**
+ * Restaura el enunciado y registra la transición en una sola transacción.
+ * Devuelve false si el requerimiento ya contiene ese texto.
+ */
+export async function restaurarEnunciadoRequerimiento(
+  id: string,
+  enunciado: string,
+  id_autor: string
+): Promise<boolean> {
+  const requerimientoRef = doc(db, 'requerimiento', id);
+  const logRef = doc(collection(db, 'logs_requerimientos'));
+  const fecha_hora = new Date().toISOString();
+
+  return runTransaction(db, async transaction => {
+    const requerimiento = await transaction.get(requerimientoRef);
+    if (!requerimiento.exists()) {
+      throw new Error('No se encontró el requerimiento que intentas restaurar.');
+    }
+
+    const enunciadoAnterior = requerimiento.data().enunciado;
+    if (enunciadoAnterior === enunciado) return false;
+
+    transaction.update(requerimientoRef, { enunciado });
+    transaction.set(logRef, {
+      id_requerimiento: id,
+      accion: 'Restauración de versión',
+      id_autor,
+      fecha_hora,
+      detalles: {
+        campos: ['enunciado'],
+        enunciado_anterior: enunciadoAnterior,
+        enunciado_nuevo: enunciado,
+        restauracion: true
+      }
+    });
+    return true;
+  });
 }
 
 /**
@@ -364,16 +443,12 @@ export async function addLogRequerimiento(data: {
   id_requerimiento: string;
   accion: string;
   id_autor: string | null;
-  detalles?: any;
+  detalles?: LogRequerimiento['detalles'];
 }): Promise<void> {
-  try {
-    await addDoc(collection(db, 'logs_requerimientos'), {
-      ...data,
-      fecha_hora: new Date().toISOString()
-    });
-  } catch (e) {
-    console.error('Error creating requirement log:', e);
-  }
+  await addDoc(collection(db, 'logs_requerimientos'), {
+    ...data,
+    fecha_hora: new Date().toISOString()
+  });
 }
 
 export async function getLogsRequerimientos(id_requerimiento: string): Promise<LogRequerimiento[]> {
@@ -394,15 +469,17 @@ export async function getLogsRequerimientos(id_requerimiento: string): Promise<L
         accion: data.accion,
         id_autor: data.id_autor || null,
         id_lider_en_momento: data.id_lider_en_momento || null,
-        fecha_hora: data.fecha_hora || new Date().toISOString(),
+        fecha_hora: typeof data.fecha_hora === 'string' ? data.fecha_hora : '',
         detalles: data.detalles,
         autor: data.id_autor ? userMap.get(data.id_autor) || null : null
       };
     });
 
-    return logs.sort((a, b) => new Date(b.fecha_hora).getTime() - new Date(a.fecha_hora).getTime());
+    return logs.sort((a, b) =>
+      (Date.parse(b.fecha_hora) || 0) - (Date.parse(a.fecha_hora) || 0)
+    );
   } catch (e) {
     console.error('Error fetching logs:', e);
-    return [];
+    throw e;
   }
 }
