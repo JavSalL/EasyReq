@@ -3,14 +3,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Función auxiliar: verificar si el usuario está autenticado
+    // Los usuarios autenticados deben haber verificado su correo electrónico.
     function isAuthenticated() {
-      return request.auth != null;
+      return request.auth != null && request.auth.token.email_verified == true;
     }
 
-    // Función auxiliar: verificar si es el propietario del perfil
+    // Permite que una cuenta pendiente cree su propio perfil antes de verificar el correo.
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return request.auth != null && request.auth.uid == userId;
     }
 
     function isTeamLeaderUser(teamId, userId) {
@@ -360,9 +360,9 @@ service cloud.firestore {
 
     // 1. Perfiles de usuario
     match /perfil_usuario/{userId} {
-      // Cualquier usuario autenticado puede leer perfiles (necesario para listas de miembros, autores, etc.)
+      // Los usuarios con correo verificado pueden leer perfiles (necesario para listas de miembros, autores, etc.)
       allow read: if isAuthenticated();
-      // Solo el propio usuario puede crear o editar su perfil
+      // Solo el propio usuario puede crear o editar su perfil, incluso antes de verificar el correo
       allow write: if isOwner(userId);
     }
 
