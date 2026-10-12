@@ -8,6 +8,8 @@ import {
   updateProfile,
   signInWithPopup,
   sendPasswordResetEmail,
+  sendEmailVerification,
+  signOut,
   GoogleAuthProvider,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
