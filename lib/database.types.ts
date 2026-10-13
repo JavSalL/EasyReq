@@ -231,6 +231,13 @@ export interface LogRequerimiento {
     enunciado_nuevo?: string;
     estado_anterior?: string | null;
     estado_nuevo?: string | null;
+    cambios_clasificacion?: Array<{
+      campo: string;
+      anterior: string;
+      nuevo: string;
+      anteriorId?: UUID | null;
+      nuevoId?: UUID | null;
+    }>;
     restauracion?: boolean;
     [key: string]: unknown;
   };

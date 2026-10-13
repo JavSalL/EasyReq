@@ -30,7 +30,7 @@ import {
   addLogRequerimiento,
   getLogsRequerimientos,
   actualizarRequerimientoConHistorial,
-  restaurarEnunciadoRequerimiento,
+  restaurarVersionRequerimiento,
   getEquiposDelProyecto,
   getEquiposLideradosPor,
   reenviarRequerimientoAprobacion,
@@ -605,14 +605,47 @@ export default function RequerimientosPage() {
     let siguientePosicion: { numero: number; codigo: string } | null = null;
     try {
       if (editingReq) {
-        const cambios = CAMPOS_EDITABLES
-          .filter(([campoReq]) => (editingReq[campoReq] || null) !== datos[campoReq])
-          .map(([, nombre]) => nombre);
+        const camposModificados = CAMPOS_EDITABLES.filter(
+          ([campoReq]) => (editingReq[campoReq] || null) !== datos[campoReq]
+        );
+        const cambios = camposModificados.map(([, nombre]) => nombre);
         if (cambios.length === 0) {
           toast('No hay cambios que guardar');
           setIsModalOpen(false);
           return;
         }
+
+        const nombreValorClasificacion = (campo: string, id: string | null) => {
+          if (!id) {
+            return {
+              tipo: 'Sin tipo',
+              modalidad: 'Sin modalidad',
+              modelo: 'Sin modelo',
+              patrón: 'Sin patrón'
+            }[campo] || 'Sin valor';
+          }
+          switch (campo) {
+            case 'tipo':
+              return tiposReq.find(tipo => tipo.tipo_req === id)?.nombre || 'Tipo no disponible';
+            case 'modalidad':
+              return modalidades.find(modalidad => modalidad.id === id)?.nombre_modalidad || 'Modalidad no disponible';
+            case 'modelo':
+              return modelos.find(modelo => modelo.id === id)?.nombre || 'Modelo no disponible';
+            case 'patrón':
+              return patrones.find(patron => patron.patron_id === id)?.nombre || 'Patrón no disponible';
+            default:
+              return id;
+          }
+        };
+        const cambiosClasificacion = camposModificados
+          .filter(([campoReq]) => campoReq !== 'enunciado')
+          .map(([campoReq, nombre]) => ({
+            campo: nombre,
+            anterior: nombreValorClasificacion(nombre, editingReq[campoReq] || null),
+            nuevo: nombreValorClasificacion(nombre, datos[campoReq] || null),
+            anteriorId: editingReq[campoReq] || null,
+            nuevoId: datos[campoReq] || null
+          }));
 
         // El equipo no se manda al editar. Es inmutable por dos motivos: las reglas lo
         // excluyen de las claves editables (`esReenvioDelAutor` y
@@ -625,7 +658,7 @@ export default function RequerimientosPage() {
           id_modalidad: datos.id_modalidad,
           id_modelo: datos.id_modelo,
           id_patron: datos.id_patron
-        }, uid!, cambios);
+        }, uid!, cambios, cambiosClasificacion);
         toast.success('Requerimiento actualizado');
       } else {
         let newReq: Requerimiento;
@@ -804,7 +837,7 @@ export default function RequerimientosPage() {
   const handleDeleteReq = async (req: Requerimiento) => {
     // Borrar sigue igual que antes de KAN-18: lo que las reglas permiten es a
     // cualquier autenticado, así que el botón no se estrecha más de lo que ya estaba.
-    if (!esMiembroProyecto) {
+    if (!esMiembroProyecto || !uid) {
       toast.error('Solo los miembros del proyecto pueden eliminar requerimientos');
       return;
     }
@@ -824,9 +857,13 @@ export default function RequerimientosPage() {
     });
     if (!ok) return;
     try {
-      await deleteRequerimiento(req.id);
-      toast.success('Requerimiento eliminado');
-      fetchRequerimientos();
+      const renumerados = await deleteRequerimiento(req.id, uid!);
+      toast.success(
+        renumerados > 0
+          ? `Requerimiento eliminado. Se actualizaron ${renumerados} identificadores.`
+          : 'Requerimiento eliminado'
+      );
+      await fetchRequerimientos();
     } catch (e) {
       toast.error(mensajeError(e, 'No se pudo eliminar el requerimiento'));
     }
@@ -851,30 +888,80 @@ export default function RequerimientosPage() {
 
   const handleRestoreVersion = async (log: LogRequerimiento) => {
     const req = currentReqForLogs;
-    const enunciadoAnterior = log.detalles?.enunciado_anterior;
-    if (
-      !req ||
-      !esMiembroProyecto ||
-      !puedeAbrirEditor(req) ||
-      typeof enunciadoAnterior !== 'string' ||
-      !uid
-    ) {
+    const detalles = log.detalles;
+    const cambiosClasificacionOriginales = Array.isArray(detalles?.cambios_clasificacion)
+      ? detalles.cambios_clasificacion.filter(
+          cambio => cambio &&
+            typeof cambio.campo === 'string' &&
+            typeof cambio.anterior === 'string'
+        )
+      : [];
+    const resolverIdClasificacion = (campo: string, nombre: string): string | null | undefined => {
+      const sinValor = {
+        tipo: 'Sin tipo',
+        modalidad: 'Sin modalidad',
+        modelo: 'Sin modelo',
+        patrón: 'Sin patrón'
+      }[campo];
+      if (nombre === sinValor) return null;
+
+      const opciones = {
+        tipo: tiposReq
+          .filter(tipo => tipo.nombre === nombre)
+          .map(tipo => tipo.tipo_req),
+        modalidad: modalidades
+          .filter(modalidad => modalidad.nombre_modalidad === nombre)
+          .map(modalidad => modalidad.id),
+        modelo: modelos.filter(modelo => modelo.nombre === nombre).map(modelo => modelo.id),
+        patrón: patrones.filter(patron => patron.nombre === nombre).map(patron => patron.patron_id)
+      }[campo];
+      return opciones?.length === 1 ? opciones[0] : undefined;
+    };
+    const cambiosClasificacion = cambiosClasificacionOriginales.map(cambio => ({
+      ...cambio,
+      anteriorId: typeof cambio.anteriorId === 'string' || cambio.anteriorId === null
+        ? cambio.anteriorId
+        : resolverIdClasificacion(cambio.campo, cambio.anterior),
+      nuevoId: typeof cambio.nuevoId === 'string' || cambio.nuevoId === null
+        ? cambio.nuevoId
+        : resolverIdClasificacion(cambio.campo, cambio.nuevo)
+    }));
+    const cambiosClasificacionRestaurables = cambiosClasificacion.filter(
+      cambio => typeof cambio.anteriorId === 'string' || cambio.anteriorId === null
+    );
+    const tieneEnunciadoAnterior = typeof detalles?.enunciado_anterior === 'string';
+    if (!req || !esMiembroProyecto || !puedeAbrirEditor(req) || !uid) {
       toast.error('No tienes permiso para restaurar esta versión.');
       return;
     }
+    if (cambiosClasificacionRestaurables.length !== cambiosClasificacionOriginales.length) {
+      toast.error('No se puede identificar de forma única alguno de los valores de esta versión en el catálogo.');
+      return;
+    }
+    if (!tieneEnunciadoAnterior && cambiosClasificacionRestaurables.length === 0) {
+      toast.error('Esta versión no contiene valores anteriores que se puedan restaurar.');
+      return;
+    }
 
+    const logRestaurable: LogRequerimiento = {
+      ...log,
+      detalles: {
+        ...detalles,
+        cambios_clasificacion: cambiosClasificacionRestaurables
+      }
+    };
     const ok = await confirmar({
       titulo: '¿Restaurar esta versión?',
-      mensaje: 'El enunciado actual se reemplazará. La restauración quedará registrada como un cambio nuevo.',
+      mensaje: 'Los campos que cambiaron volverán a los valores de esta versión. La restauración quedará registrada como un cambio nuevo.',
       textoConfirmar: 'Restaurar versión'
     });
     if (!ok) return;
 
     setRestoringLogId(log.id);
     try {
-      const restaurado = await restaurarEnunciadoRequerimiento(req.id, enunciadoAnterior, uid);
+      const restaurado = await restaurarVersionRequerimiento(req.id, logRestaurable, uid);
       if (!restaurado) {
-        toast('El requerimiento ya tiene este enunciado.');
+        toast('El requerimiento ya tiene los valores de esta versión.');
         return;
       }
       const [requerimientosActualizados] = await Promise.all([
