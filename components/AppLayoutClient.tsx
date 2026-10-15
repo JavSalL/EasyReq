@@ -11,6 +11,10 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, profile, profileLoaded, loading } = useAuth();
+  const requiereVerificacion =
+    !!user &&
+    !user.emailVerified &&
+    user.providerData.some(({ providerId }) => providerId === 'password');
   // Con trailingSlash:true (exportación estática para Firebase Hosting) la ruta real
   // es "/login/", así que se normaliza quitando la barra final antes de comparar.
   const normalizedPath = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname;
@@ -19,12 +23,14 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
 
-    if (!user && !isLoginPage) {
+    if (requiereVerificacion && !isLoginPage) {
       router.replace('/login/');
-    } else if (user && isLoginPage) {
+    } else if (!user && !isLoginPage) {
+      router.replace('/login/');
+    } else if (user && !requiereVerificacion && isLoginPage) {
       router.replace('/');
     }
-  }, [user, loading, isLoginPage, router]);
+  }, [user, requiereVerificacion, loading, isLoginPage, router]);
 
   // Registro pendiente: la cuenta existe pero falta el perfil o no tiene profesiones (p. ej. una
   // cuenta nueva de Google). Se piden los mismos datos que en el registro normal y no se puede omitir.

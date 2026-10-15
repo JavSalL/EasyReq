@@ -8,6 +8,8 @@ import {
   updateProfile,
   signInWithPopup,
   sendPasswordResetEmail,
+  sendEmailVerification,
+  signOut,
   GoogleAuthProvider,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -66,7 +68,11 @@ export default function LoginPage() {
 
   useEffect(() => {
     // Si ya hay sesión activa, ir al dashboard (si falta el registro, la app lo pide al entrar)
-    if (!authLoading && authUser) {
+    if (
+      !authLoading &&
+      authUser &&
+      (authUser.emailVerified || !authUser.providerData.some(({ providerId }) => providerId === 'password'))
+    ) {
       router.replace('/');
     }
   }, [authUser, authLoading, router]);
@@ -126,7 +132,29 @@ export default function LoginPage() {
     try {
       if (isLogin) {
         // ------------------ INICIAR SESIÓN ------------------
-        await signInWithEmailAndPassword(auth, email.trim(), password);
+        const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+
+        if (!credential.user.emailVerified) {
+          let verificationMessage =
+            'No puedes iniciar sesión porque tu correo aún no está verificado.';
+          try {
+            await sendEmailVerification(credential.user);
+            verificationMessage += ' Te enviamos un nuevo enlace de confirmación.';
+          } catch (verificationError: unknown) {
+            if (getFirebaseErrorCode(verificationError) === 'auth/too-many-requests') {
+              verificationMessage +=
+                ' Firebase limitó el reenvío del enlace. Revisa el correo que te enviamos antes o espera unos minutos para solicitar otro.';
+            } else {
+              console.error('Error reenviando el correo de verificación:', verificationError);
+              verificationMessage +=
+                ' No pudimos reenviar el enlace; inténtalo de nuevo más tarde.';
+            }
+          } finally {
+            await signOut(auth);
+          }
+          toast.error(verificationMessage);
+          return;
+        }
 
         toast.success('¡Bienvenido de nuevo!');
         window.location.href = '/';
@@ -180,8 +208,17 @@ export default function LoginPage() {
           profesion_nombre: profesionesSeleccionadas[0]?.nombre || undefined,
         });
 
-        toast.success('¡Cuenta creada exitosamente!');
-        window.location.href = '/';
+        try {
+          await sendEmailVerification(credential.user);
+        } finally {
+          if (auth.currentUser?.uid === credential.user.uid) {
+            await signOut(auth);
+          }
+        }
+
+        setPassword('');
+        setIsLogin(true);
+        toast.success('Cuenta creada. Revisa tu correo y confirma el enlace para verificarlo antes de iniciar sesión.');
       }
     } catch (err: unknown) {
       const code = getFirebaseErrorCode(err);
