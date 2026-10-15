@@ -31,7 +31,8 @@ const SECCIONES = [
       'Al registrarlo queda «Pendiente de aprobación»: no entra al flujo normal hasta que el líder de su equipo lo acepta.',
       'El líder del equipo tiene dos botones en la fila: el de check verde para aprobar y el de aspa para rechazar.',
       'Si lo rechazan, puedes corregir el texto y devolverlo con el botón de reenviar; vuelve a la cola del líder.',
-      'El botón de historial muestra quién hizo cada cambio y cuándo.',
+      'El botón de historial muestra quién hizo cada cambio, cuándo ocurrió y, en las ediciones de texto registradas desde esta función, el enunciado anterior y el nuevo. Las entradas anteriores que no guardaban esos textos no pueden reconstruirse.',
+      'Si tienes permiso para editar el requerimiento, puedes restaurar una versión desde su entrada en el historial. La restauración reemplaza el enunciado actual y aparece como un cambio nuevo.',
     ],
   },
   {
@@ -77,6 +78,7 @@ const PERMISOS: Array<[string, string]> = [
   ['Aprobar o rechazar un requerimiento', 'El líder del equipo al que pertenece'],
   ['Reenviar un requerimiento rechazado', 'Su autor'],
   ['Editar un requerimiento ya aprobado', 'Cualquier miembro del proyecto'],
+  ['Consultar y restaurar versiones del historial', 'Los miembros del proyecto (restaurar requiere permiso para editar el requerimiento)'],
   ['Editar un equipo, invitar miembros y cambiar roles', 'Los líderes del equipo'],
   ['Editar o eliminar patrones y modelos', 'Nadie por ahora. Se pueden copiar y crear nuevos'],
 ];

@@ -4,8 +4,7 @@ import {
   getDoc, 
   getDocs, 
   addDoc, 
-  updateDoc, 
-  deleteDoc, 
+  updateDoc,
   query, 
   where, 
   runTransaction 
@@ -94,8 +93,7 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
   }
 }
 
-// Campo del documento `proyecto` con el último número de requerimiento asignado.
-// Solo crece: el número de un requerimiento borrado no se reutiliza.
+// Campo del documento `proyecto` con la cantidad de requerimientos numerados.
 const CONTADOR_REQUERIMIENTOS = 'contador_requerimientos';
 
 /**
@@ -249,7 +247,9 @@ export async function insertarRequerimientoDespuesDe(
         )
       );
     }
-  })();
+  })().catch(error => {
+    console.error('Error recording requirement renumbering logs:', error);
+  });
 
   return {
     requerimiento: {
@@ -306,6 +306,142 @@ export async function updateRequerimiento(id: string, data: Partial<Requerimient
 }
 
 /**
+ * Guarda una edición y su auditoría juntas. Así una modificación del enunciado
+ * nunca queda sin los textos anterior y nuevo en el historial.
+ */
+export async function actualizarRequerimientoConHistorial(
+  id: string,
+  data: Partial<Requerimiento>,
+  id_autor: string,
+  campos: string[],
+  cambiosClasificacion?: NonNullable<LogRequerimiento['detalles']>['cambios_clasificacion']
+): Promise<void> {
+  const requerimientoRef = doc(db, 'requerimiento', id);
+  const logRef = doc(collection(db, 'logs_requerimientos'));
+  const fecha_hora = new Date().toISOString();
+
+  await runTransaction(db, async transaction => {
+    const requerimiento = await transaction.get(requerimientoRef);
+    if (!requerimiento.exists()) {
+      throw new Error('No se encontró el requerimiento que intentas editar.');
+    }
+
+    const enunciadoAnterior = requerimiento.data().enunciado;
+    const detalles: NonNullable<LogRequerimiento['detalles']> = { campos };
+    if (cambiosClasificacion?.length) {
+      detalles.cambios_clasificacion = cambiosClasificacion;
+    }
+    if (
+      typeof data.enunciado === 'string' &&
+      typeof enunciadoAnterior === 'string' &&
+      data.enunciado !== enunciadoAnterior
+    ) {
+      detalles.enunciado_anterior = enunciadoAnterior;
+      detalles.enunciado_nuevo = data.enunciado;
+    }
+
+    transaction.update(requerimientoRef, data);
+    transaction.set(logRef, {
+      id_requerimiento: id,
+      accion: 'Edición de requerimiento',
+      id_autor,
+      fecha_hora,
+      detalles
+    });
+  });
+}
+
+/**
+ * Restaura el enunciado y registra la transición en una sola transacción.
+ * Devuelve false si el requerimiento ya contiene ese texto.
+ */
+export async function restaurarVersionRequerimiento(
+  id: string,
+  log: LogRequerimiento,
+  id_autor: string
+): Promise<boolean> {
+  const requerimientoRef = doc(db, 'requerimiento', id);
+  const logRef = doc(collection(db, 'logs_requerimientos'));
+  const fecha_hora = new Date().toISOString();
+  const camposClasificacion: Record<string, keyof Pick<
+    Requerimiento,
+    'id_tipo_requerimiento' | 'id_modalidad' | 'id_modelo' | 'id_patron'
+  >> = {
+    tipo: 'id_tipo_requerimiento',
+    modalidad: 'id_modalidad',
+    modelo: 'id_modelo',
+    patrón: 'id_patron'
+  };
+
+  return runTransaction(db, async transaction => {
+    const requerimiento = await transaction.get(requerimientoRef);
+    if (!requerimiento.exists()) {
+      throw new Error('No se encontró el requerimiento que intentas restaurar.');
+    }
+
+    const actual = requerimiento.data() as Requerimiento;
+    const actualizacion: Partial<Requerimiento> = {};
+    const camposRestaurados: string[] = [];
+    const cambiosClasificacion: NonNullable<LogRequerimiento['detalles']>['cambios_clasificacion'] = [];
+    const enunciadoRestaurado = log.detalles?.enunciado_anterior;
+
+    if (typeof enunciadoRestaurado === 'string' && actual.enunciado !== enunciadoRestaurado) {
+      actualizacion.enunciado = enunciadoRestaurado;
+      camposRestaurados.push('enunciado');
+    }
+
+    const cambiosOriginales = Array.isArray(log.detalles?.cambios_clasificacion)
+      ? log.detalles.cambios_clasificacion
+      : [];
+    for (const cambio of cambiosOriginales) {
+      const campoReq = camposClasificacion[cambio.campo];
+      const tieneValorAnterior = typeof cambio.anteriorId === 'string' || cambio.anteriorId === null;
+      if (!campoReq || !tieneValorAnterior || typeof cambio.anterior !== 'string') continue;
+
+      const valorActual = actual[campoReq] ?? null;
+      const valorRestaurado = cambio.anteriorId;
+      if (valorActual === valorRestaurado) continue;
+
+      actualizacion[campoReq] = valorRestaurado;
+      camposRestaurados.push(cambio.campo);
+      cambiosClasificacion.push({
+        campo: cambio.campo,
+        anterior: valorActual === cambio.nuevoId
+          ? cambio.nuevo
+          : valorActual || `Valor no disponible (${cambio.campo})`,
+        nuevo: cambio.anterior,
+        anteriorId: valorActual,
+        nuevoId: valorRestaurado
+      });
+    }
+
+    if (camposRestaurados.length === 0) return false;
+
+    transaction.update(requerimientoRef, actualizacion);
+    const detalles: NonNullable<LogRequerimiento['detalles']> = {
+      campos: camposRestaurados,
+      restauracion: true
+    };
+    if (typeof enunciadoRestaurado === 'string' && typeof actual.enunciado === 'string' &&
+        actual.enunciado !== enunciadoRestaurado) {
+      detalles.enunciado_anterior = actual.enunciado;
+      detalles.enunciado_nuevo = enunciadoRestaurado;
+    }
+    if (cambiosClasificacion.length > 0) {
+      detalles.cambios_clasificacion = cambiosClasificacion;
+    }
+    transaction.set(logRef, {
+      id_requerimiento: id,
+      accion: 'Restauración de versión',
+      id_autor,
+      fecha_hora,
+      detalles
+    });
+    return true;
+  });
+}
+
+/**
  * Devuelve un requerimiento rechazado al ciclo de aprobación (KAN-18).
  *
  * Lo llama su autor después de corregirlo. El estado vuelve a "Pendiente de
@@ -353,8 +489,111 @@ export async function decidirAprobacionRequerimiento(
   });
 }
 
-export async function deleteRequerimiento(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'requerimiento', id));
+export async function deleteRequerimiento(id: string, id_autor: string): Promise<number> {
+  const requerimientoRef = doc(db, 'requerimiento', id);
+  const requerimiento = await getDoc(requerimientoRef);
+  if (!requerimiento.exists()) return 0;
+
+  const id_proyecto = requerimiento.data().id_proyecto;
+  if (typeof id_proyecto !== 'string') {
+    throw new Error('No se pudo determinar el proyecto del requerimiento que intentas eliminar.');
+  }
+
+  const proyectoRef = doc(db, 'proyecto', id_proyecto);
+  const proyectoInicial = await getDoc(proyectoRef);
+  const contadorInicial = proyectoInicial.exists()
+    ? proyectoInicial.data()[CONTADOR_REQUERIMIENTOS] ?? null
+    : null;
+  const requerimientos = await getDocs(
+    query(collection(db, 'requerimiento'), where('id_proyecto', '==', id_proyecto))
+  );
+  const objetivoIncluido = requerimientos.docs.some(snapshot => snapshot.id === id);
+  if (!objetivoIncluido) {
+    throw new Error('Los requerimientos cambiaron mientras eliminabas. Recarga la página e inténtalo de nuevo.');
+  }
+
+  const restantes = requerimientos.docs
+    .filter(snapshot => snapshot.id !== id)
+    .map(snapshot => ({
+      ref: snapshot.ref,
+      id: snapshot.id,
+      numero: snapshot.data().numero,
+      codigo: snapshot.data().codigo,
+      created_at: snapshot.data().created_at
+    }))
+    .sort((a, b) => {
+      const numeroA = typeof a.numero === 'number' ? a.numero : Number.POSITIVE_INFINITY;
+      const numeroB = typeof b.numero === 'number' ? b.numero : Number.POSITIVE_INFINITY;
+      return numeroA - numeroB ||
+        String(a.created_at || '').localeCompare(String(b.created_at || '')) ||
+        a.id.localeCompare(b.id);
+    });
+  const cambios = restantes.flatMap((req, index) => {
+    const numero = index + 1;
+    const codigo = codigoRequerimiento(numero);
+    if (req.numero === numero && req.codigo === codigo) return [];
+    return [{ ...req, nuevoNumero: numero, nuevoCodigo: codigo }];
+  });
+
+  if (cambios.length > MAX_RENUMERADOS) {
+    throw new Error(
+      `No se puede compactar la numeración: hay ${cambios.length} requerimientos por renumerar ` +
+      `y el límite por operación es ${MAX_RENUMERADOS}.`
+    );
+  }
+
+  const renumerados = await runTransaction(db, async transaction => {
+    const [proyectoActual, requerimientoActual, ...documentosPorRenumerar] = await Promise.all([
+      transaction.get(proyectoRef),
+      transaction.get(requerimientoRef),
+      ...cambios.map(req => transaction.get(req.ref))
+    ]);
+    const contadorActual = proyectoActual.exists()
+      ? proyectoActual.data()[CONTADOR_REQUERIMIENTOS] ?? null
+      : null;
+    if (
+      !requerimientoActual.exists() ||
+      !Object.is(contadorActual, contadorInicial) ||
+      documentosPorRenumerar.some((snapshot, index) =>
+        !snapshot.exists() ||
+        snapshot.data().numero !== cambios[index].numero ||
+        snapshot.data().codigo !== cambios[index].codigo
+      )
+    ) {
+      throw new Error('Los requerimientos cambiaron mientras eliminabas. Recarga la página e inténtalo de nuevo.');
+    }
+
+    cambios.forEach(req => {
+      transaction.update(req.ref, { numero: req.nuevoNumero, codigo: req.nuevoCodigo });
+    });
+    transaction.delete(requerimientoRef);
+    if (proyectoActual.exists()) {
+      transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: restantes.length });
+    }
+
+    return cambios.map(req => ({
+      id: req.id,
+      de: typeof req.codigo === 'string' ? req.codigo : codigoRequerimiento(req.numero),
+      a: req.nuevoCodigo
+    }));
+  });
+
+  if (renumerados.length > 0) {
+    void Promise.all(
+      renumerados.map(req =>
+        addLogRequerimiento({
+          id_requerimiento: req.id,
+          accion: 'Renumeración',
+          id_autor,
+          detalles: { de: req.de, a: req.a, motivo: 'Se eliminó un requerimiento anterior' }
+        })
+      )
+    ).catch(error => {
+      console.error('Error recording requirement renumbering logs after deletion:', error);
+    });
+  }
+
+  return renumerados.length;
 }
 
 // ==========================================
@@ -364,16 +603,12 @@ export async function addLogRequerimiento(data: {
   id_requerimiento: string;
   accion: string;
   id_autor: string | null;
-  detalles?: any;
+  detalles?: LogRequerimiento['detalles'];
 }): Promise<void> {
-  try {
-    await addDoc(collection(db, 'logs_requerimientos'), {
-      ...data,
-      fecha_hora: new Date().toISOString()
-    });
-  } catch (e) {
-    console.error('Error creating requirement log:', e);
-  }
+  await addDoc(collection(db, 'logs_requerimientos'), {
+    ...data,
+    fecha_hora: new Date().toISOString()
+  });
 }
 
 export async function getLogsRequerimientos(id_requerimiento: string): Promise<LogRequerimiento[]> {
@@ -394,15 +629,17 @@ export async function getLogsRequerimientos(id_requerimiento: string): Promise<L
         accion: data.accion,
         id_autor: data.id_autor || null,
         id_lider_en_momento: data.id_lider_en_momento || null,
-        fecha_hora: data.fecha_hora || new Date().toISOString(),
+        fecha_hora: typeof data.fecha_hora === 'string' ? data.fecha_hora : '',
         detalles: data.detalles,
         autor: data.id_autor ? userMap.get(data.id_autor) || null : null
       };
     });
 
-    return logs.sort((a, b) => new Date(b.fecha_hora).getTime() - new Date(a.fecha_hora).getTime());
+    return logs.sort((a, b) =>
+      (Date.parse(b.fecha_hora) || 0) - (Date.parse(a.fecha_hora) || 0)
+    );
   } catch (e) {
     console.error('Error fetching logs:', e);
-    return [];
+    throw e;
   }
 }
