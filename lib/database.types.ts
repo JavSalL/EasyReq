@@ -46,6 +46,10 @@ export interface PerfilUsuario {
   id: UUID; // Coincide con el uid de Firebase Auth
   nombre: string;
   correo: string;
+  /** País del usuario: código ISO 3166-1 alfa-2 (p. ej. "MX"). Opcional en perfiles anteriores. */
+  pais?: string | null;
+  /** Nombre del país en español, desnormalizado para mostrarlo sin catálogo. */
+  pais_nombre?: string | null;
   created_at?: string;
   // Multi-profesión (modelo actual). Se guarda desnormalizado en
   // `perfil_usuario` para evitar joins en Firestore.
@@ -151,6 +155,30 @@ export interface Requerimiento {
   aprobador?: PerfilUsuario | null;
   modelo?: Modelo | null;
   patron?: Patron | null;
+}
+
+export type FormatoContexto = 'pdf' | 'md' | 'txt';
+
+/** Archivo o carpeta de la pestaña Contexto de un proyecto (alimenta a la IA). */
+export interface ArchivoContexto {
+  id: UUID;
+  id_proyecto: UUID;
+  tipo: 'archivo' | 'carpeta';
+  nombre: string;
+  /** Carpeta que lo contiene; null = raíz (contexto global, entra siempre). */
+  id_carpeta: UUID | null;
+  formato?: FormatoContexto;
+  /** Tamaño del archivo original en bytes. */
+  tamano: number;
+  /** Texto que lee la IA (extraído del PDF o el propio contenido de txt/md). */
+  texto: string;
+  /** El texto se recortó por su longitud. */
+  texto_truncado: boolean;
+  /** Fragmentos en `contexto_fragmentos` que guardan el archivo original. */
+  num_fragmentos: number;
+  id_autor: UUID | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // 3. Tablas Intermedias

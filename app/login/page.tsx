@@ -21,6 +21,8 @@ import { Profesion } from '@/lib/database.types';
 import ThemeToggle from '@/components/ThemeToggle';
 import Logo from '@/components/Logo';
 import SelectorProfesiones from '@/components/SelectorProfesiones';
+import SelectorPais from '@/components/SelectorPais';
+import { nombrePais } from '@/lib/paises';
 import { btnIcono } from '@/components/ui/estilos';
 
 // Mensaje para API key inválida. El env NEXT_PUBLIC_* se congela en build,
@@ -59,6 +61,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [nombre, setNombre] = useState('');
   const [idsProfesiones, setIdsProfesiones] = useState<string[]>([]);
+  const [pais, setPais] = useState('');
 
   // Password validation rules
   const passMinLength = password.length >= 8;
@@ -172,6 +175,12 @@ export default function LoginPage() {
           return;
         }
 
+        if (!pais) {
+          toast.error('Por favor selecciona tu país');
+          setLoading(false);
+          return;
+        }
+
         // Validación estricta de contraseña en registro
         if (!passMinLength) {
           toast.error('La contraseña debe tener al menos 8 caracteres');
@@ -200,6 +209,8 @@ export default function LoginPage() {
         await saveUserProfile(credential.user.uid, {
           nombre: nombre.trim(),
           correo: email.trim(),
+          pais,
+          pais_nombre: nombrePais(pais) ?? undefined,
           ids_profesiones: profesionesSeleccionadas.map((p) => p.id),
           profesiones_nombres: profesionesSeleccionadas.map((p) => p.nombre),
           profesiones: profesionesSeleccionadas,
@@ -345,6 +356,11 @@ export default function LoginPage() {
                     valor={idsProfesiones}
                     onChange={setIdsProfesiones}
                   />
+                )}
+
+                {/* Campo País (solo en registro) */}
+                {!isLogin && (
+                  <SelectorPais id="login-pais" valor={pais} onChange={setPais} obligatorio={false} />
                 )}
 
                 {/* Campo Correo Electrónico */}

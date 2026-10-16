@@ -7,12 +7,19 @@ import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Clock, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, Copy, ListPlus, ListOrdered,
-  Check, XCircle, Send, Download
+  Check, XCircle, Send, Download, Folder, X, Layers
 } from 'lucide-react';
-import { generateSingleRequirement, AIError } from '@/lib/ai-actions';
+import {
+  generateSingleRequirement,
+  generateBulkRequirements,
+  AIError,
+  ESTRICTEZ_POR_DEFECTO,
+  type AIRequirement,
+  type Estrictez
+} from '@/lib/ai-actions';
 import type {
   Proyecto, Requerimiento, TipoRequerimiento, Estado,
-  Modalidad, Modelo, Patron, PerfilUsuario, LogRequerimiento, Equipo
+  Modalidad, Modelo, Patron, PerfilUsuario, LogRequerimiento, Equipo, ArchivoContexto
 } from '@/lib/database.types';
 import {
   getProyectoById,
@@ -38,7 +45,9 @@ import {
   MODALIDAD_GENERADO_IA,
   ESTADO_APROBADO,
   ESTADO_RECHAZADO,
-  ESTADO_PENDIENTE_APROBACION
+  ESTADO_PENDIENTE_APROBACION,
+  getContextoProyecto,
+  construirContextoIA
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
@@ -52,6 +61,8 @@ import PageHeader from '@/components/ui/PageHeader';
 import ModalHistorialLogs from '@/components/requerimientos/ModalHistorialLogs';
 import EquiposDelProyecto from '@/components/equipos/EquiposDelProyecto';
 import MiembrosDelProyecto from '@/components/proyectos/MiembrosDelProyecto';
+import ContextoDelProyecto from '@/components/proyectos/ContextoDelProyecto';
+import ControlEstrictez from '@/components/requerimientos/ControlEstrictez';
 import { irA, leerNavegacion, suscribirNavegacion, type VistaProyecto } from '@/lib/navegacion-proyecto';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
@@ -111,6 +122,27 @@ const CAMPOS_EDITABLES: Array<[
   ['id_modelo', 'modelo'],
   ['id_patron', 'patrón']
 ];
+
+/** Máximo de ejemplos (few-shot) que se le dan a la IA. */
+const MAX_EJEMPLOS = 3;
+
+/** Categoría FURPS que devuelve la IA -> inicio del nombre del tipo en el catálogo. */
+const TIPO_POR_FURPS: Record<AIRequirement['type_furps'], string> = {
+  Functionality: 'funcional',
+  Usability: 'usabilidad',
+  Reliability: 'confiabilidad',
+  Performance: 'rendimiento',
+  Supportability: 'soporte'
+};
+
+/** Un requerimiento propuesto por la generación masiva, antes de registrarlo. */
+interface Propuesta {
+  clave: string;
+  texto: string;
+  type_furps: AIRequirement['type_furps'];
+  area?: string;
+  elegida: boolean;
+}
 
 type Orden = 'recientes' | 'antiguos' | 'estado' | 'numero';
 type Agrupar = 'ninguno' | 'tipo' | 'modelo';
@@ -267,6 +299,17 @@ export default function RequerimientosPage() {
   // AI Generation State
   const [isAILoading, setIsAILoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
+  // Opciones de la IA: se conservan entre aperturas del modal mientras dure la página
+  const [estrictez, setEstrictez] = useState<Estrictez>(ESTRICTEZ_POR_DEFECTO);
+  const [ejemplos, setEjemplos] = useState<string[]>([]);
+  const [modoMasivo, setModoMasivo] = useState(false);
+  // Contexto del proyecto (pestaña Contexto): la raíz entra siempre, las carpetas si se eligen
+  const [archivosContexto, setArchivosContexto] = useState<ArchivoContexto[]>([]);
+  const [carpetasElegidas, setCarpetasElegidas] = useState<string[]>([]);
+  const [cantidadContexto, setCantidadContexto] = useState<number | null>(null);
+  // Generación masiva: propuestas a revisar antes de registrarlas
+  const [propuestas, setPropuestas] = useState<Propuesta[] | null>(null);
+  const [registrandoMasivo, setRegistrandoMasivo] = useState<{ hechos: number; total: number } | null>(null);
 
   // Al registrar varios requerimientos seguidos: "guardar y añadir otro" y
   // recordar la clasificación del último para no volver a elegirla.
@@ -281,6 +324,7 @@ export default function RequerimientosPage() {
     {
       enunciado: formData.enunciado,
       ia: aiPrompt,
+      propuestas: propuestas?.length ?? 0,
       resto: editingReq
         ? [formData.id_tipo_requerimiento, formData.id_modalidad, formData.id_modelo, formData.id_equipo]
         : null
@@ -351,6 +395,24 @@ export default function RequerimientosPage() {
     const actualizado = await getProyectoById(proyectoId);
     if (actualizado) setProyecto(actualizado);
   }, [proyectoId]);
+
+  // Contexto del proyecto para la IA. Se relee al abrir el modal para usar lo último que se subió.
+  const cargarContexto = useCallback(async () => {
+    if (!proyectoId) return;
+    try {
+      const lista = await getContextoProyecto(proyectoId);
+      setArchivosContexto(lista);
+      setCantidadContexto(lista.filter(a => a.tipo === 'archivo').length);
+      // Una carpeta elegida que ya no existe deja de contar
+      setCarpetasElegidas(prev => prev.filter(id => lista.some(a => a.id === id && a.tipo === 'carpeta')));
+    } catch (e) {
+      console.error('No se pudo cargar el contexto del proyecto:', e);
+    }
+  }, [proyectoId]);
+
+  useEffect(() => {
+    void cargarContexto();
+  }, [cargarContexto]);
 
   // Los requerimientos anteriores a los identificadores reciben su número (en orden de creación).
   // Lo inicia cualquier sesión que abra el proyecto, también las de solo lectura: es una
@@ -495,7 +557,9 @@ export default function RequerimientosPage() {
           : ''
     });
     setAiPrompt('');
+    setPropuestas(null);
     setIsModalOpen(true);
+    void cargarContexto();
   };
 
   const openCreateModal = () => abrirNuevo(null);
@@ -531,7 +595,9 @@ export default function RequerimientosPage() {
       id_equipo: req.id_equipo || ''
     });
     setAiPrompt('');
+    setPropuestas(null);
     setIsModalOpen(true);
+    void cargarContexto();
   };
 
   const handleModeloChange = (nuevoModeloId: string) => {
@@ -560,6 +626,11 @@ export default function RequerimientosPage() {
   // Guardar Requerimiento (Crear o Editar)
   const handleSaveReq = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (esMasivo) {
+      crearOtroRef.current = false;
+      if (propuestas?.some(p => p.elegida)) void registrarPropuestas();
+      return;
+    }
     const crearOtro = crearOtroRef.current;
     crearOtroRef.current = false;
     if (!esMiembroProyecto) {
@@ -726,16 +797,41 @@ export default function RequerimientosPage() {
     }
   };
 
-  // AI Generate Requirement
+  // ==========================================
+  // GENERACIÓN CON IA
+  // ==========================================
+  const tipoSeleccionado = tiposReq.find(t => t.tipo_req === formData.id_tipo_requerimiento) ?? null;
+  const carpetasContexto = archivosContexto.filter(a => a.tipo === 'carpeta');
+  // El modo masivo no aplica al editar ni al insertar en una posición concreta
+  const masivoDisponible = !editingReq && !insertarDespuesDe;
+  const esMasivo = modoMasivo && masivoDisponible;
+
+  /** Tipo del catálogo que corresponde a la categoría FURPS que devolvió la IA. */
+  const tipoDesdeFurps = (furps?: AIRequirement['type_furps']) => {
+    const inicio = furps ? TIPO_POR_FURPS[furps] : undefined;
+    return inicio ? tiposReq.find(t => t.nombre.toLowerCase().startsWith(inicio))?.tipo_req ?? null : null;
+  };
+
+  const opcionesIA = () => ({
+    pattern: patronSeleccionado?.promt,
+    tipo: tipoSeleccionado?.nombre,
+    estrictez,
+    ejemplos,
+    contexto: proyecto ? construirContextoIA(proyecto, archivosContexto, carpetasElegidas) : undefined
+  });
+
+  const idGeneradoConIA = () => modalidades.find(m => m.nombre_modalidad === MODALIDAD_GENERADO_IA)?.id;
+
   const handleAIGenerate = async () => {
     if (!aiPrompt.trim()) {
-      toast.error("Describe la funcionalidad para generar el requerimiento");
+      toast.error(esMasivo ? 'Describe qué parte del sistema (o el sistema completo) quieres especificar' : 'Describe la funcionalidad para generar el requerimiento');
       return;
     }
+    if (esMasivo) return handleAIGenerateMasivo();
 
     setIsAILoading(true);
     try {
-      const generated = await generateSingleRequirement(aiPrompt, patronSeleccionado?.promt);
+      const generated = await generateSingleRequirement(aiPrompt, opcionesIA());
       if (generated && generated.valido === false) {
         // La IA no inventa: si el texto no da base, se explica qué falta y se conserva lo escrito
         toast.error(generated.motivo || 'No se pudo identificar qué debe hacer el sistema. Descríbelo con más detalle.');
@@ -744,14 +840,16 @@ export default function RequerimientosPage() {
         // que nadie la elija. Si el catálogo no la tiene, se avisa y se deja la
         // modalidad como estaba: es información de la tarjeta, no un dato que
         // impida registrar el requerimiento.
-        const idGeneradoConIA = modalidades.find(m => m.nombre_modalidad === MODALIDAD_GENERADO_IA)?.id;
+        const idIA = idGeneradoConIA();
         setFormData(prev => ({
           ...prev,
           enunciado: generated.name,
-          id_modalidad: idGeneradoConIA ?? prev.id_modalidad
+          id_modalidad: idIA ?? prev.id_modalidad,
+          // Sin tipo elegido, se usa el que la IA le asignó
+          id_tipo_requerimiento: prev.id_tipo_requerimiento || tipoDesdeFurps(generated.type_furps) || ''
         }));
         toast.success(
-          idGeneradoConIA
+          idIA
             ? "Requerimiento generado. Revísalo antes de guardar."
             : "Requerimiento generado, pero falta la modalidad \"Generado con IA\" en el catálogo: pídela a quien administre el proyecto para que la marca se vea."
         );
@@ -763,6 +861,96 @@ export default function RequerimientosPage() {
       toast.error(err instanceof AIError ? err.message : "No se pudo conectar con el servicio de IA. Inténtalo de nuevo.");
     } finally {
       setIsAILoading(false);
+    }
+  };
+
+  /** Generación masiva: la IA decide cuántos requerimientos hacen falta según el alcance del pedido. */
+  const handleAIGenerateMasivo = async () => {
+    setIsAILoading(true);
+    try {
+      const resultado = await generateBulkRequirements(aiPrompt, opcionesIA());
+      if (!resultado.valido || resultado.requerimientos.length === 0) {
+        toast.error(resultado.motivo || 'La IA no encontró requerimientos que respalden el pedido. Detállalo más o agrega contexto al proyecto.');
+        return;
+      }
+      setPropuestas(resultado.requerimientos.map((r, i) => ({
+        clave: `${Date.now()}-${i}`,
+        texto: r.name,
+        type_furps: r.type_furps,
+        area: r.area,
+        elegida: true
+      })));
+      toast.success(
+        `La IA propuso ${resultado.requerimientos.length} requerimientos en ${resultado.areas.length} ${resultado.areas.length === 1 ? 'área' : 'áreas'}. Revísalos antes de registrarlos.`
+      );
+    } catch (err) {
+      toast.error(err instanceof AIError ? err.message : "No se pudo conectar con el servicio de IA. Inténtalo de nuevo.");
+    } finally {
+      setIsAILoading(false);
+    }
+  };
+
+  /** Registra las propuestas elegidas, una por una, con la clasificación del formulario. */
+  const registrarPropuestas = async () => {
+    const elegidas = (propuestas ?? []).filter(p => p.elegida && p.texto.trim());
+    if (!esMiembroProyecto || !uid) {
+      toast.error('No tienes permiso para registrar requerimientos en este proyecto');
+      return;
+    }
+    if (elegidas.length === 0) {
+      toast.error('Elige al menos un requerimiento para registrar');
+      return;
+    }
+    if (!formData.id_equipo) {
+      toast.error('Elige el equipo al que pertenecen los requerimientos: su líder es quien los aprueba.');
+      return;
+    }
+    const idIA = idGeneradoConIA();
+    setRegistrandoMasivo({ hechos: 0, total: elegidas.length });
+    const registradas = new Set<string>();
+    try {
+      for (const p of elegidas) {
+        const nuevo = await createRequerimiento({
+          enunciado: p.texto.trim(),
+          id_tipo_requerimiento: formData.id_tipo_requerimiento || tipoDesdeFurps(p.type_furps),
+          id_modalidad: idIA ?? (formData.id_modalidad || null),
+          id_modelo: formData.id_modelo || null,
+          id_patron: formData.id_patron_seleccionado || null,
+          id_equipo: formData.id_equipo,
+          id_proyecto: proyectoId!
+        }, uid);
+        if (nuevo?.id) {
+          await addLogRequerimiento({
+            id_requerimiento: nuevo.id,
+            accion: 'Creación de requerimiento',
+            id_autor: uid,
+            detalles: { inicio: 'Generación masiva con IA', enunciado_nuevo: nuevo.enunciado }
+          });
+        }
+        registradas.add(p.clave);
+        setRegistrandoMasivo({ hechos: registradas.size, total: elegidas.length });
+      }
+      toast.success(
+        `${elegidas.length} requerimientos registrados. Quedan pendientes de que los apruebe el líder de ${nombreEquipoDe(formData.id_equipo)}.`
+      );
+      ultimaClasificacionRef.current = {
+        id_tipo_requerimiento: formData.id_tipo_requerimiento,
+        id_modalidad: formData.id_modalidad,
+        id_modelo: formData.id_modelo,
+        id_patron_seleccionado: formData.id_patron_seleccionado,
+        id_equipo: formData.id_equipo
+      };
+      setPropuestas(null);
+      setAiPrompt('');
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      // Las que ya se registraron salen de la lista para no duplicarlas al reintentar
+      setPropuestas(prev => prev?.filter(p => !registradas.has(p.clave)) ?? null);
+      toast.error(mensajeError(err, `Se registraron ${registradas.size} de ${elegidas.length}. No se pudo registrar el resto`));
+    } finally {
+      setRegistrandoMasivo(null);
+      fetchRequerimientos();
     }
   };
 
@@ -1345,7 +1533,8 @@ export default function RequerimientosPage() {
               nombre: 'Miembros',
               cantidad: cantidadMiembros ?? new Set([proyecto.id_creador, ...(proyecto.ids_miembros ?? [])].filter(Boolean)).size
             },
-            { id: 'equipos' as const, nombre: 'Equipos', cantidad: cantidadEquipos }
+            { id: 'equipos' as const, nombre: 'Equipos', cantidad: cantidadEquipos },
+            { id: 'contexto' as const, nombre: 'Contexto', cantidad: cantidadContexto }
           ].map((p) => {
             const activa = vista === p.id;
             return (
@@ -1366,11 +1555,13 @@ export default function RequerimientosPage() {
         </nav>
       )}
 
-      {vista === 'equipos' || vista === 'miembros' ? (
+      {vista === 'equipos' || vista === 'miembros' || vista === 'contexto' ? (
         !proyecto ? (
           <div role="status" aria-label="Cargando" className="h-40 bg-sunken rounded-ui animate-pulse" />
         ) : vista === 'equipos' ? (
           <EquiposDelProyecto proyecto={proyecto} onCantidad={setCantidadEquipos} />
+        ) : vista === 'contexto' ? (
+          <ContextoDelProyecto proyecto={proyecto} onCantidad={setCantidadContexto} />
         ) : (
           <MiembrosDelProyecto proyecto={proyecto} onCambio={recargarProyecto} onCantidad={setCantidadMiembros} />
         )
@@ -1570,11 +1761,15 @@ export default function RequerimientosPage() {
               ? `Nuevo requerimiento después de ${insertarDespuesDe.codigo}`
               : 'Nuevo Requerimiento'
         }
-        description="Elige el modelo de especificación y redacta respetando la estructura del patrón."
+        description={
+          esMasivo
+            ? 'Elige el modelo y el tipo, describe qué parte del sistema especificar y revisa lo que propone la IA.'
+            : 'Elige el modelo y el tipo, genera con IA o redacta respetando la estructura del patrón.'
+        }
         size="xl"
       >
         <form ref={formRef} onSubmit={handleSaveReq} noValidate className="flex flex-col flex-1 min-h-0">
-          <ModalBody className="space-y-5">
+          <ModalBody className="space-y-6">
             {insertarDespuesDe && !editingReq && (
               <div className="flex items-start gap-3 rounded-ui border border-warning-line bg-warning-subtle p-3 text-sm text-warning">
                 <ListOrdered size={18} aria-hidden className="mt-0.5 shrink-0" />
@@ -1587,8 +1782,8 @@ export default function RequerimientosPage() {
               </div>
             )}
 
-            {/* Selector de Modelo y Patrón */}
-            <div className="bg-sunken p-4 rounded-ui border border-line space-y-3">
+            {/* Modelo, patrón y tipo: lo primero que se elige; la IA los respeta al redactar */}
+            <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="req-modelo" className={etiqueta}>Modelo de Requisitos</label>
@@ -1621,131 +1816,296 @@ export default function RequerimientosPage() {
                   </select>
                 </div>
               </div>
+
               {patronSeleccionado && (
-                <div className="flex items-start justify-between gap-3 bg-sunken border border-line rounded-ui px-3 py-2">
+                <div className="flex items-start justify-between gap-3 bg-sunken border border-line rounded-ui px-4 py-3">
                   <code className="font-mono text-xs text-ink leading-relaxed whitespace-pre-wrap">
                     {patronSeleccionado.promt}
                   </code>
-                  <button
-                    type="button"
-                    onClick={usarPlantilla}
-                    className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-brand-text hover:underline cursor-pointer"
-                  >
-                    <Wand2 size={12} />
-                    Usar plantilla
-                  </button>
+                  {!esMasivo && (
+                    <button
+                      type="button"
+                      onClick={usarPlantilla}
+                      className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-brand-text hover:underline cursor-pointer"
+                    >
+                      <Wand2 size={12} />
+                      Usar plantilla
+                    </button>
+                  )}
                 </div>
               )}
-            </div>
 
-            {/* AI Generation */}
-            <div className="bg-brand-subtle p-4 rounded-ui border border-brand-line">
-              <label htmlFor="req-ia" className="text-sm font-semibold text-brand-text mb-2 flex items-center gap-1.5">
-                <Sparkles size={14} className="text-brand-text" />
-                Generar con IA
-              </label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  id="req-ia"
-                  type="text"
-                  placeholder="Describe la funcionalidad brevemente..."
-                  value={aiPrompt}
-                  onChange={(e) => setAiPrompt(e.target.value)}
-                  className="flex-1 px-3 min-h-10 pointer-coarse:min-h-11 py-2 bg-surface border border-line-strong rounded-ui text-base focus:outline-none focus:border-brand-text focus:ring-1 focus:ring-brand-text text-ink placeholder:text-ink-subtle"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAIGenerate();
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleAIGenerate}
-                  disabled={isAILoading || !aiPrompt.trim()}
-                  className="px-4 py-2 bg-brand-solid hover:bg-brand-solid-hover text-on-solid rounded-ui text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                >
-                  {isAILoading && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                  {isAILoading ? 'Generando...' : 'Generar'}
-                </button>
-              </div>
-              {patronSeleccionado && (
-                <p className="text-xs text-brand-text mt-1.5">
-                  Se usará el patrón <strong>{patronSeleccionado.nombre}</strong>.
-                </p>
-              )}
-            </div>
-
-            {/* Enunciado */}
-            <div>
-              <label htmlFor="req-enunciado" className={etiqueta}>
-                Enunciado del Requerimiento <span className="text-danger">*</span>
-              </label>
-              <textarea
-                id="req-enunciado"
-                rows={4}
-                placeholder={patronSeleccionado?.promt || "Escribe el enunciado siguiendo la estructura del patrón..."}
-                value={formData.enunciado}
-                onChange={(e) => setFormData({ ...formData, enunciado: e.target.value })}
-                className={`${campo} font-mono leading-relaxed`}
-              />
-              <p className="text-xs text-ink-subtle mt-1">Ctrl + Enter para guardar.</p>
-            </div>
-
-            {/* Clasificación */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label htmlFor="req-tipo" className={etiqueta}>Tipo</label>
+                <label htmlFor="req-tipo" className={etiqueta}>Tipo de requerimiento</label>
                 <select
                   id="req-tipo"
                   value={formData.id_tipo_requerimiento}
                   onChange={(e) => setFormData({ ...formData, id_tipo_requerimiento: e.target.value })}
                   className={campo}
                 >
-                  <option value="">Sin tipo</option>
+                  <option value="">{esMasivo ? 'Todos (la IA los clasifica)' : 'Sin tipo'}</option>
                   {tiposReq.map((t) => (
                     <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
                   ))}
                 </select>
               </div>
+            </div>
 
+            {/* Prompt para la IA */}
+            <div>
+              <label htmlFor="req-ia" className={`${etiqueta} flex items-center gap-1.5`}>
+                <Sparkles size={14} className="text-brand-text" aria-hidden />
+                Generar con IA
+              </label>
+
+              <div className="rounded-ui border border-line-strong bg-surface focus-within:border-brand-text focus-within:ring-1 focus-within:ring-brand-text transition-colors">
+                <textarea
+                  id="req-ia"
+                  rows={esMasivo ? 4 : 3}
+                  placeholder={
+                    esMasivo
+                      ? 'Ej. «Requerimientos del módulo de pagos» o «Todos los requerimientos del sistema». La IA decide cuántos según el alcance y el contexto del proyecto.'
+                      : 'Describe la funcionalidad brevemente...'
+                  }
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Enter genera; Shift+Enter hace un salto de línea; Ctrl+Enter sigue guardando el formulario
+                    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                      e.preventDefault();
+                      handleAIGenerate();
+                    }
+                  }}
+                  className="block w-full px-4 pt-3.5 pb-2 bg-transparent text-base text-ink placeholder:text-ink-subtle resize-none focus:outline-none"
+                />
+
+                {/* Carpetas de contexto opcionales (la raíz de la pestaña Contexto se usa siempre) */}
+                {carpetasContexto.length > 0 && (
+                  <div className="px-4 pb-3 flex flex-wrap items-center gap-1.5 text-xs">
+                    {carpetasContexto.map((c) => {
+                      const activa = carpetasElegidas.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          aria-pressed={activa}
+                          onClick={() => setCarpetasElegidas(prev => activa ? prev.filter(x => x !== c.id) : [...prev, c.id])}
+                          className={`inline-flex items-center gap-1 px-2.5 min-h-7 rounded-full border cursor-pointer transition-colors ${
+                            activa ? 'bg-brand-subtle border-brand-text text-brand-text' : 'bg-surface border-line text-ink-muted hover:text-ink'
+                          }`}
+                          title={activa ? 'Quitar esta carpeta del contexto' : 'Usar también esta carpeta como contexto'}
+                        >
+                          <Folder size={12} aria-hidden />
+                          {c.nombre}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Barra inferior: modo masivo a la izquierda; estrictez y generar a la derecha */}
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-t border-line">
+                  {masivoDisponible ? (
+                    <label className="inline-flex items-center gap-2 px-1 min-h-8 text-xs font-semibold text-ink-muted cursor-pointer select-none">
+                      <span className="relative inline-flex">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          checked={modoMasivo}
+                          onChange={(e) => {
+                            setModoMasivo(e.target.checked);
+                            setPropuestas(null);
+                          }}
+                          className="peer sr-only"
+                        />
+                        <span className="w-8 h-[18px] rounded-full bg-line-strong peer-checked:bg-brand-solid transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand-text" />
+                        <span className="absolute top-[2px] left-[2px] size-[14px] rounded-full bg-surface shadow transition-transform peer-checked:translate-x-[14px]" />
+                      </span>
+                      <Layers size={13} aria-hidden />
+                      Varios requerimientos
+                    </label>
+                  ) : (
+                    <span />
+                  )}
+                  <div className="flex items-center gap-1 ml-auto">
+                    <ControlEstrictez valor={estrictez} onChange={setEstrictez} disabled={isAILoading} />
+                    <button
+                      type="button"
+                      onClick={handleAIGenerate}
+                      disabled={isAILoading || !aiPrompt.trim()}
+                      className="px-3.5 min-h-8 bg-brand-solid hover:bg-brand-solid-hover text-on-solid rounded-ui text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                      {isAILoading ? (
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Sparkles size={13} aria-hidden />
+                      )}
+                      {isAILoading ? (esMasivo ? 'Analizando el sistema...' : 'Generando...') : esMasivo ? 'Generar varios' : 'Generar'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ejemplos (few-shot) */}
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-ink-muted">Ejemplos para la IA (opcional)</span>
+                  <button
+                    type="button"
+                    onClick={() => setEjemplos(prev => [...prev, ''])}
+                    disabled={ejemplos.length >= MAX_EJEMPLOS}
+                    title={ejemplos.length >= MAX_EJEMPLOS ? `Máximo ${MAX_EJEMPLOS} ejemplos` : 'Agregar un ejemplo'}
+                    aria-label="Agregar un ejemplo"
+                    className={btnIcono}
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+                {ejemplos.map((ejemplo, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <textarea
+                      rows={2}
+                      value={ejemplo}
+                      onChange={(e) => setEjemplos(prev => prev.map((x, j) => (j === i ? e.target.value : x)))}
+                      placeholder="Ej. El sistema debe permitir al cliente descargar su factura en PDF desde el historial de pedidos."
+                      aria-label={`Ejemplo ${i + 1}`}
+                      maxLength={1500}
+                      className={`${campo} text-sm leading-relaxed`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEjemplos(prev => prev.filter((_, j) => j !== i))}
+                      aria-label={`Quitar el ejemplo ${i + 1}`}
+                      className={`${btnIconoPeligro} mt-0.5 shrink-0`}
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {esMasivo ? (
+              /* Propuestas de la generación masiva */
+              propuestas && (
+                <section aria-labelledby="req-propuestas" className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 id="req-propuestas" className="text-sm font-semibold text-ink">
+                      Propuestas de la IA{' '}
+                      <span className="font-normal text-ink-subtle">
+                        ({propuestas.filter(p => p.elegida).length} de {propuestas.length} elegidas)
+                      </span>
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const todas = propuestas.every(p => p.elegida);
+                        setPropuestas(propuestas.map(p => ({ ...p, elegida: !todas })));
+                      }}
+                      className="text-xs font-semibold text-brand-text hover:underline cursor-pointer"
+                    >
+                      {propuestas.every(p => p.elegida) ? 'Quitar todas' : 'Elegir todas'}
+                    </button>
+                  </div>
+                  <ul className="max-h-80 overflow-y-auto rounded-ui border border-line divide-y divide-line custom-scrollbar">
+                    {propuestas.map((p, i) => {
+                      const area = p.area && p.area !== propuestas[i - 1]?.area ? p.area : null;
+                      return (
+                        <li key={p.clave}>
+                          {area && (
+                            <p className="px-3 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-subtle bg-sunken">
+                              {area}
+                            </p>
+                          )}
+                          <div className={`flex items-start gap-3 px-3 py-2.5 ${p.elegida ? '' : 'opacity-60'}`}>
+                            <input
+                              type="checkbox"
+                              checked={p.elegida}
+                              onChange={() => setPropuestas(propuestas.map(x => (x.clave === p.clave ? { ...x, elegida: !x.elegida } : x)))}
+                              aria-label={`Registrar la propuesta ${i + 1}`}
+                              className="mt-2 size-4 accent-brand-text shrink-0 cursor-pointer"
+                            />
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <textarea
+                                rows={2}
+                                value={p.texto}
+                                onChange={(e) => setPropuestas(propuestas.map(x => (x.clave === p.clave ? { ...x, texto: e.target.value } : x)))}
+                                aria-label={`Texto de la propuesta ${i + 1}`}
+                                className="w-full px-2 py-1 bg-transparent border border-transparent hover:border-line focus:border-brand-text rounded-ui text-sm font-mono text-ink leading-relaxed resize-y focus:outline-none"
+                              />
+                              <span className="inline-block px-2 py-0.5 rounded-ui bg-sunken text-ink-muted text-[11px] font-medium border border-line">
+                                {tiposReq.find(t => t.tipo_req === (formData.id_tipo_requerimiento || tipoDesdeFurps(p.type_furps)))?.nombre ?? p.type_furps}
+                              </span>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )
+            ) : (
+              /* 4. Enunciado */
               <div>
-                <label htmlFor="req-modalidad" className={etiqueta}>Modalidad</label>
+                <label htmlFor="req-enunciado" className={etiqueta}>
+                  Enunciado del Requerimiento <span className="text-danger">*</span>
+                </label>
+                <textarea
+                  id="req-enunciado"
+                  rows={4}
+                  placeholder={patronSeleccionado?.promt || "Escribe el enunciado siguiendo la estructura del patrón..."}
+                  value={formData.enunciado}
+                  onChange={(e) => setFormData({ ...formData, enunciado: e.target.value })}
+                  className={`${campo} font-mono leading-relaxed`}
+                />
+                <p className="text-xs text-ink-subtle mt-1">Ctrl + Enter para guardar.</p>
+              </div>
+            )}
+
+            {/* Modalidad y equipo: decide qué líder aprueba (KAN-18) */}
+            <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {!esMasivo && (
+                <div>
+                  <label htmlFor="req-modalidad" className={etiqueta}>Modalidad</label>
+                  <select
+                    id="req-modalidad"
+                    value={formData.id_modalidad}
+                    onChange={(e) => setFormData({ ...formData, id_modalidad: e.target.value })}
+                    className={campo}
+                  >
+                    <option value="">Sin modalidad</option>
+                    {modalidades.map((m) => (
+                      <option key={m.id} value={m.id}>{m.nombre_modalidad}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className={esMasivo ? 'sm:col-span-2' : ''}>
+                <label htmlFor="req-equipo" className={etiqueta}>Equipo</label>
                 <select
-                  id="req-modalidad"
-                  value={formData.id_modalidad}
-                  onChange={(e) => setFormData({ ...formData, id_modalidad: e.target.value })}
-                  className={campo}
+                  id="req-equipo"
+                  value={formData.id_equipo}
+                  onChange={(e) => setFormData({ ...formData, id_equipo: e.target.value })}
+                  disabled={editingReq !== null}
+                  aria-describedby="req-equipo-ayuda"
+                  className={`${campo} disabled:opacity-60 disabled:cursor-not-allowed`}
                 >
-                  <option value="">Sin modalidad</option>
-                  {modalidades.map((m) => (
-                    <option key={m.id} value={m.id}>{m.nombre_modalidad}</option>
+                  <option value="">Sin equipo</option>
+                  {equiposProyecto.map((e) => (
+                    <option key={e.equipo_id} value={e.equipo_id}>{e.nombre}</option>
                   ))}
                 </select>
               </div>
             </div>
-
-            {/* Equipo: decide qué líder aprueba (KAN-18) */}
-            <div>
-              <label htmlFor="req-equipo" className={etiqueta}>Equipo</label>
-              <select
-                id="req-equipo"
-                value={formData.id_equipo}
-                onChange={(e) => setFormData({ ...formData, id_equipo: e.target.value })}
-                disabled={editingReq !== null}
-                aria-describedby="req-equipo-ayuda"
-                className={`${campo} disabled:opacity-60 disabled:cursor-not-allowed`}
-              >
-                <option value="">Sin equipo</option>
-                {equiposProyecto.map((e) => (
-                  <option key={e.equipo_id} value={e.equipo_id}>{e.nombre}</option>
-                ))}
-              </select>
-              <p id="req-equipo-ayuda" className="text-xs text-ink-subtle mt-1">
-                {editingReq
-                  ? 'El equipo no se puede cambiar al editar: de él depende qué líder aprueba, y moverlo movería al juez.'
+            <p id="req-equipo-ayuda" className="text-xs text-ink-subtle mt-1.5">
+              {editingReq
+                ? 'El equipo no se puede cambiar al editar: de él depende qué líder aprueba, y moverlo movería al juez.'
+                : esMasivo
+                  ? 'Su líder aprueba los requerimientos registrados. Se marcan como «Generado con IA».'
                   : 'Su líder es quien aprueba este requerimiento. No se puede cambiar después.'}
-              </p>
+            </p>
             </div>
 
             {/* Estado, autor y aprobador: información de solo lectura.
@@ -1786,26 +2146,44 @@ export default function RequerimientosPage() {
           </ModalBody>
 
           <ModalFooter>
-            <button type="button" onClick={intentarCerrar} className={btnSecundario}>
+            <button type="button" onClick={intentarCerrar} disabled={registrandoMasivo !== null} className={btnSecundario}>
               Cancelar
             </button>
-            {!editingReq && (
+            {esMasivo ? (
               <button
                 type="button"
-                disabled={saving}
-                onClick={() => {
-                  crearOtroRef.current = true;
-                  formRef.current?.requestSubmit();
-                }}
-                className={btnSecundario}
+                onClick={registrarPropuestas}
+                disabled={registrandoMasivo !== null || !propuestas?.some(p => p.elegida)}
+                className={btnPrimario}
               >
-                {insertarDespuesDe ? 'Insertar y añadir otro' : 'Guardar y añadir otro'}
+                <Save size={16} />
+                {registrandoMasivo
+                  ? `Registrando ${registrandoMasivo.hechos + 1} de ${registrandoMasivo.total}...`
+                  : propuestas?.some(p => p.elegida)
+                    ? `Registrar ${propuestas.filter(p => p.elegida).length} requerimientos`
+                    : 'Registrar requerimientos'}
               </button>
+            ) : (
+              <>
+                {!editingReq && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => {
+                      crearOtroRef.current = true;
+                      formRef.current?.requestSubmit();
+                    }}
+                    className={btnSecundario}
+                  >
+                    {insertarDespuesDe ? 'Insertar y añadir otro' : 'Guardar y añadir otro'}
+                  </button>
+                )}
+                <button type="submit" disabled={saving} className={btnPrimario}>
+                  <Save size={16} />
+                  {saving ? 'Guardando...' : editingReq ? 'Guardar cambios' : insertarDespuesDe ? 'Insertar requerimiento' : 'Registrar requerimiento'}
+                </button>
+              </>
             )}
-            <button type="submit" disabled={saving} className={btnPrimario}>
-              <Save size={16} />
-              {saving ? 'Guardando...' : editingReq ? 'Guardar cambios' : insertarDespuesDe ? 'Insertar requerimiento' : 'Registrar requerimiento'}
-            </button>
           </ModalFooter>
         </form>
       </Modal>

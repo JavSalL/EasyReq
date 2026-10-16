@@ -72,6 +72,8 @@ export async function saveUserProfile(
   data: {
     nombre: string;
     correo: string;
+    pais?: string;
+    pais_nombre?: string;
     id_profesion?: string;
     profesion_nombre?: string;
     ids_profesiones?: string[];

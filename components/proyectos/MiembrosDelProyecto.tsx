@@ -19,7 +19,8 @@ import { puedeAgregarMiembros, puedeCrearEquipos } from '@/lib/equipos-proyecto'
 import { EVENTO_EQUIPOS_CAMBIARON } from '@/lib/navegacion-proyecto';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
-import { btnIconoPeligro, btnPrimario, btnSecundario, campo } from '@/components/ui/estilos';
+import { btnIconoPeligro, btnPrimario, btnSecundario } from '@/components/ui/estilos';
+import BuscadorPersonas from '@/components/proyectos/BuscadorPersonas';
 
 const nombreDe = (u: PerfilUsuario) => u.nombre || u.correo;
 const iniciales = (u: PerfilUsuario) => nombreDe(u).slice(0, 2).toUpperCase();
@@ -56,7 +57,6 @@ export default function MiembrosDelProyecto({ proyecto, onCambio, onCantidad }: 
   // Modal para agregar miembros
   const [modalAbierto, setModalAbierto] = useState(false);
   const [elegidos, setElegidos] = useState<string[]>([]);
-  const [filtro, setFiltro] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   const cargar = useCallback(async () => {
@@ -120,17 +120,10 @@ export default function MiembrosDelProyecto({ proyecto, onCambio, onCantidad }: 
     if (!loading) onCantidad?.(filas.length);
   }, [loading, filas.length, onCantidad]);
 
-  const disponibles = usuarios
-    .filter(u => !todosLosIds.includes(u.id))
-    .filter(u => {
-      const texto = filtro.trim().toLowerCase();
-      return !texto || `${nombreDe(u)} ${u.correo}`.toLowerCase().includes(texto);
-    })
-    .sort((a, b) => nombreDe(a).localeCompare(nombreDe(b)));
+  const disponibles = usuarios.filter(u => !todosLosIds.includes(u.id));
 
   const abrirModal = () => {
     setElegidos([]);
-    setFiltro('');
     setModalAbierto(true);
   };
 
@@ -284,37 +277,13 @@ export default function MiembrosDelProyecto({ proyecto, onCambio, onCantidad }: 
       <Modal open={modalAbierto} onClose={() => setModalAbierto(false)} title="Agregar miembros" description="Entran al proyecto de inmediato, sin invitación." size="md">
         <form onSubmit={agregar} noValidate className="flex flex-col flex-1 min-h-0">
           <ModalBody className="space-y-3">
-            <input
-              type="search"
-              value={filtro}
-              onChange={(e) => setFiltro(e.target.value)}
-              placeholder="Buscar por nombre o correo..."
-              aria-label="Buscar personas por nombre o correo"
-              className={campo}
+            <BuscadorPersonas
+              titulo="Personas"
+              autoFocus
+              candidatos={disponibles}
+              valor={elegidos}
+              onChange={setElegidos}
             />
-            <div className="max-h-72 overflow-y-auto rounded-ui border border-line divide-y divide-line custom-scrollbar">
-              {disponibles.length === 0 ? (
-                <p className="p-4 text-sm text-ink-subtle">
-                  {filtro.trim() ? 'Nadie coincide con la búsqueda.' : 'Todas las personas ya son miembros del proyecto.'}
-                </p>
-              ) : (
-                disponibles.map(u => (
-                  <label key={u.id} className="flex items-center gap-3 px-3 min-h-11 cursor-pointer hover:bg-sunken">
-                    <input
-                      type="checkbox"
-                      checked={elegidos.includes(u.id)}
-                      onChange={() =>
-                        setElegidos(prev => (prev.includes(u.id) ? prev.filter(x => x !== u.id) : [...prev, u.id]))
-                      }
-                      className="size-4 accent-brand-text shrink-0 cursor-pointer"
-                    />
-                    <span className="min-w-0 text-sm text-ink truncate">
-                      {nombreDe(u)} <span className="text-ink-subtle">({u.correo})</span>
-                    </span>
-                  </label>
-                ))
-              )}
-            </div>
           </ModalBody>
           <ModalFooter>
             <button type="button" onClick={() => setModalAbierto(false)} className={btnSecundario}>
