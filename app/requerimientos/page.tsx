@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Clock, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, Copy, ListPlus, ListOrdered,
-  Check, XCircle, Send, Download, Folder, Globe, X, Layers
+  Check, XCircle, Send, Download, Folder, X, Layers
 } from 'lucide-react';
 import {
   generateSingleRequirement,
@@ -802,7 +802,6 @@ export default function RequerimientosPage() {
   // ==========================================
   const tipoSeleccionado = tiposReq.find(t => t.tipo_req === formData.id_tipo_requerimiento) ?? null;
   const carpetasContexto = archivosContexto.filter(a => a.tipo === 'carpeta');
-  const archivosGlobales = archivosContexto.filter(a => a.tipo === 'archivo' && a.id_carpeta === null).length;
   // El modo masivo no aplica al editar ni al insertar en una posición concreta
   const masivoDisponible = !editingReq && !insertarDespuesDe;
   const esMasivo = modoMasivo && masivoDisponible;
@@ -1770,7 +1769,7 @@ export default function RequerimientosPage() {
         size="xl"
       >
         <form ref={formRef} onSubmit={handleSaveReq} noValidate className="flex flex-col flex-1 min-h-0">
-          <ModalBody className="space-y-5">
+          <ModalBody className="space-y-6">
             {insertarDespuesDe && !editingReq && (
               <div className="flex items-start gap-3 rounded-ui border border-warning-line bg-warning-subtle p-3 text-sm text-warning">
                 <ListOrdered size={18} aria-hidden className="mt-0.5 shrink-0" />
@@ -1783,12 +1782,8 @@ export default function RequerimientosPage() {
               </div>
             )}
 
-            {/* 1. Modelo y patrón */}
-            <section aria-labelledby="req-paso-modelo" className="bg-sunken p-4 rounded-ui border border-line space-y-3">
-              <h3 id="req-paso-modelo" className="flex items-center gap-2 text-sm font-semibold text-ink">
-                <span className="size-5 rounded-full bg-ink text-canvas text-[11px] flex items-center justify-center" aria-hidden>1</span>
-                Modelo de especificación
-              </h3>
+            {/* Modelo, patrón y tipo: lo primero que se elige; la IA los respeta al redactar */}
+            <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="req-modelo" className={etiqueta}>Modelo de Requisitos</label>
@@ -1821,8 +1816,9 @@ export default function RequerimientosPage() {
                   </select>
                 </div>
               </div>
+
               {patronSeleccionado && (
-                <div className="flex items-start justify-between gap-3 bg-surface border border-line rounded-ui px-3 py-2">
+                <div className="flex items-start justify-between gap-3 bg-sunken border border-line rounded-ui px-4 py-3">
                   <code className="font-mono text-xs text-ink leading-relaxed whitespace-pre-wrap">
                     {patronSeleccionado.promt}
                   </code>
@@ -1838,48 +1834,31 @@ export default function RequerimientosPage() {
                   )}
                 </div>
               )}
-            </section>
 
-            {/* 2. Tipo de requerimiento: la IA redacta requerimientos de este tipo */}
-            <section aria-labelledby="req-paso-tipo" className="space-y-2">
-              <h3 id="req-paso-tipo" className="flex items-center gap-2 text-sm font-semibold text-ink">
-                <span className="size-5 rounded-full bg-ink text-canvas text-[11px] flex items-center justify-center" aria-hidden>2</span>
-                Tipo de requerimiento
-              </h3>
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Tipo de requerimiento">
-                {[{ tipo_req: '', nombre: esMasivo ? 'Todos (la IA clasifica)' : 'Sin tipo' }, ...tiposReq].map((t) => {
-                  const activo = formData.id_tipo_requerimiento === t.tipo_req;
-                  return (
-                    <button
-                      key={t.tipo_req || 'ninguno'}
-                      type="button"
-                      role="radio"
-                      aria-checked={activo}
-                      onClick={() => setFormData({ ...formData, id_tipo_requerimiento: t.tipo_req })}
-                      className={`inline-flex items-center gap-1 px-3 min-h-9 rounded-full text-sm font-medium border transition-colors cursor-pointer ${
-                        activo
-                          ? 'bg-brand-solid border-brand-text text-on-solid'
-                          : 'bg-surface border-line-strong text-ink-muted hover:border-brand-text hover:text-ink'
-                      }`}
-                    >
-                      {activo && <Check size={13} aria-hidden />}
-                      {t.nombre}
-                    </button>
-                  );
-                })}
+              <div>
+                <label htmlFor="req-tipo" className={etiqueta}>Tipo de requerimiento</label>
+                <select
+                  id="req-tipo"
+                  value={formData.id_tipo_requerimiento}
+                  onChange={(e) => setFormData({ ...formData, id_tipo_requerimiento: e.target.value })}
+                  className={campo}
+                >
+                  <option value="">{esMasivo ? 'Todos (la IA los clasifica)' : 'Sin tipo'}</option>
+                  {tiposReq.map((t) => (
+                    <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
+                  ))}
+                </select>
               </div>
-            </section>
+            </div>
 
-            {/* 3. Prompt para la IA */}
-            <section aria-labelledby="req-paso-ia" className="space-y-2">
-              <h3 id="req-paso-ia" className="flex items-center gap-2 text-sm font-semibold text-ink">
-                <span className="size-5 rounded-full bg-ink text-canvas text-[11px] flex items-center justify-center" aria-hidden>3</span>
+            {/* Prompt para la IA */}
+            <div>
+              <label htmlFor="req-ia" className={`${etiqueta} flex items-center gap-1.5`}>
                 <Sparkles size={14} className="text-brand-text" aria-hidden />
                 Generar con IA
-              </h3>
+              </label>
 
-              <div className="rounded-ui border border-brand-line bg-brand-subtle focus-within:border-brand-text focus-within:ring-1 focus-within:ring-brand-text transition-colors">
-                <label htmlFor="req-ia" className="sr-only">Instrucciones para la IA</label>
+              <div className="rounded-ui border border-line-strong bg-surface focus-within:border-brand-text focus-within:ring-1 focus-within:ring-brand-text transition-colors">
                 <textarea
                   id="req-ia"
                   rows={esMasivo ? 4 : 3}
@@ -1897,41 +1876,35 @@ export default function RequerimientosPage() {
                       handleAIGenerate();
                     }
                   }}
-                  className="block w-full px-3 pt-3 pb-1 bg-transparent text-base text-ink placeholder:text-ink-subtle resize-none focus:outline-none"
+                  className="block w-full px-4 pt-3.5 pb-2 bg-transparent text-base text-ink placeholder:text-ink-subtle resize-none focus:outline-none"
                 />
 
-                {/* Contexto que se manda: la raíz siempre, las carpetas a elección */}
-                <div className="px-3 pb-2 flex flex-wrap items-center gap-1.5 text-xs">
-                  <span className="text-ink-subtle">Contexto:</span>
-                  <span
-                    className="inline-flex items-center gap-1 px-2 min-h-6 rounded-full bg-surface border border-line text-ink-muted"
-                    title="La descripción del proyecto y los archivos de la raíz de la pestaña Contexto se usan siempre"
-                  >
-                    <Globe size={11} aria-hidden />
-                    Global{archivosGlobales > 0 ? ` · ${archivosGlobales} ${archivosGlobales === 1 ? 'archivo' : 'archivos'}` : ''}
-                  </span>
-                  {carpetasContexto.map((c) => {
-                    const activa = carpetasElegidas.includes(c.id);
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        aria-pressed={activa}
-                        onClick={() => setCarpetasElegidas(prev => activa ? prev.filter(x => x !== c.id) : [...prev, c.id])}
-                        className={`inline-flex items-center gap-1 px-2 min-h-6 rounded-full border cursor-pointer transition-colors ${
-                          activa ? 'bg-brand-solid border-brand-text text-on-solid' : 'bg-surface border-line text-ink-muted hover:text-ink'
-                        }`}
-                        title={activa ? 'Quitar esta carpeta del contexto' : 'Usar también esta carpeta como contexto'}
-                      >
-                        <Folder size={11} aria-hidden />
-                        {c.nombre}
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* Carpetas de contexto opcionales (la raíz de la pestaña Contexto se usa siempre) */}
+                {carpetasContexto.length > 0 && (
+                  <div className="px-4 pb-3 flex flex-wrap items-center gap-1.5 text-xs">
+                    {carpetasContexto.map((c) => {
+                      const activa = carpetasElegidas.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          aria-pressed={activa}
+                          onClick={() => setCarpetasElegidas(prev => activa ? prev.filter(x => x !== c.id) : [...prev, c.id])}
+                          className={`inline-flex items-center gap-1 px-2.5 min-h-7 rounded-full border cursor-pointer transition-colors ${
+                            activa ? 'bg-brand-subtle border-brand-text text-brand-text' : 'bg-surface border-line text-ink-muted hover:text-ink'
+                          }`}
+                          title={activa ? 'Quitar esta carpeta del contexto' : 'Usar también esta carpeta como contexto'}
+                        >
+                          <Folder size={12} aria-hidden />
+                          {c.nombre}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Barra inferior: modo masivo a la izquierda; estrictez y generar a la derecha */}
-                <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-2 border-t border-brand-line">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-t border-line">
                   {masivoDisponible ? (
                     <label className="inline-flex items-center gap-2 px-1 min-h-8 text-xs font-semibold text-ink-muted cursor-pointer select-none">
                       <span className="relative inline-flex">
@@ -1974,26 +1947,22 @@ export default function RequerimientosPage() {
               </div>
 
               {/* Ejemplos (few-shot) */}
-              <div className="space-y-2">
+              <div className="mt-4 space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-ink-muted">
-                    Ejemplos en los que se basa la IA{' '}
-                    <span className="text-ink-subtle">({ejemplos.length}/{MAX_EJEMPLOS}, opcional)</span>
-                  </span>
+                  <span className="text-sm text-ink-muted">Ejemplos para la IA (opcional)</span>
                   <button
                     type="button"
                     onClick={() => setEjemplos(prev => [...prev, ''])}
                     disabled={ejemplos.length >= MAX_EJEMPLOS}
                     title={ejemplos.length >= MAX_EJEMPLOS ? `Máximo ${MAX_EJEMPLOS} ejemplos` : 'Agregar un ejemplo'}
                     aria-label="Agregar un ejemplo"
-                    className="inline-flex items-center justify-center size-7 rounded-full border border-line-strong text-ink-muted hover:text-ink hover:bg-sunken transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    className={btnIcono}
                   >
-                    <Plus size={14} />
+                    <Plus size={16} />
                   </button>
                 </div>
                 {ejemplos.map((ejemplo, i) => (
                   <div key={i} className="flex items-start gap-2">
-                    <span className="mt-2.5 text-xs font-semibold text-ink-subtle tabular-nums w-4 shrink-0">{i + 1}.</span>
                     <textarea
                       rows={2}
                       value={ejemplo}
@@ -2001,7 +1970,7 @@ export default function RequerimientosPage() {
                       placeholder="Ej. El sistema debe permitir al cliente descargar su factura en PDF desde el historial de pedidos."
                       aria-label={`Ejemplo ${i + 1}`}
                       maxLength={1500}
-                      className={`${campo} text-sm font-mono leading-relaxed`}
+                      className={`${campo} text-sm leading-relaxed`}
                     />
                     <button
                       type="button"
@@ -2014,7 +1983,7 @@ export default function RequerimientosPage() {
                   </div>
                 ))}
               </div>
-            </section>
+            </div>
 
             {esMasivo ? (
               /* Propuestas de la generación masiva */
@@ -2094,7 +2063,8 @@ export default function RequerimientosPage() {
             )}
 
             {/* Modalidad y equipo: decide qué líder aprueba (KAN-18) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {!esMasivo && (
                 <div>
                   <label htmlFor="req-modalidad" className={etiqueta}>Modalidad</label>
@@ -2129,13 +2099,14 @@ export default function RequerimientosPage() {
                 </select>
               </div>
             </div>
-            <p id="req-equipo-ayuda" className="text-xs text-ink-subtle -mt-3">
+            <p id="req-equipo-ayuda" className="text-xs text-ink-subtle mt-1.5">
               {editingReq
                 ? 'El equipo no se puede cambiar al editar: de él depende qué líder aprueba, y moverlo movería al juez.'
                 : esMasivo
                   ? 'Su líder aprueba los requerimientos registrados. Se marcan como «Generado con IA».'
                   : 'Su líder es quien aprueba este requerimiento. No se puede cambiar después.'}
             </p>
+            </div>
 
             {/* Estado, autor y aprobador: información de solo lectura.
                 Solo se muestra al editar para dar contexto; al crear es redundante. */}

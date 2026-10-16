@@ -4,12 +4,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   AlertTriangle, ChevronRight, Download, Edit2, FileText, Folder, FolderInput, FolderPlus,
-  Globe, Lock, Pencil, Plus, Trash2, Upload
+  Lock, Pencil, Plus, Trash2, Upload
 } from 'lucide-react';
 import type { ArchivoContexto, FormatoContexto, Proyecto } from '@/lib/database.types';
 import {
   actualizarTextoContexto,
-  construirContextoIA,
   crearCarpetaContexto,
   eliminarContexto,
   FORMATOS_CONTEXTO,
@@ -118,7 +117,6 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
   const visibles = carpeta
     ? archivos.filter(a => a.id_carpeta === carpeta.id)
     : [...carpetas, ...archivos.filter(a => a.id_carpeta === null)];
-  const caracteresGlobales = construirContextoIA(proyecto, items).length;
 
   // ------------------------------------------
   // Subida de archivos
@@ -220,7 +218,7 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
   const mover = async (item: ArchivoContexto, destino: string) => {
     try {
       await moverArchivoContexto(item.id, destino === 'raiz' ? null : destino);
-      toast.success(destino === 'raiz' ? 'Movido a la raíz: ahora es contexto global' : 'Archivo movido');
+      toast.success('Archivo movido');
       await cargar();
     } catch (err) {
       toast.error(mensajeError(err, 'No se pudo mover el archivo'));
@@ -372,7 +370,7 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
                   aria-label={`Mover ${a.nombre} a otra carpeta`}
                 >
                   <option value="">Mover a...</option>
-                  {a.id_carpeta !== null && <option value="raiz">Raíz (contexto global)</option>}
+                  {a.id_carpeta !== null && <option value="raiz">Contexto (raíz)</option>}
                   {carpetas.filter(c => c.id !== a.id_carpeta).map(c => (
                     <option key={c.id} value={c.id}>{c.nombre}</option>
                   ))}
@@ -403,7 +401,7 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
           <span className="min-w-0">
             <span className="block text-sm font-semibold text-ink truncate">{c.nombre}</span>
             <span className="block text-xs text-ink-subtle">
-              {cantidad} {cantidad === 1 ? 'archivo' : 'archivos'} · se elige al generar
+              {cantidad} {cantidad === 1 ? 'archivo' : 'archivos'}
             </span>
           </span>
         </button>
@@ -424,14 +422,9 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
   return (
     <div className="space-y-5 animate-in fade-in">
       <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
-        <div className="max-w-prose space-y-1">
-          <p className="text-base text-ink-muted">
-            Documentos que la IA lee al generar requerimientos. Los archivos de la raíz son{' '}
-            <strong className="text-ink">contexto global</strong> y se usan siempre; los de una carpeta se usan cuando eliges esa carpeta al generar.
-          </p>
-          <p className="text-xs text-ink-subtle">
-            PDF, Markdown o texto, máximo {LIMITE_MB} MB por archivo. Contexto global actual: {caracteresGlobales.toLocaleString('es-MX')} caracteres (incluye la descripción del proyecto).
-          </p>
+        <div className="max-w-prose">
+          <p className="text-base text-ink-muted">Documentos que la IA usa al generar requerimientos.</p>
+          <p className="text-sm text-ink-subtle mt-1">PDF, MD o TXT de hasta {LIMITE_MB} MB.</p>
         </div>
         {puedeEditar && (
           <div className="flex flex-wrap gap-2 shrink-0">
@@ -471,26 +464,23 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
         </div>
       )}
 
-      {/* Ruta */}
-      <nav aria-label="Ubicación" className="flex items-center gap-1 text-sm">
-        <button
-          type="button"
-          onClick={() => setCarpetaActual(null)}
-          className={`inline-flex items-center gap-1.5 px-2 min-h-8 rounded-ui cursor-pointer ${carpeta ? 'text-ink-muted hover:text-ink hover:bg-sunken' : 'text-ink font-semibold'}`}
-        >
-          <Globe size={14} aria-hidden />
-          Raíz (global)
-        </button>
-        {carpeta && (
-          <>
-            <ChevronRight size={14} className="text-ink-subtle" aria-hidden />
-            <span className="inline-flex items-center gap-1.5 px-2 font-semibold text-ink">
-              <Folder size={14} aria-hidden />
-              {carpeta.nombre}
-            </span>
-          </>
-        )}
-      </nav>
+      {/* Ruta: solo se muestra dentro de una carpeta */}
+      {carpeta && (
+        <nav aria-label="Ubicación" className="flex items-center gap-1 text-sm">
+          <button
+            type="button"
+            onClick={() => setCarpetaActual(null)}
+            className="inline-flex items-center px-2 min-h-8 rounded-ui text-ink-muted hover:text-ink hover:bg-sunken cursor-pointer"
+          >
+            Contexto
+          </button>
+          <ChevronRight size={14} className="text-ink-subtle" aria-hidden />
+          <span className="inline-flex items-center gap-1.5 px-2 font-semibold text-ink">
+            <Folder size={14} aria-hidden />
+            {carpeta.nombre}
+          </span>
+        </nav>
+      )}
 
       {subiendo && (
         <div role="status" className="flex items-center gap-2.5 bg-brand-subtle border border-brand-line rounded-ui p-3 text-sm text-brand-text">
@@ -527,7 +517,7 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
             </h3>
             <p className="text-sm text-ink-muted mt-1 max-w-sm mx-auto">
               {puedeEditar
-                ? 'Sube documentos del sistema (especificaciones, actas, manuales) o arrástralos aquí para que la IA los use al redactar.'
+                ? 'Sube documentos o arrástralos aquí.'
                 : 'Cuando los miembros agreguen documentos, aparecerán aquí.'}
             </p>
           </div>
@@ -577,7 +567,7 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
         open={dialogoNombre !== null}
         onClose={() => setDialogoNombre(null)}
         title={!dialogoNombre?.item ? 'Nueva carpeta' : dialogoNombre.item.tipo === 'carpeta' ? 'Cambiar nombre de la carpeta' : 'Cambiar nombre del archivo'}
-        description={!dialogoNombre?.item ? 'Sus archivos solo se usan cuando eliges la carpeta al generar requerimientos.' : undefined}
+        
         size="sm"
       >
         {dialogoNombre && (
@@ -612,7 +602,7 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
             ? undefined
             : carpeta
               ? `Se guardará en la carpeta ${carpeta.nombre}.`
-              : 'Se guardará en la raíz: será contexto global.'
+              : undefined
         }
         size="3xl"
       >
