@@ -3,7 +3,10 @@ import { auth } from "./firebase";
 // Las llamadas a Gemini se hacen en un Cloudflare Worker (workers/ai-proxy).
 // La key de Gemini vive allí como secreto; el navegador solo envía el ID token
 // de Firebase y los parámetros. Los prompts se construyen en el Worker.
-const AI_API_URL = (process.env.NEXT_PUBLIC_AI_API_URL || "").replace(/\/+$/, "");
+// La URL del Worker es pública (no es un secreto): se usa la desplegada en Cloudflare y
+// NEXT_PUBLIC_AI_API_URL solo hace falta para apuntar a otro Worker (p. ej. uno local).
+const AI_API_URL_POR_DEFECTO = "https://easyreq-ai.easy-req.workers.dev";
+const AI_API_URL = (process.env.NEXT_PUBLIC_AI_API_URL || AI_API_URL_POR_DEFECTO).replace(/\/+$/, "");
 
 export interface AIRequirement {
   name: string;
