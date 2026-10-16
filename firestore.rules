@@ -740,6 +740,30 @@ service cloud.firestore {
       allow update, delete: if puedeEditarCatalogos();
     }
 
+    // Contexto del proyecto para la IA: archivos/carpetas y los fragmentos del archivo original.
+    // Lectura como los requerimientos (cualquier autenticado); escritura solo de miembros del proyecto.
+    // `id_proyecto` no puede cambiarse para no mover contexto a otro proyecto.
+    match /contexto_proyecto/{archivoId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        esMiembroDelProyecto(request.resource.data.id_proyecto, request.auth.uid);
+      allow update: if isAuthenticated() &&
+        esMiembroDelProyecto(resource.data.id_proyecto, request.auth.uid) &&
+        request.resource.data.id_proyecto == resource.data.id_proyecto;
+      allow delete: if isAuthenticated() &&
+        esMiembroDelProyecto(resource.data.id_proyecto, request.auth.uid);
+    }
+    match /contexto_fragmentos/{fragmentoId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        esMiembroDelProyecto(request.resource.data.id_proyecto, request.auth.uid);
+      allow update: if isAuthenticated() &&
+        esMiembroDelProyecto(resource.data.id_proyecto, request.auth.uid) &&
+        request.resource.data.id_proyecto == resource.data.id_proyecto;
+      allow delete: if isAuthenticated() &&
+        esMiembroDelProyecto(resource.data.id_proyecto, request.auth.uid);
+    }
+
     // Regla por defecto: denegar cualquier otra colección no especificada
     match /{document=**} {
       allow read, write: if false;

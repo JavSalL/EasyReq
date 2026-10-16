@@ -1,9 +1,9 @@
-// La pantalla de un proyecto tiene tres vistas (requerimientos, equipos y miembros) y, dentro de la de
+// La pantalla de un proyecto tiene cuatro vistas (requerimientos, miembros, equipos y contexto) y, dentro de la de
 // equipos, puede abrirse un equipo. Se reflejan en la URL (?id=…&vista=equipos&equipo=…) para que
 // el botón "atrás" del navegador y los enlaces funcionen. Con `output: 'export'` no hay servidor que
 // resuelva searchParams, así que se lee la URL real del navegador (como hace el resto de la pantalla).
 
-export type VistaProyecto = 'requerimientos' | 'equipos' | 'miembros';
+export type VistaProyecto = 'requerimientos' | 'equipos' | 'miembros' | 'contexto';
 
 export const EVENTO_NAVEGACION = 'easyreq:navegacion';
 export const EVENTO_EQUIPOS_CAMBIARON = 'easyreq:equipos-cambiaron';
@@ -11,7 +11,7 @@ export const EVENTO_EQUIPOS_CAMBIARON = 'easyreq:equipos-cambiaron';
 export function leerNavegacion(): { vista: VistaProyecto; equipoId: string | null } {
   const params = new URLSearchParams(window.location.search);
   const pedida = params.get('vista');
-  const vista: VistaProyecto = pedida === 'equipos' || pedida === 'miembros' ? pedida : 'requerimientos';
+  const vista: VistaProyecto = pedida === 'equipos' || pedida === 'miembros' || pedida === 'contexto' ? pedida : 'requerimientos';
   return { vista, equipoId: vista === 'equipos' ? params.get('equipo') : null };
 }
 

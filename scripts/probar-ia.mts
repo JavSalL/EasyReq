@@ -52,7 +52,7 @@ for (const caso of CASOS_PRUEBA_IA) {
   } else {
     llamoALaIA = true;
     try {
-      r = interpretarGeneracion(await callGemini(buildSinglePrompt(caso.entrada, caso.patron), clave, modelo), caso.patron);
+      r = interpretarGeneracion(await callGemini(buildSinglePrompt(caso.entrada, { pattern: caso.patron, estrictez: 3, ejemplos: [] }), clave, modelo), caso.patron);
     } catch (err) {
       r = null;
       console.log(`      (${err instanceof Error ? err.message.slice(0, 120) : err})`);

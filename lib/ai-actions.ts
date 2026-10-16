@@ -80,20 +80,72 @@ async function callAI<T>(path: string, body: Record<string, unknown>): Promise<T
   return payload?.data as T;
 }
 
+/** Qué tan estricta es la IA al redactar: 1 flexible ... 4 literal. 3 es el valor por defecto. */
+export type Estrictez = 1 | 2 | 3 | 4;
+
+export const NIVELES_ESTRICTEZ: Record<Estrictez, { nombre: string; descripcion: string }> = {
+  1: { nombre: 'Baja', descripcion: 'Completa con detalles habituales del dominio cuando el texto no los da.' },
+  2: { nombre: 'Media', descripcion: 'Deduce lo implícito del texto y del contexto, sin inventar cifras.' },
+  3: { nombre: 'Alta', descripcion: 'Solo usa lo que escribiste; lo que falte queda «(por definir)».' },
+  4: { nombre: 'Máxima', descripcion: 'Literal: si falta actor, acción u objeto, no lo redacta.' }
+};
+
+export const ESTRICTEZ_POR_DEFECTO: Estrictez = 3;
+
+/** Opciones de redacción comunes a la generación individual y masiva. */
+export interface OpcionesGeneracion {
+  /** Estructura del patrón elegido. */
+  pattern?: string;
+  /** Nombre del tipo de requerimiento elegido (p. ej. "Confiabilidad"). */
+  tipo?: string;
+  estrictez?: Estrictez;
+  /** Hasta 3 ejemplos en los que se basa la IA (few-shot). */
+  ejemplos?: string[];
+  /** Contexto del proyecto (descripción y archivos), ya unido en texto. */
+  contexto?: string;
+}
+
+export interface ResultadoMasivo {
+  valido: boolean;
+  motivo?: string;
+  areas: Array<{ nombre: string; enfoque: string; cantidad: number }>;
+  requerimientos: Array<AIRequirement & { area?: string }>;
+}
+
+const cuerpoOpciones = (o: OpcionesGeneracion) => ({
+  pattern: o.pattern || undefined,
+  tipo: o.tipo || undefined,
+  estrictez: o.estrictez ?? ESTRICTEZ_POR_DEFECTO,
+  ejemplos: (o.ejemplos ?? []).map(e => e.trim()).filter(Boolean),
+  contexto: o.contexto?.trim() || undefined
+});
+
 /**
- * Genera requerimientos en masa basados en la descripción de un proyecto.
+ * Genera varios requerimientos a partir de un pedido y del contexto del proyecto. La IA decide
+ * cuántos según el alcance del pedido (una parte del sistema o el sistema completo).
  */
-export async function generateBulkRequirements(projectDesc: string, pattern?: string, count?: number): Promise<AIRequirement[]> {
-  const result = await callAI<AIRequirement[]>('/generate-bulk', { projectDesc, pattern, count });
-  return Array.isArray(result) ? result : [];
+export async function generateBulkRequirements(userPrompt: string, opciones: OpcionesGeneracion = {}): Promise<ResultadoMasivo> {
+  const result = await callAI<ResultadoMasivo>('/generate-bulk', { userPrompt, ...cuerpoOpciones(opciones) });
+  return {
+    valido: result?.valido !== false,
+    motivo: result?.motivo,
+    areas: Array.isArray(result?.areas) ? result.areas : [],
+    requerimientos: Array.isArray(result?.requerimientos) ? result.requerimientos : []
+  };
 }
 
 /**
- * Refina o genera un requerimiento específico basado en un prompt del usuario.
+ * Genera un requerimiento a partir del texto del usuario.
  */
-export async function generateSingleRequirement(userPrompt: string, pattern?: string): Promise<AIRequirement | null> {
-  const result = await callAI<AIRequirement | null>('/generate-single', { userPrompt, pattern });
+export async function generateSingleRequirement(userPrompt: string, opciones: OpcionesGeneracion = {}): Promise<AIRequirement | null> {
+  const result = await callAI<AIRequirement | null>('/generate-single', { userPrompt, ...cuerpoOpciones(opciones) });
   return result ?? null;
+}
+
+/** Extrae el texto de un PDF (en base64) para usarlo como contexto del proyecto. */
+export async function extraerTextoPdf(base64: string): Promise<string> {
+  const result = await callAI<{ texto?: string }>('/extract-text', { mimeType: 'application/pdf', data: base64 });
+  return result?.texto ?? '';
 }
 
 /**

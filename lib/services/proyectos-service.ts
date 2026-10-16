@@ -15,6 +15,7 @@ import { db } from '../firebase';
 import { Proyecto, UUID, MiembroEquipo, QuienCreaEquipos, QuienAgregaMiembros } from '../database.types';
 import { getTiposSistema } from './catalogos-service';
 import { getProyectoEquipos, getMiembrosEquipo } from './equipos-service';
+import { eliminarContextoDeProyecto } from './contexto-service';
 
 // ==========================================
 // PROYECTOS
@@ -174,6 +175,8 @@ export async function quitarMiembroProyecto(id_proyecto: string, id_usuario: UUI
 }
 
 export async function deleteProyecto(id: string): Promise<void> {
+  // El contexto va primero: sus reglas comprueban la membresía leyendo el proyecto, que aún debe existir
+  await eliminarContextoDeProyecto(id);
   await deleteDoc(doc(db, 'proyecto', id));
   // Los equipos pertenecen al proyecto: se eliminan con él (las reglas lo permiten
   // una vez que el proyecto ya no existe), junto con sus miembros e invitaciones.

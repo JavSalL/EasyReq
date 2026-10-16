@@ -4,3 +4,4 @@ export * from './equipos-service';
 export * from './proyectos-service';
 export * from './requerimientos-service';
 export * from './patrones-service';
+export * from './contexto-service';

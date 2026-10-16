@@ -31,6 +31,7 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
 import ModalFormEquipo from '@/components/equipos/ModalFormEquipo';
+import BuscadorPersonas from '@/components/proyectos/BuscadorPersonas';
 
 interface MiembroDetallado {
   usuario: PerfilUsuario;
@@ -160,13 +161,11 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
   const [equipoAbiertoId, setEquipoAbiertoId] = useState<string | null>(null);
   const [memberForm, setMemberForm] = useState({ id_usuario: '', id_roles: [] as string[] });
   const [guardandoMiembro, setGuardandoMiembro] = useState(false);
-  const [filtroUsuario, setFiltroUsuario] = useState('');
 
   useEffect(() => {
     const leerUrl = () => {
       setEquipoAbiertoId(leerNavegacion().equipoId);
       setMemberForm({ id_usuario: '', id_roles: [] });
-      setFiltroUsuario('');
     };
     leerUrl();
     return suscribirNavegacion(leerUrl);
@@ -381,7 +380,6 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
         toast.success('Invitación enviada. El usuario se unirá cuando la acepte.');
       }
       setMemberForm({ id_usuario: '', id_roles: [] });
-      setFiltroUsuario('');
     } catch (err) {
       console.error('Error al guardar miembro del equipo:', err);
       toast.error(mensajeError(err, esMiembroExistente ? 'No se pudieron actualizar los roles' : 'No se pudo enviar la invitación'));
@@ -508,41 +506,19 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
             </p>
             <form onSubmit={handleGuardarMiembro} noValidate className="space-y-4">
               <div>
-                <label htmlFor="miembro-usuario" className={etiqueta}>
-                  Usuario <span className="text-danger">*</span>
-                </label>
-                {!editandoMiembro && usuarios.length > 8 && (
-                  <input
-                    type="search"
-                    value={filtroUsuario}
-                    onChange={(e) => setFiltroUsuario(e.target.value)}
-                    placeholder="Filtrar por nombre o correo..."
-                    aria-label="Filtrar usuarios por nombre o correo"
-                    className={`${campo} mb-2`}
-                  />
-                )}
-                <select
+                <BuscadorPersonas
                   id="miembro-usuario"
-                  value={memberForm.id_usuario}
-                  onChange={(e) => seleccionarUsuarioMiembro(e.target.value)}
-                  className={campo}
-                >
-                  <option value="">Seleccionar usuario...</option>
-                  {usuarios
+                  titulo="Usuario *"
+                  multiple={false}
+                  valor={memberForm.id_usuario ? [memberForm.id_usuario] : []}
+                  onChange={(ids) => seleccionarUsuarioMiembro(ids[0] ?? '')}
+                  candidatos={usuarios
                     // Uno mismo solo aparece si ya es miembro del equipo (para editar sus roles)
                     .filter(u => u.id !== uid || idsMiembros.has(u.id))
                     // Los equipos de un proyecto se arman con los miembros del proyecto
-                    .filter(u => idsMiembros.has(u.id) || !equipoAbierto.id_proyecto || esMiembroDelProyecto(proyecto, u.id))
-                    .filter(u => {
-                      const filtro = filtroUsuario.trim().toLowerCase();
-                      return !filtro || u.id === memberForm.id_usuario || `${nombreDe(u)} ${u.correo}`.toLowerCase().includes(filtro);
-                    })
-                    .map(u => (
-                      <option key={u.id} value={u.id}>
-                        {nombreDe(u)} ({u.correo}){idsMiembros.has(u.id) ? ' · ya es miembro' : ''}
-                      </option>
-                    ))}
-                </select>
+                    .filter(u => idsMiembros.has(u.id) || !equipoAbierto.id_proyecto || esMiembroDelProyecto(proyecto, u.id))}
+                  ayuda={editandoMiembro ? 'Editando los roles de este miembro.' : 'Escribe al menos 2 letras del nombre o correo de la persona.'}
+                />
                 {equipoAbierto.id_proyecto && !editandoMiembro && (
                   <p className="text-xs text-ink-subtle mt-1.5">
                     Solo aparecen los miembros del proyecto. Para sumar a otra persona, agrégala antes en la pestaña Miembros.

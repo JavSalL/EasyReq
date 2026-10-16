@@ -10,6 +10,8 @@ import { Profesion } from '@/lib/database.types';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { btnPrimario, btnSecundario, campo, etiqueta } from '@/components/ui/estilos';
 import SelectorProfesiones from '@/components/SelectorProfesiones';
+import SelectorPais from '@/components/SelectorPais';
+import { nombrePais } from '@/lib/paises';
 import { auth } from '@/lib/firebase';
 
 interface ProfileModalProps {
@@ -36,6 +38,7 @@ export default function ProfileModal({
 
   const [nombre, setNombre] = useState('');
   const [idsProfesiones, setIdsProfesiones] = useState<string[]>([]);
+  const [pais, setPais] = useState('');
   const [profesiones, setProfesiones] = useState<Profesion[]>([]);
   const [guardando, setGuardando] = useState(false);
 
@@ -57,6 +60,7 @@ export default function ProfileModal({
   useEffect(() => {
     if (!open) return;
     setNombre(profile?.nombre || user?.displayName || '');
+    setPais(profile?.pais || '');
     setIdsProfesiones(profile?.ids_profesiones || (profile?.id_profesion ? [profile.id_profesion] : []));
   }, [open, profile, user]);
 
@@ -82,6 +86,10 @@ export default function ProfileModal({
       toast.error('Por favor selecciona al menos una profesión');
       return;
     }
+    if (!pais) {
+      toast.error('Por favor selecciona tu país');
+      return;
+    }
 
     setGuardando(true);
     try {
@@ -93,6 +101,8 @@ export default function ProfileModal({
       await saveUserProfile(user.uid, {
         nombre: nombreLimpio,
         correo: user.email || profile?.correo || '',
+        pais,
+        pais_nombre: nombrePais(pais) ?? undefined,
         ids_profesiones: seleccionadas.map((p) => p.id),
         profesiones_nombres: seleccionadas.map((p) => p.nombre),
         profesiones: seleccionadas,
@@ -164,6 +174,9 @@ export default function ProfileModal({
             valor={idsProfesiones}
             onChange={setIdsProfesiones}
           />
+
+          {/* País */}
+          <SelectorPais id="perfil-pais" valor={pais} onChange={setPais} />
         </ModalBody>
 
         <ModalFooter>
