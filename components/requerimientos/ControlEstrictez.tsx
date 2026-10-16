@@ -2,7 +2,7 @@
 
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, Gauge } from 'lucide-react';
-import { NIVELES_ESTRICTEZ, type Estrictez } from '@/lib/ai-actions';
+import { ESTRICTEZ_POR_DEFECTO, NIVELES_ESTRICTEZ, type Estrictez } from '@/lib/ai-actions';
 
 const NIVELES: Estrictez[] = [1, 2, 3, 4];
 
@@ -65,35 +65,43 @@ export default function ControlEstrictez({ valor, onChange, disabled }: ControlE
           aria-label="Nivel de estrictez"
           className="absolute right-0 bottom-full mb-2 z-30 w-72 max-w-[calc(100vw-3rem)] bg-surface border border-line-strong rounded-ui shadow-lg p-4"
         >
-          <div className="flex items-baseline justify-between gap-2">
-            <label htmlFor={`${id}-slider`} className="text-sm font-semibold text-ink">Estrictez</label>
-            <span className="text-sm font-semibold text-brand-text">{nivel.nombre}</span>
+          <div className="flex items-baseline gap-2">
+            <label htmlFor={`${id}-slider`} className="text-sm text-ink-muted">Estrictez</label>
+            <span className="text-sm font-semibold text-ink">{nivel.nombre}</span>
           </div>
-          <input
-            id={`${id}-slider`}
-            type="range"
-            min={1}
-            max={4}
-            step={1}
-            value={valor}
-            onChange={(e) => onChange(Number(e.target.value) as Estrictez)}
-            aria-valuetext={nivel.nombre}
-            className="w-full mt-3 accent-brand-text cursor-pointer"
-          />
-          <div className="flex justify-between text-[11px] text-ink-subtle mt-1" aria-hidden>
+          <div className="flex justify-between text-xs text-ink-subtle mt-4 mb-2" aria-hidden>
+            <span>Más libre</span>
+            <span>Más literal</span>
+          </div>
+          {/* Pista propia (puntos en cada nivel y perilla), con el range nativo encima para teclado y lectores */}
+          <div className="relative h-7 rounded-full bg-sunken-strong focus-within:ring-2 focus-within:ring-brand-text">
             {NIVELES.map(n => (
-              <button
+              <span
                 key={n}
-                type="button"
-                tabIndex={-1}
-                onClick={() => onChange(n)}
-                className={`cursor-pointer ${n === valor ? 'text-ink font-semibold' : 'hover:text-ink'}`}
-              >
-                {NIVELES_ESTRICTEZ[n].nombre}
-              </button>
+                aria-hidden
+                className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 size-1 rounded-full bg-ink-subtle"
+                style={{ left: `calc(14px + ${(n - 1) / 3} * (100% - 28px))` }}
+              />
             ))}
+            <span
+              aria-hidden
+              className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 size-5 rounded-full bg-surface border border-line-strong shadow transition-[left]"
+              style={{ left: `calc(14px + ${(valor - 1) / 3} * (100% - 28px))` }}
+            />
+            <input
+              id={`${id}-slider`}
+              type="range"
+              min={1}
+              max={4}
+              step={1}
+              value={valor}
+              onChange={(e) => onChange(Number(e.target.value) as Estrictez)}
+              aria-valuetext={nivel.nombre}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
           </div>
-          <p className="text-xs text-ink-muted mt-3 leading-relaxed">{nivel.descripcion}</p>
+          <p className="text-xs text-ink-subtle mt-2 h-4">{valor === ESTRICTEZ_POR_DEFECTO ? 'Recomendado' : ''}</p>
+          <p className="text-xs text-ink-muted mt-1 leading-relaxed">{nivel.descripcion}</p>
         </div>
       )}
     </div>
