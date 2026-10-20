@@ -91,6 +91,8 @@ export interface Proyecto {
   id_creador?: UUID | null;
   // Miembros del proyecto (KAN-24), además del creador, que siempre lo es. Se agregan directamente.
   ids_miembros?: UUID[];
+  // Equipos vinculados al proyecto (cache para reglas/validaciones)
+  ids_equipos_vinculados?: UUID[];
   // Permiso para crear equipos en el proyecto. Por defecto, solo el creador.
   quien_crea_equipos?: QuienCreaEquipos;
   // Miembros autorizados cuando `quien_crea_equipos` es 'seleccionados'.

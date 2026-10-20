@@ -75,6 +75,7 @@ import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
 import { codigoDe, codigoRequerimiento, numeroDesdeBusqueda } from '@/lib/requerimientos';
 import { esCreadorDelProyecto, esMiembroDelProyecto } from '@/lib/equipos-proyecto';
+import { esMiembroPorEquipoVinculado } from '@/lib/services/equipos-service';
 import {
   estaPendienteDeAprobacion,
   estaRechazado,
@@ -280,18 +281,20 @@ export default function RequerimientosPage() {
 
   // Control de acceso (KAN-18). Lectura total para cualquiera con sesión; escribir
   // requiere ser miembro del proyecto.
-//
-// Se usa `esMiembroDelProyecto` de `lib/equipos-proyecto.ts`, que es el espejo
-// exacto del helper homónimo de `firestore.rules`: creador, o estar en
-// `ids_miembros`. Antes se llamaba a `isUsuarioRelacionadoAProyecto`, que además
-// daba por bueno a quien llega por un equipo vinculado de los proyectos anteriores
-// a KAN-24. Esos proyectos no tienen `ids_miembros`, y las reglas no pueden
-// enumerar las membresías de equipo (no hay `getAll` y una consulta sin índice por
-// `id_usuario` no es legal en una regla), así que para el backend ese usuario no
-// existe. Con el criterio antiguo la interfaz ofrecía botones que el backend
-// denegaba; este los esconde. Es una pérdida de capacidad real, pero solo sobre
-// datos previos a KAN-24, y prefiero una limitación visible a un error de permisos.
-  const esMiembroProyecto = esMiembroDelProyecto(proyecto, uid);
+  const esMiembroProyectoBase = esMiembroDelProyecto(proyecto, uid);
+  const [esMiembroPorEquipo, setEsMiembroPorEquipo] = useState(false);
+  useEffect(() => {
+    let activo = true;
+    if (!esMiembroProyectoBase && uid && proyecto?.proyecto_id) {
+      esMiembroPorEquipoVinculado(proyecto.proyecto_id, uid)
+        .then((res) => { if (activo) setEsMiembroPorEquipo(res); })
+        .catch(() => { if (activo) setEsMiembroPorEquipo(false); });
+    } else {
+      setEsMiembroPorEquipo(false);
+    }
+    return () => { activo = false; };
+  }, [esMiembroProyectoBase, uid, proyecto?.proyecto_id]);
+  const esMiembroProyecto = esMiembroProyectoBase || esMiembroPorEquipo;
   // KAN-27: el creador del proyecto puede borrar comentarios ajenos en el hilo.
   const esCreadorProyecto = esCreadorDelProyecto(proyecto, uid);
   // KAN-27: comentar es cosa de miembros del proyecto, y no depende del estado de

@@ -121,7 +121,33 @@ service cloud.firestore {
       let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
       return exists(projectPath) && (
         get(projectPath).data.get('id_creador', null) == userId ||
-        userId in get(projectPath).data.get('ids_miembros', [])
+        userId in get(projectPath).data.get('ids_miembros', []) ||
+        esMiembroPorEquipoVinculado(projectId, userId)
+      );
+    }
+
+    function esMiembroPorEquipoVinculado(projectId, userId) {
+      let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
+      let projectSnap = get(projectPath);
+      let equipoIds = projectSnap.data.get('ids_equipos_vinculados', []);
+      let i = 0;
+      return exists(projectPath) &&
+        proyectoTieneEquipoVinculado(projectSnap, userId);
+    }
+
+    function proyectoTieneEquipoVinculado(projectSnap, userId) {
+      let equipoIds = projectSnap.data.get('ids_equipos_vinculados', []);
+      return equipoIds.size() >= 1 && (
+        exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[0]) + '_' + userId) ||
+        (equipoIds.size() >= 2 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[1]) + '_' + userId)) ||
+        (equipoIds.size() >= 3 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[2]) + '_' + userId)) ||
+        (equipoIds.size() >= 4 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[3]) + '_' + userId)) ||
+        (equipoIds.size() >= 5 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[4]) + '_' + userId)) ||
+        (equipoIds.size() >= 6 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[5]) + '_' + userId)) ||
+        (equipoIds.size() >= 7 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[6]) + '_' + userId)) ||
+        (equipoIds.size() >= 8 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[7]) + '_' + userId)) ||
+        (equipoIds.size() >= 9 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[8]) + '_' + userId)) ||
+        (equipoIds.size() >= 10 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[9]) + '_' + userId))
       );
     }
 
@@ -491,7 +517,8 @@ service cloud.firestore {
         (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ids_miembros']) ||
           resource.data.get('id_creador', null) == request.auth.uid ||
-          request.auth.uid in resource.data.get('ids_gestores_miembros', [])
+          request.auth.uid in resource.data.get('ids_gestores_miembros', []) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ids_miembros'])
         );
       allow delete: if isAuthenticated();
     }
