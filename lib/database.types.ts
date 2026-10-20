@@ -145,6 +145,18 @@ export interface Requerimiento {
   numero?: number | null;
   /** Identificador guardado en la base de datos ("REQ-014"), único dentro del proyecto. */
   codigo?: string | null;
+  /**
+   * Cantidad de comentarios del hilo (KAN-27). Lo mueve la transacción que crea o
+   * borra un comentario, nunca el formulario, y solo cambia esta clave.
+   *
+   * Denormalizado a propósito: la lista de requerimientos no tiene paginación, así
+   * que sin este campo habría que hacer una consulta de conteo por requerimiento en
+   * cada carga. Ausente en los documentos anteriores a KAN-27, que equivalen a 0.
+   *
+   * Es información de presentación, no de autorización: un cliente podría escribir
+   * un número falso, pero no con eso gana ningún permiso.
+   */
+  total_comentarios?: number;
   created_at?: string;
 
   // Joins relacionales
@@ -155,6 +167,32 @@ export interface Requerimiento {
   aprobador?: PerfilUsuario | null;
   modelo?: Modelo | null;
   patron?: Patron | null;
+}
+
+/**
+ * Comentario de un requerimiento (KAN-27).
+ *
+ * Vive en la subcolección `requerimiento/{id_requerimiento}/comentario/{id}`, no en
+ * una colección de nivel superior, y esa elección es de seguridad y no de
+ * comodidad: las reglas de Firestore no pueden inspeccionar el contenido de los
+ * documentos cuando la operación es una lista (una consulta), así que todo lo que
+ * una regla de lectura necesita debe salir del propio path. Con el ID del
+ * requerimiento en el path, la comprobación de membresía es una lectura de clave
+ * conocida y las consultas siguen funcionando; con una colección plana habría que
+ * negar la consulta entera para no dejar leer comentarios de otros proyectos.
+ */
+export interface Comentario {
+  /** Subcoleccionado: el ID es el del documento dentro de `requerimiento/{id}/comentario`. */
+  id: UUID;
+  id_requerimiento: UUID;
+  /** Quién escribió el comentario. Lo pone el sistema; las reglas lo exigen igual al auth. */
+  id_autor: UUID;
+  texto: string;
+  created_at: string;
+  /** Solo cuando el autor ha corregido su comentario después. */
+  updated_at?: string | null;
+  /** Join con `perfil_usuario` que hace `getComentariosRequerimiento()`, no un campo guardado. */
+  autor?: PerfilUsuario | null;
 }
 
 export type FormatoContexto = 'pdf' | 'md' | 'txt';

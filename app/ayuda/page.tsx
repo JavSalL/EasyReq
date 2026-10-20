@@ -79,6 +79,8 @@ const PERMISOS: Array<[string, string]> = [
   ['Reenviar un requerimiento rechazado', 'Su autor'],
   ['Editar un requerimiento ya aprobado', 'Cualquier miembro del proyecto'],
   ['Consultar y restaurar versiones del historial', 'Los miembros del proyecto (restaurar requiere permiso para editar el requerimiento)'],
+  ['Leer y escribir comentarios en un requerimiento', 'Los miembros del proyecto. Comentar no depende del estado del requerimiento'],
+  ['Corregir o borrar comentarios', 'Corregir: su autor. Borrar: su autor, o el creador del proyecto en los comentarios de cualquiera'],
   ['Editar un equipo, invitar miembros y cambiar roles', 'Los líderes del equipo'],
   ['Editar o eliminar patrones y modelos', 'Nadie por ahora. Se pueden copiar y crear nuevos'],
 ];
@@ -127,6 +129,10 @@ const FAQS = [
   {
     pregunta: 'Mi requerimiento dice “Sin equipo”. ¿Qué significa?',
     respuesta: 'Que se creó antes de que existiera la aprobación por líder. Esos requerimientos no guardan a qué equipo pertenecían, así que no hay un líder concreto que pueda aprobarlos: se pueden editar como cualquier otro del proyecto. Los nuevos sí llevan equipo y sí pasan por aprobación.',
+  },
+  {
+    pregunta: '¿Cómo comento un requerimiento?',
+    respuesta: 'En la lista, cada tarjeta lleva un icono de burbuja de diálogo con el número de comentarios que tiene. Al abrirlo se ve el hilo completo en orden cronológico, con el autor y la fecha de cada entrada. Cualquier miembro del proyecto puede escribir, sin importar si el requerimiento está pendiente, aprobado o rechazado: comentar no mueve el estado. Puedes corregir tu propio comentario, y borrarlo; el creador del proyecto además puede borrar comentarios de otras personas. El conteo que ves en la tarjeta cuenta los que quedan visibles.',
   },
   {
     pregunta: '¿A quién pido ayuda si algo falla?',

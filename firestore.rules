@@ -296,7 +296,7 @@ service cloud.firestore {
         ]);
     }
 
-    // Un requerimiento se actualiza por UNA de estas cuatro situaciones. Se
+    // Un requerimiento se actualiza por UNA de estas cinco situaciones. Se
     // declaran por separado para que se lea cuál es cuál.
 
     // 1. El autor corrige el suyo y lo devuelve a espera.
@@ -356,6 +356,24 @@ service cloud.firestore {
     function esRenumeracion(data) {
       return isAuthenticated() &&
         data.diff(resource.data).affectedKeys().hasOnly(['numero', 'codigo']);
+    }
+
+    // 5. El contador de comentarios (KAN-27).
+    //
+    // Lo mueve la transacción que crea o borra un comentario, junto al propio
+    // comentario, y solo toca esa clave. Es la quinta vía porque es el único cambio
+    // de escritura que no encaja en ninguna de las cuatro anteriores: no corrige el
+    // autor, no es una decisión del aprobador, no edita el contenido del
+    // requerimiento y no renumera.
+    //
+    // El número es de presentación, no de autorización: un miembro podría escribir
+    // un valor falso con esto, pero con eso no gana permiso alguno, y es el mismo
+    // trato que el contador de requerimientos del proyecto, que también escribe el
+    // cliente. Sin esta vía, el indicador de la lista exigiría una consulta de
+    // conteo por requerimiento en cada carga, y la lista no está paginada.
+    function esConteoComentarios(data) {
+      return esMiembroDelProyecto(resource.data.id_proyecto, request.auth.uid) &&
+        data.diff(resource.data).affectedKeys().hasOnly(['total_comentarios']);
     }
 
     // 1. Perfiles de usuario
@@ -691,8 +709,102 @@ service cloud.firestore {
       allow update: if esReenvioDelAutor(request.resource.data) ||
         esDecisionDelAprobador(request.resource.data) ||
         esEdicionEnFlujoNormal(request.resource.data) ||
-        esRenumeracion(request.resource.data);
+        esRenumeracion(request.resource.data) ||
+        esConteoComentarios(request.resource.data);
       allow delete: if isAuthenticated();
+
+      // Comentarios del requerimiento (KAN-27).
+      //
+      // Cuelgan del propio requerimiento y no viven en una colección de nivel
+      // superior, y la elección es de seguridad y no de comodidad: las reglas de
+      // Firestore no pueden inspeccionar el contenido de los documentos cuando la
+      // operación es una lista (una consulta), así que todo lo que necesite una
+      // regla de lectura tiene que salir del path. Con el ID del requerimiento en
+      // el path, la comprobación de membresía es una lectura de clave conocida y
+      // tanto el `get` del hilo como su consulta funcionan. Con una colección
+      // plana no habría forma de saber a qué proyecto pertenece el resultado sin
+      // leer cada documento, y habría que dejar `read` abierto a todo el que tiene
+      // sesión o negar la consulta entera: los dos extremos rompen el ticket.
+      //
+      // Consecuencia: los comentarios NO hacen cascada. Borrar un requerimiento no
+      // se lleva su subcolección (Firestore no borra por debajo), así que eso lo
+      // hace el servicio, y el orden en que lo hace importa. Ver la rama huérfana
+      // de `allow delete`.
+      match /comentario/{comentarioId} {
+        function requerimientoDelHilo() {
+          return /databases/$(database)/documents/requerimiento/$(requerimientoId);
+        }
+
+        // Quien entra al hilo: los miembros del proyecto del requerimiento al que
+        // cuelga. El requerimiento se resuelve leyendo una clave conocida del path
+        // y de ahí se sigue hasta el proyecto.
+        function esMiembroDelHilo(userId) {
+          return exists(requerimientoDelHilo()) &&
+            esMiembroDelProyecto(
+              get(requerimientoDelHilo()).data.id_proyecto,
+              userId
+            );
+        }
+
+        function esAutorDelProyectoDelHilo(userId) {
+          return exists(requerimientoDelHilo()) &&
+            isProjectCreator(
+              get(requerimientoDelHilo()).data.id_proyecto,
+              userId
+            );
+        }
+
+        // `allow read` cubre el `get` y la consulta del hilo: en ninguno de los dos
+        // se usa `resource`, que es justamente lo que hace posible que la consulta
+        // funcione.
+        allow read: if isAuthenticated() && esMiembroDelHilo(request.auth.uid);
+
+        allow create: if isAuthenticated() &&
+          esMiembroDelHilo(request.auth.uid) &&
+          // El autor lo pone el sistema, igual que en el requerimiento: el
+          // formulario no lo trae y las reglas lo exigen igual al de la sesión.
+          request.resource.data.id_autor == request.auth.uid &&
+          request.resource.data.id_requerimiento == requerimientoId &&
+          request.resource.data.texto is string &&
+          request.resource.data.texto.size() > 0 &&
+          request.resource.data.texto.size() <= 4000 &&
+          request.resource.data.keys().hasOnly([
+            'id_requerimiento', 'id_autor', 'texto', 'created_at', 'updated_at'
+          ]);
+
+        allow update: if isAuthenticated() &&
+          esMiembroDelHilo(request.auth.uid) &&
+          // Solo su autor, y solo el texto con su marca de corrección. Sin esta
+          // lista, quien puede comentar podría reescribir un comentario ajeno o
+          // cambiarle el autor. El documento nuevo es `request.resource.data`, y
+          // el diff se hace contra `resource.data`: aquí NO existe una variable
+          // `data` suelta (la de las funciones de arriba es un parámetro).
+          resource.data.id_autor == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['texto', 'updated_at']) &&
+          request.resource.data.texto is string &&
+          request.resource.data.texto.size() > 0 &&
+          request.resource.data.texto.size() <= 4000;
+
+        allow delete: if isAuthenticated() && (
+          (
+            esMiembroDelHilo(request.auth.uid) &&
+            (
+              resource.data.id_autor == request.auth.uid ||
+              esAutorDelProyectoDelHilo(request.auth.uid)
+            )
+          ) ||
+          // Huérfano: su requerimiento ya no existe.
+          //
+          // Es el único camino que puede recorrer el cascado de
+          // `deleteRequerimiento` y `deleteProyecto`, que borran el requerimiento
+          // ANTES que sus comentarios: una vez fuera, la comprobación de membresía
+          // de arriba ya no puede resolverse porque no hay proyecto que leer. Si se
+          // cambia ese orden, este permiso deja de valer y el servicio se queda con
+          // comentarios huérfanos que nadie puede borrar. La rama es huérfana a
+          // propósito, no es un hueco: el documento de referencia ya no existe.
+          !exists(requerimientoDelHilo())
+        );
+      }
     }
 
     // 6. Historial de requerimientos: los miembros del proyecto pueden leer y

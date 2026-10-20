@@ -123,3 +123,48 @@ export function puedeReenviarRequerimiento(
 ): boolean {
   return esAutor && estaRechazado(estadoNombre);
 }
+
+// ==========================================
+// COMENTARIOS (KAN-27)
+// ==========================================
+// Quién entra al hilo de comentarios de un requerimiento lo decide la membresía
+// del proyecto: no hay estado de aprobación que lo bloquee, porque comentar no
+// avanza ni frena el flujo. Las contrapartes están en `firestore.rules`, dentro
+// de `match /requerimiento/{requerimientoId}/comentario/{comentarioId}`.
+
+/**
+ * ¿Puede este usuario leer y escribir en el hilo? Regla: `esMiembroDelHilo`.
+ *
+ * Se le pasa el resultado de `esMiembroDelProyecto`, que es quien resuelve la
+ * membresía, igual que en el resto de la página.
+ */
+export function puedeComentarRequerimiento(esMiembroProyecto: boolean): boolean {
+  return esMiembroProyecto;
+}
+
+/**
+ * ¿Puede corregir este comentario? Regla: `allow update`.
+ *
+ * Solo su autor, y solo su texto: `firestore.rules` limita además el cambio a las
+ * claves `texto` y `updated_at`, así que por este camino no se le puede cambiar el
+ * autor a un comentario, ni a ningún otro comentario del hilo.
+ */
+export function puedeEditarComentario(esAutor: boolean): boolean {
+  return esAutor;
+}
+
+/**
+ * ¿Puede borrar este comentario? Regla: `allow delete`.
+ *
+ * Su autor siempre, y además el creador del proyecto, que es quien puede limpiar
+ * comentarios ajenos. Queda fuera lo que las reglas también permiten —borrar un
+ * comentario huérfano, cuyo requerimiento ya no existe— porque es un caso que solo
+ * recorre el servicio al deshacer un borrado de requerimiento; la interfaz no lo
+ * ofrece.
+ */
+export function puedeBorrarComentario(
+  esAutor: boolean,
+  esCreadorProyecto: boolean
+): boolean {
+  return esAutor || esCreadorProyecto;
+}

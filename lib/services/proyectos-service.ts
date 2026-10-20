@@ -16,6 +16,7 @@ import { Proyecto, UUID, MiembroEquipo, QuienCreaEquipos, QuienAgregaMiembros } 
 import { getTiposSistema } from './catalogos-service';
 import { getProyectoEquipos, getMiembrosEquipo } from './equipos-service';
 import { eliminarContextoDeProyecto } from './contexto-service';
+import { borrarComentariosDeRequerimiento } from './comentarios-service';
 
 // ==========================================
 // PROYECTOS
@@ -202,6 +203,14 @@ export async function deleteProyecto(id: string): Promise<void> {
   const reqSnap = await getDocs(query(collection(db, 'requerimiento'), where('id_proyecto', '==', id)));
   for (const d of reqSnap.docs) {
     await deleteDoc(d.ref);
+  }
+  // Los comentarios van DESPUÉS, no en el mismo bucle, y el orden no es casual:
+  // Firestore no hace cascada y sus reglas solo permiten borrar un comentario cuyo
+  // requerimiento ya no existe, porque sin él no hay cómo resolver a qué proyecto
+  // pertenece. Borrarlos antes quedaría denegado y el proyecto se quedaría con
+  // hilos huérfanos. El detalle está en `borrarComentariosDeRequerimiento`.
+  for (const d of reqSnap.docs) {
+    await borrarComentariosDeRequerimiento(d.id);
   }
 }
 

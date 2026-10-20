@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { codigoRequerimiento } from '../requerimientos';
+import { borrarComentariosDeRequerimiento } from './comentarios-service';
 import { Requerimiento, LogRequerimiento } from '../database.types';
 import { 
   getTiposRequerimientos, 
@@ -75,6 +76,12 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
         id_patron: (data.id_patron as string | null | undefined) ?? null,
         numero: typeof data.numero === 'number' ? data.numero : null,
         codigo: typeof data.codigo === 'string' ? data.codigo : null,
+        // KAN-27: contador de comentarios. Igual que `id_equipo`, es un campo que
+        // existe en el documento pero que la interfaz no ve si no se copia aquí:
+        // el getter decide qué campos salen para la pantalla. Los documentos
+        // anteriores a KAN-27 no lo traen y equivalen a cero.
+        total_comentarios:
+          typeof data.total_comentarios === 'number' ? data.total_comentarios : 0,
         reenviado_at: data.reenviado_at || null,
         created_at: data.created_at || new Date().toISOString(),
 
@@ -577,6 +584,16 @@ export async function deleteRequerimiento(id: string, id_autor: string): Promise
       a: req.nuevoCodigo
     }));
   });
+
+  // El requerimiento ya no existe (la transacción lo borró), así que el hilo de
+  // comentarios se puede borrar por la rama huérfana de las reglas. El orden no es
+  // casual: ver `borrarComentariosDeRequerimiento`.
+  //
+  // Se espera, no se dispara a ciegas, porque el criterio del ticket es que al
+  // borrar el requerimiento se borren sus comentarios. Si esto falla, el
+  // requerimiento ya se habrá ido y el hilo quedará huérfano, pero todavía borrable
+  // por cualquiera, así que no queda nada irrecuperable.
+  await borrarComentariosDeRequerimiento(id);
 
   if (renumerados.length > 0) {
     void Promise.all(

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Clock, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, Copy, ListPlus, ListOrdered,
-  Check, XCircle, Send, Download, Folder, X, Layers
+  Check, XCircle, Send, Download, Folder, X, Layers, MessageSquare
 } from 'lucide-react';
 import {
   generateSingleRequirement,
@@ -19,7 +19,8 @@ import {
 } from '@/lib/ai-actions';
 import type {
   Proyecto, Requerimiento, TipoRequerimiento, Estado,
-  Modalidad, Modelo, Patron, PerfilUsuario, LogRequerimiento, Equipo, ArchivoContexto
+  Modalidad, Modelo, Patron, PerfilUsuario, LogRequerimiento, Equipo, ArchivoContexto,
+  Comentario
 } from '@/lib/database.types';
 import {
   getProyectoById,
@@ -47,7 +48,11 @@ import {
   ESTADO_RECHAZADO,
   ESTADO_PENDIENTE_APROBACION,
   getContextoProyecto,
-  construirContextoIA
+  construirContextoIA,
+  getComentariosRequerimiento,
+  crearComentario,
+  editarComentario,
+  borrarComentario
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
@@ -59,6 +64,7 @@ import {
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
 import ModalHistorialLogs from '@/components/requerimientos/ModalHistorialLogs';
+import ModalComentarios from '@/components/requerimientos/ModalComentarios';
 import EquiposDelProyecto from '@/components/equipos/EquiposDelProyecto';
 import MiembrosDelProyecto from '@/components/proyectos/MiembrosDelProyecto';
 import ContextoDelProyecto from '@/components/proyectos/ContextoDelProyecto';
@@ -68,13 +74,14 @@ import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
 import { codigoDe, codigoRequerimiento, numeroDesdeBusqueda } from '@/lib/requerimientos';
-import { esMiembroDelProyecto } from '@/lib/equipos-proyecto';
+import { esCreadorDelProyecto, esMiembroDelProyecto } from '@/lib/equipos-proyecto';
 import {
   estaPendienteDeAprobacion,
   estaRechazado,
   puedeAprobarRequerimientos,
   puedeEditarRequerimiento,
-  puedeReenviarRequerimiento
+  puedeReenviarRequerimiento,
+  puedeComentarRequerimiento
 } from '@/lib/permisos';
 import {
   prepararItems,
@@ -163,7 +170,7 @@ const FILTROS_INICIALES = {
 // que es justo cuando hay que hacerlo.
 const COLORES_ESTADO: Array<[string, string]> = [
   ['Aprobado', 'bg-success-subtle text-success border-success-line'],
-  ['Devuelto', 'bg-danger-subtle text-danger border-danger-line'],
+  ['Rechazado', 'bg-danger-subtle text-danger border-danger-line'],
   ['Pendiente de aprobación', 'bg-warning-subtle text-warning border-warning-line'],
   ['En Revisión', 'bg-warning-subtle text-warning border-warning-line'],
   ['Implementado', 'bg-brand-subtle text-brand-text border-brand-line'],
@@ -252,6 +259,13 @@ export default function RequerimientosPage() {
   const [logsError, setLogsError] = useState<string | null>(null);
   const [restoringLogId, setRestoringLogId] = useState<string | null>(null);
 
+  // Modal de comentarios (KAN-27)
+  const [reqComentarios, setReqComentarios] = useState<Requerimiento | null>(null);
+  const [comentarios, setComentarios] = useState<Array<Comentario>>([]);
+  const [loadingComentarios, setLoadingComentarios] = useState(false);
+  const [comentariosError, setComentariosError] = useState<string | null>(null);
+  const [guardandoComentario, setGuardandoComentario] = useState(false);
+
   // Vista del proyecto (requerimientos o equipos), reflejada en la URL
   const [vista, setVista] = useState<VistaProyecto>('requerimientos');
   useEffect(() => {
@@ -278,6 +292,11 @@ export default function RequerimientosPage() {
 // denegaba; este los esconde. Es una pérdida de capacidad real, pero solo sobre
 // datos previos a KAN-24, y prefiero una limitación visible a un error de permisos.
   const esMiembroProyecto = esMiembroDelProyecto(proyecto, uid);
+  // KAN-27: el creador del proyecto puede borrar comentarios ajenos en el hilo.
+  const esCreadorProyecto = esCreadorDelProyecto(proyecto, uid);
+  // KAN-27: comentar es cosa de miembros del proyecto, y no depende del estado de
+  // aprobación del requerimiento: discutirlo no lo mueve.
+  const puedeComentar = puedeComentarRequerimiento(esMiembroProyecto);
 
   // KAN-18: los equipos donde el usuario es líder, que son los únicos que puede
   // aprobar. Se piden una sola vez por sesión, y en paralelo al resto de la carga.
@@ -1074,6 +1093,93 @@ export default function RequerimientosPage() {
     }
   };
 
+  // ==========================================================
+  // COMENTARIOS (KAN-27)
+  // ==========================================================
+  // El contador que muestra la tarjeta vive en el propio requerimiento y lo mueve
+  // el servicio junto al comentario. Tras cada operación se recalcula con la
+  // longitud del hilo que acaba de recargarse: es el dato que hay en pantalla y
+  // sirve para corregir cualquier desajuste del contador sin esperar a recargar la
+  // página.
+
+  const ajustarConteoComentarios = (requerimientoId: string, total: number) => {
+    setRequerimientos(prev =>
+      prev.map(r => (r.id === requerimientoId ? { ...r, total_comentarios: total } : r))
+    );
+    setReqComentarios(prev =>
+      prev && prev.id === requerimientoId ? { ...prev, total_comentarios: total } : prev
+    );
+  };
+
+  const abrirComentarios = async (req: Requerimiento) => {
+    setReqComentarios(req);
+    setComentarios([]);
+    setComentariosError(null);
+    setLoadingComentarios(true);
+    try {
+      const hilo = await getComentariosRequerimiento(req.id);
+      setComentarios(hilo);
+      ajustarConteoComentarios(req.id, hilo.length);
+    } catch (e) {
+      const mensaje = mensajeError(e, 'No se pudo cargar los comentarios');
+      setComentariosError(mensaje);
+      toast.error(mensaje);
+    } finally {
+      setLoadingComentarios(false);
+    }
+  };
+
+  const recargarHilo = async (requerimientoId: string) => {
+    const hilo = await getComentariosRequerimiento(requerimientoId);
+    setComentarios(hilo);
+    ajustarConteoComentarios(requerimientoId, hilo.length);
+  };
+
+  const handlePublicarComentario = async (texto: string) => {
+    const req = reqComentarios;
+    if (!req || !uid || guardandoComentario) return;
+    setGuardandoComentario(true);
+    try {
+      await crearComentario(req.id, texto, uid);
+      await recargarHilo(req.id);
+      toast.success('Comentario publicado.');
+    } catch (e) {
+      toast.error(mensajeError(e, 'No se pudo publicar el comentario'));
+    } finally {
+      setGuardandoComentario(false);
+    }
+  };
+
+  const handleEditarComentario = async (comentario: Comentario, texto: string) => {
+    const req = reqComentarios;
+    if (!req || guardandoComentario) return;
+    setGuardandoComentario(true);
+    try {
+      await editarComentario(req.id, comentario.id, texto);
+      await recargarHilo(req.id);
+      toast.success('Comentario corregido.');
+    } catch (e) {
+      toast.error(mensajeError(e, 'No se pudo corregir el comentario'));
+    } finally {
+      setGuardandoComentario(false);
+    }
+  };
+
+  const handleBorrarComentario = async (comentario: Comentario) => {
+    const req = reqComentarios;
+    if (!req || guardandoComentario) return;
+    setGuardandoComentario(true);
+    try {
+      await borrarComentario(req.id, comentario.id);
+      await recargarHilo(req.id);
+      toast.success('Comentario borrado.');
+    } catch (e) {
+      toast.error(mensajeError(e, 'No se pudo borrar el comentario'));
+    } finally {
+      setGuardandoComentario(false);
+    }
+  };
+
   const handleRestoreVersion = async (log: LogRequerimiento) => {
     const req = currentReqForLogs;
     const detalles = log.detalles;
@@ -1190,8 +1296,9 @@ export default function RequerimientosPage() {
   const conteoEstado = (id: string) => requerimientosBase.filter(r => esDelEstado(r, id)).length;
   const filteredRequerimientos = requerimientosBase.filter(r => esDelEstado(r, filterEstado));
   // El orden deseado de izquierda a derecha. Comparamos en minúsculas.
-  // "devuelt" atrapará "Devuelto" o "Devueltos", y si sigue llamándose "Rechazado" lo atrapará también.
-  const ORDEN_PESTANAS = ['pendiente', 'devuelt', 'aprobado'];
+  // "rechaz" atrapa "Rechazado" y "Rechazada", que es como se llama este estado en
+  // el catálogo sembrado y en `firestore.rules` (`esEstadoRechazado`).
+  const ORDEN_PESTANAS = ['pendiente', 'rechaz', 'aprobado'];
 
   const getPesoPestana = (nombre: string) => {
     const min = nombre.toLowerCase();
@@ -1406,6 +1513,27 @@ export default function RequerimientosPage() {
                     className={btnIcono}
                   >
                     <History size={16} />
+                  </button>
+                )}
+                {puedeComentar && (
+                  <button
+                    onClick={() => abrirComentarios(req)}
+                    title={`Ver comentarios (${req.total_comentarios ?? 0})`}
+                    aria-label={`Ver comentarios de ${codigoDe(req) ?? ''}`.trim()}
+                    className={`${btnIcono} relative`}
+                  >
+                    <MessageSquare size={16} />
+                    {/* El indicador de la lista (KAN-27). Con cero no se pinta nada,
+                        para no cargar de puntos la tarjeta; el título y el nombre
+                        accesible siempre dicen la cantidad. */}
+                    {(req.total_comentarios ?? 0) > 0 && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-brand-solid text-on-solid text-[10px] font-bold leading-4"
+                      >
+                        {req.total_comentarios}
+                      </span>
+                    )}
                   </button>
                 )}
                 {puedeDecidir(req) && (
@@ -2201,6 +2329,27 @@ export default function RequerimientosPage() {
         puedeRestaurar={!!currentReqForLogs && esMiembroProyecto && puedeAbrirEditor(currentReqForLogs)}
         restoringLogId={restoringLogId}
         onRestore={handleRestoreVersion}
+      />
+
+      {/* Modal de comentarios (KAN-27). La `key` reinicia el borrador y la
+          corrección en curso cada vez que se abre el hilo de otro requerimiento (o
+          se cierra), sin necesidad de un efecto que limpie el estado. */}
+      <ModalComentarios
+        key={reqComentarios?.id ?? 'comentarios-cerrados'}
+        open={reqComentarios !== null}
+        onClose={() => setReqComentarios(null)}
+        requerimiento={reqComentarios}
+        comentarios={comentarios}
+        loading={loadingComentarios}
+        error={comentariosError}
+        uid={uid}
+        esCreadorProyecto={esCreadorProyecto}
+        puedeComentar={puedeComentar}
+        guardando={guardandoComentario}
+        codigoDe={codigoDe}
+        onPublicar={handlePublicarComentario}
+        onEditar={handleEditarComentario}
+        onBorrar={handleBorrarComentario}
       />
 
       {/* Modal Exportar especificación (KAN-28) */}
