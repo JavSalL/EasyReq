@@ -12,6 +12,8 @@
     "ALLOWED_ORIGINS": "https://easy-req.web.app,https://easy-req.firebaseapp.com,http://localhost:3000",
     "GEMINI_MODEL": "gemini-3.5-flash-lite",
     "DAILY_LIMIT": "50",
+    // Generaciones completas (iterativas) por usuario y día; cada una cuenta como 1 uso de DAILY_LIMIT.
+    "DAILY_JOB_LIMIT": "3",
     "REQUIRE_EMAIL_VERIFIED": "false"
   },
 
