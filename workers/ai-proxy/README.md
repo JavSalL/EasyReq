@@ -59,3 +59,23 @@ Para desplegar actualizaciones del worker en el futuro, solo se debe entrar a la
 cd workers/ai-proxy
 npx wrangler deploy
 ```
+
+---
+
+## Generación iterativa de requerimientos (KAN-40)
+
+El cliente (`runIterativeGeneration` en `lib/ai-actions.ts`) encadena estos pasos; cada uno es **una** llamada a Gemini:
+
+| Ruta | Qué hace | Cuota |
+|------|----------|-------|
+| `POST /generation/plan` | Mapa de áreas (`alcance`: `sistema`, `modulo` o `auto`). En sistema, hasta 20 áreas e incluye las transversales de calidad (seguridad, rendimiento, disponibilidad, usabilidad, accesibilidad, mantenibilidad, legal/privacidad, integraciones) salvo en estrictez máxima. | Crea un job y consume **1** uso diario. Máx. `DAILY_JOB_LIMIT` corridas por día (3 por defecto); solo cuentan las que llegaron a generar un lote, no las canceladas en el mapa ni las que fallaron. |
+| `POST /generation/area` | Lote de 15-25 requerimientos de un área; devuelve `{ requerimientos, completo, pendiente }`. | Exige `job_id` del mismo usuario; no consume uso diario, cuenta 1 llamada del job. |
+| `POST /generation/cobertura` | Revisa lo generado y lo existente; devuelve solo lo que falta (o `[]`). | Igual que `/generation/area`. |
+| `POST /generation/embed` | Posibles duplicados por significado (embeddings de Gemini, coseno ≥ 0,90). | Igual que `/generation/area`. |
+
+Cada job admite 60 llamadas (el plan cuenta como la primera) y caduca a las 6 horas. El límite de 10 peticiones por minuto sigue aplicando: el cliente espera lo que indique `Retry-After` y reintenta solo. `/generate-bulk` (una sola pasada) sigue disponible.
+
+Antes de desplegar, crea la tabla `ai_jobs` (es idempotente):
+```bash
+npx wrangler d1 execute easyreq-ai-quota --remote --file migrations/kan-40-ai-jobs.sql
+```

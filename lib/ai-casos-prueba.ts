@@ -74,3 +74,86 @@ export const CASOS_PRUEBA_IA: CasoPruebaIA[] = [
     noDebeContener: [/<|>/]
   }
 ];
+
+// ---------------------------------------------------------------------------
+// Generación iterativa (KAN-40)
+// ---------------------------------------------------------------------------
+// Se ejecutan con `node --experimental-strip-types scripts/probar-ia.mts --generacion`: piden el
+// mapa de áreas y el primer lote de un área con los prompts del Worker, sin pasar por el Worker
+// (no hacen falta sesión ni job; sí la key de Gemini).
+
+export interface CasoGeneracionIA {
+  id: string;
+  descripcion: string;
+  pedido: string;
+  /** Lo que se le pide al plan; 'auto' deja que la IA lo decida. */
+  alcance: 'auto' | 'sistema' | 'modulo';
+  estrictez: 1 | 2 | 3 | 4;
+  /** Alcance que debe detectar el plan. */
+  alcanceEsperado: 'sistema' | 'modulo';
+  /** Límites del número de áreas del plan. */
+  minAreas?: number;
+  maxAreas?: number;
+  /** Cada patrón debe coincidir con el nombre de al menos un área. */
+  areasObligatorias?: RegExp[];
+  /** Requerimientos que ya tiene el proyecto: el lote no debe repetirlos (similitud ≥ 0,85). */
+  existentes?: string[];
+  /** Ningún requerimiento del lote debe cumplir estos patrones (datos inventados). */
+  noDebeContener?: RegExp[];
+  /** En estrictez máxima, nada puede venir marcado como inferido. */
+  sinInferidos?: boolean;
+}
+
+export const CASOS_GENERACION_IA: CasoGeneracionIA[] = [
+  {
+    id: 'sistema-tienda',
+    descripcion: 'Una aplicación completa: alcance sistema, con las áreas de calidad transversales',
+    pedido: 'una aplicación para una tienda de ropa en línea',
+    alcance: 'auto',
+    estrictez: 2,
+    alcanceEsperado: 'sistema',
+    minAreas: 8,
+    areasObligatorias: [/segur/i, /rendim/i, /disponib|confiab/i, /usabil/i, /accesib/i, /manten|soporte/i, /legal|privac/i, /integraci/i]
+  },
+  {
+    id: 'modulo-pagos',
+    descripcion: 'Solo un módulo: de 1 a 3 áreas, sin el resto del sistema',
+    pedido: 'los requerimientos del módulo de pagos de la tienda en línea',
+    alcance: 'auto',
+    estrictez: 3,
+    alcanceEsperado: 'modulo',
+    maxAreas: 3
+  },
+  {
+    id: 'no-duplicar',
+    descripcion: 'Con requerimientos existentes del módulo: el lote no debe repetirlos ni reformularlos',
+    pedido: 'el módulo de inicio de sesión',
+    alcance: 'modulo',
+    estrictez: 3,
+    alcanceEsperado: 'modulo',
+    existentes: [
+      'El sistema debe permitir al usuario iniciar sesión con su correo electrónico y contraseña.',
+      'El sistema debe permitir al usuario recuperar su contraseña mediante un enlace enviado a su correo.',
+      'El sistema debe cerrar la sesión del usuario cuando este lo solicite.'
+    ]
+  },
+  {
+    id: 'sin-cifras',
+    descripcion: 'Pide rapidez sin dar cifras: ningún requerimiento debe inventar tiempos ni cantidades',
+    pedido: 'el módulo de reportes de ventas, que se generen rápido',
+    alcance: 'modulo',
+    estrictez: 3,
+    alcanceEsperado: 'modulo',
+    noDebeContener: [/\d/]
+  },
+  {
+    id: 'estrictez-maxima',
+    descripcion: 'Estrictez máxima: solo lo literal, nada inferido ni áreas de calidad no pedidas',
+    pedido: 'un sistema donde los alumnos consultan sus calificaciones',
+    alcance: 'sistema',
+    estrictez: 4,
+    alcanceEsperado: 'sistema',
+    sinInferidos: true,
+    noDebeContener: [/\d/]
+  }
+];

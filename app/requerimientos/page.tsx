@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import {
   generateSingleRequirement,
-  generateBulkRequirements,
   AIError,
   ESTRICTEZ_POR_DEFECTO,
   type AIRequirement,
@@ -47,7 +46,8 @@ import {
   ESTADO_RECHAZADO,
   ESTADO_PENDIENTE_APROBACION,
   getContextoProyecto,
-  construirContextoIA
+  construirContextoIA,
+  crearRequerimientosEnLote
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
@@ -63,6 +63,12 @@ import EquiposDelProyecto from '@/components/equipos/EquiposDelProyecto';
 import MiembrosDelProyecto from '@/components/proyectos/MiembrosDelProyecto';
 import ContextoDelProyecto from '@/components/proyectos/ContextoDelProyecto';
 import ControlEstrictez from '@/components/requerimientos/ControlEstrictez';
+import PanelGeneracionIterativa, {
+  useGeneracionIterativa,
+  type Profundidad,
+  type PropuestaRevisable
+} from '@/components/requerimientos/GeneracionIterativa';
+import type { AlcanceGeneracion } from '@/lib/ai-actions';
 import { irA, leerNavegacion, suscribirNavegacion, type VistaProyecto } from '@/lib/navegacion-proyecto';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
@@ -135,14 +141,8 @@ const TIPO_POR_FURPS: Record<AIRequirement['type_furps'], string> = {
   Supportability: 'soporte'
 };
 
-/** Un requerimiento propuesto por la generación masiva, antes de registrarlo. */
-interface Propuesta {
-  clave: string;
-  texto: string;
-  type_furps: AIRequirement['type_furps'];
-  area?: string;
-  elegida: boolean;
-}
+/** Áreas de la generación con IA que no son un módulo real y no se guardan como tal (KAN-40). */
+const AREAS_SIN_MODULO = new Set(['otros', 'general', 'cobertura adicional']);
 
 type Orden = 'recientes' | 'antiguos' | 'estado' | 'numero';
 type Agrupar = 'ninguno' | 'tipo' | 'modelo';
@@ -152,6 +152,8 @@ const FILTROS_INICIALES = {
   estado: 'todos',
   tipo: 'todos',
   modelo: 'todos',
+  // Módulo (KAN-40): 'todos', '__sin__' (sin módulo) o el nombre del módulo
+  modulo: 'todos',
   orden: 'numero' as Orden,
   agrupar: 'ninguno' as Agrupar
 };
@@ -226,6 +228,9 @@ export default function RequerimientosPage() {
   const setFilterEstado = (estado: string) => setFiltros(f => ({ ...f, estado }));
   const setFilterTipo = (tipo: string) => setFiltros(f => ({ ...f, tipo }));
   const setFilterModelo = (modelo: string) => setFiltros(f => ({ ...f, modelo }));
+  // Los filtros guardados antes de KAN-40 no traen el módulo
+  const filterModulo = filtros.modulo ?? 'todos';
+  const setFilterModulo = (modulo: string) => setFiltros(f => ({ ...f, modulo }));
   const setOrden = (nuevo: Orden) => setFiltros(f => ({ ...f, orden: nuevo }));
   // Los filtros guardados antes de existir "agrupar" no lo traen
   const agrupar: Agrupar = filtros.agrupar ?? 'ninguno';
@@ -307,8 +312,12 @@ export default function RequerimientosPage() {
   const [archivosContexto, setArchivosContexto] = useState<ArchivoContexto[]>([]);
   const [carpetasElegidas, setCarpetasElegidas] = useState<string[]>([]);
   const [cantidadContexto, setCantidadContexto] = useState<number | null>(null);
-  // Generación masiva: propuestas a revisar antes de registrarlas
-  const [propuestas, setPropuestas] = useState<Propuesta[] | null>(null);
+  // Generación de varios requerimientos (KAN-40): la corrida y las propuestas a revisar viven en
+  // el hook; aquí solo se elige el alcance y se registran las elegidas.
+  const gen = useGeneracionIterativa();
+  const propuestas = gen.propuestas;
+  const [alcanceIA, setAlcanceIA] = useState<AlcanceGeneracion | 'auto'>('auto');
+  const [profundidad, setProfundidad] = useState<Profundidad>('completa');
   const [registrandoMasivo, setRegistrandoMasivo] = useState<{ hechos: number; total: number } | null>(null);
 
   // Al registrar varios requerimientos seguidos: "guardar y añadir otro" y
@@ -325,12 +334,19 @@ export default function RequerimientosPage() {
       enunciado: formData.enunciado,
       ia: aiPrompt,
       propuestas: propuestas?.length ?? 0,
+      generando: gen.ocupado,
       resto: editingReq
         ? [formData.id_tipo_requerimiento, formData.id_modalidad, formData.id_modelo, formData.id_equipo]
         : null
     },
     () => setIsModalOpen(false)
   );
+
+  // Cerrar el modal detiene una generación en marcha (no sigue gastando llamadas de fondo)
+  const { detener: detenerGeneracion } = gen;
+  useEffect(() => {
+    if (!isModalOpen) detenerGeneracion();
+  }, [isModalOpen, detenerGeneracion]);
 
   // Cargar lista de requerimientos (más recientes primero)
   const fetchRequerimientos = useCallback(async () => {
@@ -557,7 +573,7 @@ export default function RequerimientosPage() {
           : ''
     });
     setAiPrompt('');
-    setPropuestas(null);
+    gen.reiniciar();
     setIsModalOpen(true);
     void cargarContexto();
   };
@@ -595,7 +611,7 @@ export default function RequerimientosPage() {
       id_equipo: req.id_equipo || ''
     });
     setAiPrompt('');
-    setPropuestas(null);
+    gen.reiniciar();
     setIsModalOpen(true);
     void cargarContexto();
   };
@@ -628,7 +644,7 @@ export default function RequerimientosPage() {
     e.preventDefault();
     if (esMasivo) {
       crearOtroRef.current = false;
-      if (propuestas?.some(p => p.elegida)) void registrarPropuestas();
+      if (!gen.ocupado && propuestas?.some(p => p.elegida)) void registrarPropuestas();
       return;
     }
     const crearOtro = crearOtroRef.current;
@@ -823,6 +839,8 @@ export default function RequerimientosPage() {
   const idGeneradoConIA = () => modalidades.find(m => m.nombre_modalidad === MODALIDAD_GENERADO_IA)?.id;
 
   const handleAIGenerate = async () => {
+    // Enter en el campo de la IA no debe lanzar otra generación encima de la que está en marcha
+    if (isAILoading || gen.ocupado) return;
     if (!aiPrompt.trim()) {
       toast.error(esMasivo ? 'Describe qué parte del sistema (o el sistema completo) quieres especificar' : 'Describe la funcionalidad para generar el requerimiento');
       return;
@@ -864,33 +882,51 @@ export default function RequerimientosPage() {
     }
   };
 
-  /** Generación masiva: la IA decide cuántos requerimientos hacen falta según el alcance del pedido. */
+  /** Requerimientos del proyecto en la forma compacta que la IA usa para no repetirlos. */
+  const existentesParaIA = () =>
+    [...requerimientos]
+      .sort((a, b) => (a.numero ?? Number.MAX_SAFE_INTEGER) - (b.numero ?? Number.MAX_SAFE_INTEGER))
+      .map(r => ({ codigo: codigoDe(r) ?? 'REQ-?', modulo: r.modulo ?? null, enunciado: r.enunciado }));
+
+  /**
+   * Varios requerimientos. "Completa" (KAN-40): la IA arma un mapa de áreas que el usuario edita
+   * y luego redacta cada área por lotes hasta cubrirla. "Rápida": la generación masiva de una sola
+   * pasada. En las dos se descarta lo que repite requerimientos existentes.
+   */
   const handleAIGenerateMasivo = async () => {
-    setIsAILoading(true);
-    try {
-      const resultado = await generateBulkRequirements(aiPrompt, opcionesIA());
-      if (!resultado.valido || resultado.requerimientos.length === 0) {
-        toast.error(resultado.motivo || 'La IA no encontró requerimientos que respalden el pedido. Detállalo más o agrega contexto al proyecto.');
-        return;
+    if (profundidad === 'rapida') {
+      setIsAILoading(true);
+      try {
+        const r = await gen.iniciarRapida(aiPrompt, { ...opcionesIA(), existentes: existentesParaIA() });
+        if (r.cantidad === 0) {
+          toast.error(r.motivo || 'La IA no propuso nada nuevo: lo que encontró ya está en el proyecto.');
+        } else {
+          toast.success(
+            `La IA propuso ${r.cantidad} requerimientos${r.descartadas ? ` (descartó ${r.descartadas} repetidos)` : ''}. Revísalos antes de registrarlos.`
+          );
+        }
+      } finally {
+        setIsAILoading(false);
       }
-      setPropuestas(resultado.requerimientos.map((r, i) => ({
-        clave: `${Date.now()}-${i}`,
-        texto: r.name,
-        type_furps: r.type_furps,
-        area: r.area,
-        elegida: true
-      })));
-      toast.success(
-        `La IA propuso ${resultado.requerimientos.length} requerimientos en ${resultado.areas.length} ${resultado.areas.length === 1 ? 'área' : 'áreas'}. Revísalos antes de registrarlos.`
-      );
-    } catch (err) {
-      toast.error(err instanceof AIError ? err.message : "No se pudo conectar con el servicio de IA. Inténtalo de nuevo.");
-    } finally {
-      setIsAILoading(false);
+      return;
+    }
+
+    const res = await gen.iniciar(aiPrompt, { ...opcionesIA(), alcance: alcanceIA, existentes: existentesParaIA() });
+    if (res.estado === 'invalido' || (res.estado === 'error' && res.propuestas.length === 0)) {
+      toast.error(res.motivo || 'La IA no encontró requerimientos que respalden el pedido. Detállalo más o agrega contexto al proyecto.');
+    } else if (res.propuestas.length > 0) {
+      const areas = new Set(res.propuestas.map(p => p.area)).size;
+      toast.success(`La IA propuso ${res.propuestas.length} requerimientos en ${areas} ${areas === 1 ? 'área' : 'áreas'}. Revísalos antes de registrarlos.`);
+    } else if (res.estado === 'completo') {
+      toast('La IA no encontró nada nuevo: lo que pide el texto ya está en el proyecto.');
     }
   };
 
-  /** Registra las propuestas elegidas, una por una, con la clasificación del formulario. */
+  /**
+   * Registra las propuestas elegidas con la clasificación del formulario. Los números se reservan
+   * de una vez y los documentos se escriben por lotes (`crearRequerimientosEnLote`); el área de
+   * la IA se guarda como módulo.
+   */
   const registrarPropuestas = async () => {
     const elegidas = (propuestas ?? []).filter(p => p.elegida && p.texto.trim());
     if (!esMiembroProyecto || !uid) {
@@ -906,32 +942,41 @@ export default function RequerimientosPage() {
       return;
     }
     const idIA = idGeneradoConIA();
+    const moduloDe = (p: PropuestaRevisable) => {
+      const area = p.area.trim().slice(0, 120);
+      return area && !AREAS_SIN_MODULO.has(area.toLowerCase()) ? area : null;
+    };
     setRegistrandoMasivo({ hechos: 0, total: elegidas.length });
-    const registradas = new Set<string>();
     try {
-      for (const p of elegidas) {
-        const nuevo = await createRequerimiento({
+      const { creados, error, logsFallidos } = await crearRequerimientosEnLote(
+        proyectoId!,
+        elegidas.map(p => ({
           enunciado: p.texto.trim(),
           id_tipo_requerimiento: formData.id_tipo_requerimiento || tipoDesdeFurps(p.type_furps),
           id_modalidad: idIA ?? (formData.id_modalidad || null),
           id_modelo: formData.id_modelo || null,
           id_patron: formData.id_patron_seleccionado || null,
           id_equipo: formData.id_equipo,
-          id_proyecto: proyectoId!
-        }, uid);
-        if (nuevo?.id) {
-          await addLogRequerimiento({
-            id_requerimiento: nuevo.id,
-            accion: 'Creación de requerimiento',
-            id_autor: uid,
-            detalles: { inicio: 'Generación masiva con IA', enunciado_nuevo: nuevo.enunciado }
-          });
-        }
-        registradas.add(p.clave);
-        setRegistrandoMasivo({ hechos: registradas.size, total: elegidas.length });
+          modulo: moduloDe(p),
+          origen_ia: p.origen ?? null,
+          prioridad: p.prioridad ?? null
+        })),
+        uid,
+        { inicio: 'Generación masiva con IA' },
+        (hechos, total) => setRegistrandoMasivo({ hechos, total })
+      );
+      // Las que ya se registraron salen de la lista para no duplicarlas al reintentar
+      gen.quitar(new Set(elegidas.slice(0, creados.length).map(p => p.clave)));
+      if (logsFallidos > 0) {
+        toast.error(`${logsFallidos} requerimientos se registraron sin su entrada de historial.`);
+      }
+      if (error) {
+        console.error(error);
+        toast.error(mensajeError(error, `Se registraron ${creados.length} de ${elegidas.length}. No se pudo registrar el resto`));
+        return;
       }
       toast.success(
-        `${elegidas.length} requerimientos registrados. Quedan pendientes de que los apruebe el líder de ${nombreEquipoDe(formData.id_equipo)}.`
+        `${creados.length} requerimientos registrados. Quedan pendientes de que los apruebe el líder de ${nombreEquipoDe(formData.id_equipo)}.`
       );
       ultimaClasificacionRef.current = {
         id_tipo_requerimiento: formData.id_tipo_requerimiento,
@@ -940,14 +985,15 @@ export default function RequerimientosPage() {
         id_patron_seleccionado: formData.id_patron_seleccionado,
         id_equipo: formData.id_equipo
       };
-      setPropuestas(null);
-      setAiPrompt('');
-      setIsModalOpen(false);
+      // Si quedan propuestas sin elegir, el modal sigue abierto para registrarlas después.
+      if ((propuestas ?? []).length === elegidas.length) {
+        gen.reiniciar();
+        setAiPrompt('');
+        setIsModalOpen(false);
+      }
     } catch (err) {
       console.error(err);
-      // Las que ya se registraron salen de la lista para no duplicarlas al reintentar
-      setPropuestas(prev => prev?.filter(p => !registradas.has(p.clave)) ?? null);
-      toast.error(mensajeError(err, `Se registraron ${registradas.size} de ${elegidas.length}. No se pudo registrar el resto`));
+      toast.error(mensajeError(err, 'No se pudieron registrar los requerimientos'));
     } finally {
       setRegistrandoMasivo(null);
       fetchRequerimientos();
@@ -1173,7 +1219,10 @@ export default function RequerimientosPage() {
 
   // Filtrado de lista
   const termino = searchTerm.trim().toLowerCase();
-  const hayFiltros = termino !== '' || filterEstado !== 'todos' || filterTipo !== 'todos' || filterModelo !== 'todos';
+  const hayFiltros = termino !== '' || filterEstado !== 'todos' || filterTipo !== 'todos' || filterModelo !== 'todos' || filterModulo !== 'todos';
+  // Módulos que usan los requerimientos del proyecto (los pone la generación con IA, KAN-40)
+  const modulosProyecto = [...new Set(requerimientos.map(r => r.modulo?.trim()).filter((m): m is string => !!m))]
+    .sort((a, b) => a.localeCompare(b));
   const limpiarFiltros = () => setFiltros(f => ({ ...FILTROS_INICIALES, orden: f.orden, agrupar: f.agrupar }));
   // Coincidencia con todo salvo el estado: sirve para contar cuántos hay en cada pestaña de estado
   const numeroBuscado = numeroDesdeBusqueda(termino);
@@ -1183,7 +1232,8 @@ export default function RequerimientosPage() {
       (numeroBuscado !== null && r.numero === numeroBuscado) ||
       !!codigoDe(r)?.toLowerCase().includes(termino)) &&
     (filterTipo === 'todos' || r.id_tipo_requerimiento === filterTipo) &&
-    (filterModelo === 'todos' || r.id_modelo === filterModelo);
+    (filterModelo === 'todos' || r.id_modelo === filterModelo) &&
+    (filterModulo === 'todos' || (filterModulo === '__sin__' ? !r.modulo?.trim() : r.modulo?.trim() === filterModulo));
   const esDelEstado = (r: Requerimiento, id: string) =>
     id === 'todos' || (id === 'sin-estado' ? !r.id_estado : r.id_estado === id);
   const requerimientosBase = requerimientos.filter(coincideSinEstado);
@@ -1343,9 +1393,20 @@ export default function RequerimientosPage() {
                     </span>
                   )}
 
+                  {req.modulo && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-ui bg-surface text-ink-muted font-medium border border-line" title="Módulo">
+                      <Layers size={11} aria-hidden />
+                      {req.modulo}
+                    </span>
+                  )}
                   {req.tipo_requerimiento && (
                     <span className="px-2 py-0.5 rounded-ui bg-sunken text-ink-muted font-medium border border-line">
                       {req.tipo_requerimiento.nombre}
+                    </span>
+                  )}
+                  {req.prioridad && (
+                    <span className="px-2 py-0.5 rounded-ui bg-surface text-ink-muted font-medium border border-line" title="Prioridad MoSCoW">
+                      {req.prioridad === 'Wont' ? "Won't" : req.prioridad}
                     </span>
                   )}
                   {req.modelo && (
@@ -1637,6 +1698,16 @@ export default function RequerimientosPage() {
               <option key={m.id} value={m.id}>{m.nombre}</option>
             ))}
           </select>
+
+          {(modulosProyecto.length > 0 || filterModulo !== 'todos') && (
+            <select value={filterModulo} onChange={(e) => setFilterModulo(e.target.value)} aria-label="Filtrar por módulo" className={selectFiltro}>
+              <option value="todos">Todos los módulos</option>
+              {modulosProyecto.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+              <option value="__sin__">Sin módulo</option>
+            </select>
+          )}
         </div>
         {!loading && requerimientos.length > 0 && (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 text-sm text-ink-subtle px-1 py-3 sm:py-0 mt-2 bg-sunken sm:bg-transparent rounded-ui border border-line sm:border-none min-w-0">
@@ -1766,7 +1837,8 @@ export default function RequerimientosPage() {
             ? 'Elige el modelo y el tipo, describe qué parte del sistema especificar y revisa lo que propone la IA.'
             : 'Elige el modelo y el tipo, genera con IA o redacta respetando la estructura del patrón.'
         }
-        size="xl"
+        // Más ancho al revisar varias propuestas: el texto completo cabe sin tantos saltos de línea
+        size={esMasivo ? '3xl' : 'xl'}
       >
         <form ref={formRef} onSubmit={handleSaveReq} noValidate className="flex flex-col flex-1 min-h-0">
           <ModalBody className="space-y-6">
@@ -1914,7 +1986,7 @@ export default function RequerimientosPage() {
                           checked={modoMasivo}
                           onChange={(e) => {
                             setModoMasivo(e.target.checked);
-                            setPropuestas(null);
+                            gen.reiniciar();
                           }}
                           className="peer sr-only"
                         />
@@ -1928,25 +2000,66 @@ export default function RequerimientosPage() {
                     <span />
                   )}
                   <div className="flex items-center gap-1 ml-auto">
-                    <ControlEstrictez valor={estrictez} onChange={setEstrictez} disabled={isAILoading} />
+                    <ControlEstrictez valor={estrictez} onChange={setEstrictez} disabled={isAILoading || gen.ocupado} />
                     <button
                       type="button"
                       onClick={handleAIGenerate}
-                      disabled={isAILoading || !aiPrompt.trim()}
+                      disabled={isAILoading || gen.ocupado || !aiPrompt.trim()}
                       className="px-3.5 min-h-8 bg-brand-solid hover:bg-brand-solid-hover text-on-solid rounded-ui text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                     >
-                      {isAILoading ? (
+                      {isAILoading || gen.ocupado ? (
                         <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <Sparkles size={13} aria-hidden />
                       )}
-                      {isAILoading ? (esMasivo ? 'Analizando el sistema...' : 'Generando...') : esMasivo ? 'Generar varios' : 'Generar'}
+                      {gen.fase === 'planificando'
+                        ? 'Armando el mapa...'
+                        : gen.ocupado
+                          ? 'Generando...'
+                          : isAILoading ? (esMasivo ? 'Analizando el sistema...' : 'Generando...') : esMasivo ? 'Generar varios' : 'Generar'}
                     </button>
                   </div>
                 </div>
               </div>
 
+              {/* Profundidad y alcance de la generación de varios requerimientos (KAN-40) */}
+              {esMasivo && (
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-muted">
+                  <label className="inline-flex items-center gap-2">
+                    Generación
+                    <select
+                      value={profundidad}
+                      onChange={(e) => setProfundidad(e.target.value as Profundidad)}
+                      disabled={gen.ocupado || isAILoading}
+                      className="px-2 min-h-8 border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text"
+                    >
+                      <option value="completa">Completa (por áreas, hasta cubrirlo todo)</option>
+                      <option value="rapida">Rápida (una sola pasada)</option>
+                    </select>
+                  </label>
+                  {profundidad === 'completa' && (
+                    <label className="inline-flex items-center gap-2">
+                      Alcance
+                      <select
+                        value={alcanceIA}
+                        onChange={(e) => setAlcanceIA(e.target.value as AlcanceGeneracion | 'auto')}
+                        disabled={gen.ocupado}
+                        className="px-2 min-h-8 border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text"
+                      >
+                        <option value="auto">Lo decide la IA según el pedido</option>
+                        <option value="sistema">Sistema completo</option>
+                        <option value="modulo">Solo el módulo pedido</option>
+                      </select>
+                    </label>
+                  )}
+                  <span className="text-ink-subtle">
+                    La estrictez decide cuánto infiere: Baja añade lo habitual del dominio; Máxima, solo lo literal.
+                  </span>
+                </div>
+              )}
+
               {/* Ejemplos (few-shot) */}
+
               <div className="mt-4 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm text-ink-muted">Ejemplos para la IA (opcional)</span>
@@ -1986,64 +2099,14 @@ export default function RequerimientosPage() {
             </div>
 
             {esMasivo ? (
-              /* Propuestas de la generación masiva */
-              propuestas && (
-                <section aria-labelledby="req-propuestas" className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 id="req-propuestas" className="text-sm font-semibold text-ink">
-                      Propuestas de la IA{' '}
-                      <span className="font-normal text-ink-subtle">
-                        ({propuestas.filter(p => p.elegida).length} de {propuestas.length} elegidas)
-                      </span>
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const todas = propuestas.every(p => p.elegida);
-                        setPropuestas(propuestas.map(p => ({ ...p, elegida: !todas })));
-                      }}
-                      className="text-xs font-semibold text-brand-text hover:underline cursor-pointer"
-                    >
-                      {propuestas.every(p => p.elegida) ? 'Quitar todas' : 'Elegir todas'}
-                    </button>
-                  </div>
-                  <ul className="max-h-80 overflow-y-auto rounded-ui border border-line divide-y divide-line custom-scrollbar">
-                    {propuestas.map((p, i) => {
-                      const area = p.area && p.area !== propuestas[i - 1]?.area ? p.area : null;
-                      return (
-                        <li key={p.clave}>
-                          {area && (
-                            <p className="px-3 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-subtle bg-sunken">
-                              {area}
-                            </p>
-                          )}
-                          <div className={`flex items-start gap-3 px-3 py-2.5 ${p.elegida ? '' : 'opacity-60'}`}>
-                            <input
-                              type="checkbox"
-                              checked={p.elegida}
-                              onChange={() => setPropuestas(propuestas.map(x => (x.clave === p.clave ? { ...x, elegida: !x.elegida } : x)))}
-                              aria-label={`Registrar la propuesta ${i + 1}`}
-                              className="mt-2 size-4 accent-brand-text shrink-0 cursor-pointer"
-                            />
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <textarea
-                                rows={2}
-                                value={p.texto}
-                                onChange={(e) => setPropuestas(propuestas.map(x => (x.clave === p.clave ? { ...x, texto: e.target.value } : x)))}
-                                aria-label={`Texto de la propuesta ${i + 1}`}
-                                className="w-full px-2 py-1 bg-transparent border border-transparent hover:border-line focus:border-brand-text rounded-ui text-sm font-mono text-ink leading-relaxed resize-y focus:outline-none"
-                              />
-                              <span className="inline-block px-2 py-0.5 rounded-ui bg-sunken text-ink-muted text-[11px] font-medium border border-line">
-                                {tiposReq.find(t => t.tipo_req === (formData.id_tipo_requerimiento || tipoDesdeFurps(p.type_furps)))?.nombre ?? p.type_furps}
-                              </span>
-                            </div>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </section>
-              )
+              /* Mapa de áreas, progreso y propuestas de la generación con IA (KAN-40) */
+              <PanelGeneracionIterativa
+                gen={gen}
+                bloqueado={registrandoMasivo !== null}
+                nombreTipo={(p) =>
+                  tiposReq.find(t => t.tipo_req === (formData.id_tipo_requerimiento || tipoDesdeFurps(p.type_furps)))?.nombre ?? p.type_furps
+                }
+              />
             ) : (
               /* 4. Enunciado */
               <div>
@@ -2153,12 +2216,12 @@ export default function RequerimientosPage() {
               <button
                 type="button"
                 onClick={registrarPropuestas}
-                disabled={registrandoMasivo !== null || !propuestas?.some(p => p.elegida)}
+                disabled={registrandoMasivo !== null || gen.ocupado || !propuestas?.some(p => p.elegida)}
                 className={btnPrimario}
               >
                 <Save size={16} />
                 {registrandoMasivo
-                  ? `Registrando ${registrandoMasivo.hechos + 1} de ${registrandoMasivo.total}...`
+                  ? `Registrando ${registrandoMasivo.hechos} de ${registrandoMasivo.total}...`
                   : propuestas?.some(p => p.elegida)
                     ? `Registrar ${propuestas.filter(p => p.elegida).length} requerimientos`
                     : 'Registrar requerimientos'}

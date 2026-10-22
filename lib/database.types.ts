@@ -110,6 +110,9 @@ export interface Patron {
   created_at?: string;
 }
 
+export type OrigenIA = 'explicito' | 'inferido';
+export type PrioridadMoSCoW = 'Must' | 'Should' | 'Could' | 'Wont';
+
 export interface Requerimiento {
   id: UUID;
   enunciado: string;
@@ -145,6 +148,14 @@ export interface Requerimiento {
   numero?: number | null;
   /** Identificador guardado en la base de datos ("REQ-014"), único dentro del proyecto. */
   codigo?: string | null;
+  // Generación iterativa con IA (KAN-40). Opcionales: los requerimientos redactados a mano
+  // o anteriores no los traen.
+  /** Módulo o área del sistema al que pertenece (máx. 120 caracteres). */
+  modulo?: string | null;
+  /** Si la IA lo sacó del texto o contexto ('explicito') o lo dedujo ('inferido'). */
+  origen_ia?: OrigenIA | null;
+  /** Prioridad MoSCoW propuesta. */
+  prioridad?: PrioridadMoSCoW | null;
   created_at?: string;
 
   // Joins relacionales

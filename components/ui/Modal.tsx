@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 // Pila de modales abiertos: solo el de arriba responde a Escape.
@@ -81,11 +82,13 @@ export function Modal({ open, onClose, title, description, size = 'md', cerrarCo
     };
   }, [open, id]);
 
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
 
-  return (
+  // Se monta en <body>: dentro de la página, un contenedor con su propio contexto de apilamiento
+  // dejaba el modal por debajo del encabezado fijo y le cortaba la parte de arriba.
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-scrim animate-in fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-scrim animate-in fade-in"
       onMouseDown={(e) => {
         if (cerrable && cerrarConFondo && e.target === e.currentTarget) onClose();
       }}
@@ -96,7 +99,7 @@ export function Modal({ open, onClose, title, description, size = 'md', cerrarCo
         aria-modal="true"
         aria-labelledby={`${id}-titulo`}
         tabIndex={-1}
-        className={`bg-surface border border-line rounded-ui w-full ${ANCHOS[size]} max-h-[90vh] flex flex-col overflow-hidden outline-none animate-in zoom-in`}
+        className={`bg-surface border border-line rounded-ui w-full ${ANCHOS[size]} max-h-[calc(100dvh-1rem)] sm:max-h-[90dvh] flex flex-col overflow-hidden outline-none animate-in zoom-in`}
       >
         <div className="px-5 sm:px-6 py-4 border-b border-line flex items-start justify-between gap-4 shrink-0">
           <div className="min-w-0">
@@ -121,7 +124,8 @@ export function Modal({ open, onClose, title, description, size = 'md', cerrarCo
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

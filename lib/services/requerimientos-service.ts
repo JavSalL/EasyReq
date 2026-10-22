@@ -6,8 +6,10 @@ import {
   addDoc, 
   updateDoc,
   query, 
-  where, 
-  runTransaction 
+  where,
+  runTransaction,
+  writeBatch,
+  type WriteBatch
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { codigoRequerimiento } from '../requerimientos';
@@ -75,6 +77,11 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
         id_patron: (data.id_patron as string | null | undefined) ?? null,
         numero: typeof data.numero === 'number' ? data.numero : null,
         codigo: typeof data.codigo === 'string' ? data.codigo : null,
+        // KAN-40: módulo, origen y prioridad de la generación con IA. Solo se aceptan los
+        // valores que admiten las reglas; lo demás (o su ausencia) queda en null.
+        modulo: typeof data.modulo === 'string' && data.modulo.trim() ? data.modulo : null,
+        origen_ia: data.origen_ia === 'explicito' || data.origen_ia === 'inferido' ? data.origen_ia : null,
+        prioridad: ['Must', 'Should', 'Could', 'Wont'].includes(data.prioridad) ? data.prioridad : null,
         reenviado_at: data.reenviado_at || null,
         created_at: data.created_at || new Date().toISOString(),
 
@@ -167,6 +174,126 @@ export async function createRequerimiento(
 
 // Tope de requerimientos que se pueden renumerar en una sola transacción (Firestore admite 500 escrituras).
 const MAX_RENUMERADOS = 450;
+
+// Alta en lote (KAN-40): tamaño máximo de cada writeBatch (Firestore admite 500 escrituras).
+const MAX_POR_LOTE = 450;
+// Los logs se escriben en lotes más chicos: la regla de cada log lee su requerimiento, y un lote
+// admite 20 lecturas de reglas en total.
+const LOGS_POR_LOTE = 15;
+
+/**
+ * Escribe `ops` en writeBatch de hasta `tamano` operaciones, en orden. Si las reglas rechazan un
+ * lote (`permission-denied`), se reintenta partido a la mitad: un lote grande puede pasarse del
+ * límite de lecturas que las reglas admiten por petición aunque cada documento sea válido. Si ni
+ * de uno en uno pasa, el error es real y se lanza. Devuelve cuántas operaciones se escribieron
+ * antes de fallar (o todas).
+ */
+async function escribirEnLotes(
+  ops: Array<(batch: WriteBatch) => void>,
+  tamano: number,
+  onProgreso?: (hechas: number) => void
+): Promise<{ hechas: number; error?: unknown }> {
+  let hechas = 0;
+  let actual = tamano;
+  while (hechas < ops.length) {
+    const lote = ops.slice(hechas, hechas + actual);
+    const batch = writeBatch(db);
+    lote.forEach(op => op(batch));
+    try {
+      await batch.commit();
+      hechas += lote.length;
+      onProgreso?.(hechas);
+    } catch (error) {
+      if ((error as { code?: string })?.code === 'permission-denied' && actual > 1) {
+        actual = Math.max(1, Math.floor(actual / 2));
+        continue;
+      }
+      return { hechas, error };
+    }
+  }
+  return { hechas };
+}
+
+/**
+ * Registra varios requerimientos de una vez (generación con IA, KAN-40).
+ *
+ * Los números se reservan en UNA transacción sobre `contador_requerimientos` (el contador sube N
+ * de golpe, así nadie más puede tomar esos números) y después los documentos se escriben en
+ * writeBatch con su número ya asignado, cada uno con su log de creación. Si una parte falla, se
+ * devuelven los que sí se guardaron y, si nadie tocó el contador entretanto, se liberan los
+ * números que quedaron sin usar para no dejar huecos.
+ *
+ * KAN-18: igual que `createRequerimiento`, el autor es `uid` y todos nacen pendientes de aprobación.
+ */
+export async function crearRequerimientosEnLote(
+  id_proyecto: string,
+  items: Array<Partial<Requerimiento>>,
+  uid: string,
+  detallesLog: NonNullable<LogRequerimiento['detalles']>,
+  onProgreso?: (hechos: number, total: number) => void
+): Promise<{ creados: Requerimiento[]; error?: unknown; logsFallidos: number }> {
+  if (items.length === 0) return { creados: [], logsFallidos: 0 };
+  // El estado inicial se busca una sola vez para todo el lote.
+  const comunes = await datosDeAlta({}, uid);
+  const proyectoRef = doc(db, 'proyecto', id_proyecto);
+
+  const base = await runTransaction(db, async transaction => {
+    const proyecto = await transaction.get(proyectoRef);
+    if (!proyecto.exists()) throw new Error('El proyecto ya no existe. Recarga la página.');
+    const contador = (proyecto.data()[CONTADOR_REQUERIMIENTOS] as number | undefined) ?? 0;
+    transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: contador + items.length });
+    return contador;
+  });
+
+  const created_at = new Date().toISOString();
+  const nuevos = items.map((item, i) => {
+    const numero = base + i + 1;
+    return {
+      ref: doc(collection(db, 'requerimiento')),
+      datos: {
+        // Firestore no admite campos `undefined`: los opcionales sin valor no se escriben.
+        ...Object.fromEntries(Object.entries(item).filter(([, v]) => v !== undefined)),
+        ...comunes,
+        id_proyecto,
+        numero,
+        codigo: codigoRequerimiento(numero),
+        created_at
+      } as Omit<Requerimiento, 'id'>
+    };
+  });
+
+  const { hechas, error } = await escribirEnLotes(
+    nuevos.map(n => batch => batch.set(n.ref, n.datos)),
+    MAX_POR_LOTE,
+    hechas => onProgreso?.(hechas, items.length)
+  );
+
+  if (hechas < items.length) {
+    // Libera los números que no se usaron, solo si el contador sigue donde se dejó.
+    await runTransaction(db, async transaction => {
+      const proyecto = await transaction.get(proyectoRef);
+      if (proyecto.exists() && proyecto.data()[CONTADOR_REQUERIMIENTOS] === base + items.length) {
+        transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: base + hechas });
+      }
+    }).catch(e => console.error('No se pudieron liberar los números reservados:', e));
+  }
+
+  const creados = nuevos.slice(0, hechas).map(n => ({ ...n.datos, id: n.ref.id }) as Requerimiento);
+  const fecha_hora = new Date().toISOString();
+  const logs = await escribirEnLotes(
+    creados.map(r => batch => batch.set(doc(collection(db, 'logs_requerimientos')), {
+      id_requerimiento: r.id,
+      accion: 'Creación de requerimiento',
+      id_autor: uid,
+      fecha_hora,
+      detalles: { ...detallesLog, enunciado_nuevo: r.enunciado }
+    })),
+    LOGS_POR_LOTE
+  );
+  if (logs.error) console.error('Error recording bulk creation logs:', logs.error);
+
+  return { creados, error, logsFallidos: creados.length - logs.hechas };
+}
 
 /**
  * Inserta un requerimiento justo después del número `despuesDeNumero` y sube un
