@@ -33,6 +33,35 @@ export async function consumeDailyQuota(
 /** Un job deja de valer pasado este tiempo: una corrida real dura minutos, no horas. */
 const VIGENCIA_JOB_MS = 6 * 60 * 60 * 1000;
 
+/**
+ * La tabla de corridas se crea sola la primera vez que hace falta (una vez por instancia del
+ * Worker). Así desplegar no exige permisos de administración de D1 para aplicar la migración; las
+ * sentencias son idempotentes y coinciden con migrations/kan-40-ai-jobs.sql.
+ */
+let tablaJobs: Promise<void> | null = null;
+function asegurarTablaJobs(db: D1Database): Promise<void> {
+  tablaJobs ??= db
+    .batch([
+      db.prepare(
+        `CREATE TABLE IF NOT EXISTS ai_jobs (
+           id TEXT PRIMARY KEY,
+           uid TEXT NOT NULL,
+           created_at TEXT NOT NULL,
+           llamadas INTEGER NOT NULL DEFAULT 0,
+           con_resultado INTEGER NOT NULL DEFAULT 0
+         )`
+      ),
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_ai_jobs_uid_created ON ai_jobs (uid, created_at)'),
+    ])
+    .then(() => undefined)
+    .catch((err) => {
+      // Si falla, la próxima petición lo vuelve a intentar.
+      tablaJobs = null;
+      throw err;
+    });
+  return tablaJobs;
+}
+
 const inicioDelDia = () => `${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`;
 
 /**
@@ -43,6 +72,7 @@ const inicioDelDia = () => `${new Date().toISOString().slice(0, 10)}T00:00:00.00
  * El plan cuenta como la primera llamada del job.
  */
 export async function crearJob(db: D1Database, uid: string, jobsDiarios: number): Promise<string | null> {
+  await asegurarTablaJobs(db);
   const id = crypto.randomUUID();
   const ahora = new Date().toISOString();
   const resultado = await db
@@ -81,6 +111,7 @@ export type ResultadoJob =
  * tope; el incremento y la comprobación son la misma sentencia, como en `consumeDailyQuota`.
  */
 export async function consumirLlamadaJob(db: D1Database, id: string, uid: string, maxLlamadas: number): Promise<ResultadoJob> {
+  await asegurarTablaJobs(db);
   const vigenteDesde = new Date(Date.now() - VIGENCIA_JOB_MS).toISOString();
   const fila = await db
     .prepare(
