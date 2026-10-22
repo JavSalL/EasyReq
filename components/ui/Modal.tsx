@@ -5,6 +5,9 @@ import { X } from 'lucide-react';
 
 // Pila de modales abiertos: solo el de arriba responde a Escape.
 const pilaModales: string[] = [];
+// Overflow del body antes de abrir el primer modal; se restaura al cerrar el último,
+// aunque se cierren en otro orden (si no, el scroll de la página queda bloqueado).
+let overflowOriginal = '';
 
 const ANCHOS = {
   sm: 'max-w-sm',
@@ -44,8 +47,8 @@ export function Modal({ open, onClose, title, description, size = 'md', cerrarCo
 
   useEffect(() => {
     if (!open) return;
+    if (pilaModales.length === 0) overflowOriginal = document.body.style.overflow;
     pilaModales.push(id);
-    const overflowPrevio = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -74,7 +77,7 @@ export function Modal({ open, onClose, title, description, size = 'md', cerrarCo
       document.removeEventListener('keydown', onKeyDown);
       const i = pilaModales.indexOf(id);
       if (i !== -1) pilaModales.splice(i, 1);
-      if (pilaModales.length === 0) document.body.style.overflow = overflowPrevio;
+      if (pilaModales.length === 0) document.body.style.overflow = overflowOriginal;
     };
   }, [open, id]);
 
