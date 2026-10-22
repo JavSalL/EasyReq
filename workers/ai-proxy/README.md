@@ -75,7 +75,7 @@ El cliente (`runIterativeGeneration` en `lib/ai-actions.ts`) encadena estos paso
 
 Cada job admite 60 llamadas (el plan cuenta como la primera) y caduca a las 6 horas. El límite de 10 peticiones por minuto sigue aplicando: el cliente espera lo que indique `Retry-After` y reintenta solo. `/generate-bulk` (una sola pasada) sigue disponible.
 
-Antes de desplegar, crea la tabla `ai_jobs` (es idempotente):
+El Worker crea la tabla `ai_jobs` por sí mismo la primera vez que la usa, así que desplegar no exige permisos de administración de D1. Si prefieres crearla a mano (es idempotente):
 ```bash
 npx wrangler d1 execute easyreq-ai-quota --remote --file migrations/kan-40-ai-jobs.sql
 ```
