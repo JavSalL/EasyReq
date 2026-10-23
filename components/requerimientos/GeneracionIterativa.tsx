@@ -306,6 +306,38 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, bloqueado }:
   const { fase, plan, areasPlan, setAreasPlan, progreso, propuestas, setPropuestas, resultado } = gen;
   const [filtros, setFiltros] = useState<FiltrosPropuestas>(FILTROS_VACIOS);
 
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  const seccionPlanificandoRef = useRef<HTMLElement>(null);
+  const seccionMapaRef = useRef<HTMLElement>(null);
+  const seccionProgresoRef = useRef<HTMLElement>(null);
+  const seccionCargandoRapidaRef = useRef<HTMLElement>(null);
+
+  const scrollHacia = useCallback((el: HTMLElement | null) => {
+    if (!el) return;
+    const scroll = () => {
+      if (typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+    requestAnimationFrame(scroll);
+    const timer = setTimeout(scroll, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const faseAnteriorRef = useRef<Fase>(fase);
+  useEffect(() => {
+    const previa = faseAnteriorRef.current;
+    faseAnteriorRef.current = fase;
+
+    if (fase === 'planificando') {
+      scrollHacia(seccionPlanificandoRef.current ?? contenedorRef.current);
+    } else if (fase === 'revisando-plan') {
+      scrollHacia(seccionMapaRef.current ?? contenedorRef.current);
+    } else if (fase === 'generando' && previa !== 'generando') {
+      scrollHacia(seccionProgresoRef.current ?? seccionCargandoRapidaRef.current ?? contenedorRef.current);
+    }
+  }, [fase, scrollHacia]);
+
   const visibles = useMemo(() => {
     const q = filtros.q.trim().toLowerCase();
     return (propuestas ?? []).filter(p =>
@@ -365,13 +397,58 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, bloqueado }:
           : null;
 
   return (
-    <div className="space-y-4">
+    <div ref={contenedorRef} className="space-y-4 scroll-mt-4">
+      {/* Paso 0: armando el plan */}
+      {fase === 'planificando' && (
+        <section
+          ref={seccionPlanificandoRef}
+          aria-labelledby="gen-planificando-titulo"
+          aria-live="polite"
+          className="rounded-ui border border-brand-line bg-brand-subtle/40 p-4 space-y-2 animate-in fade-in scroll-mt-4"
+        >
+          <div className="flex items-center gap-2.5">
+            <Loader2 size={16} className="animate-spin text-brand-text shrink-0" aria-hidden />
+            <h3 id="gen-planificando-titulo" className="text-sm font-semibold text-ink">
+              Armando el mapa de áreas...
+            </h3>
+          </div>
+          <p className="text-xs text-ink-muted">
+            Analizando el pedido y el contexto para estructurar la generación por áreas funcionales. En unos segundos podrás revisar y ajustar el mapa.
+          </p>
+        </section>
+      )}
+
+      {/* Generación rápida cargando */}
+      {fase === 'generando' && !progreso && (!propuestas || propuestas.length === 0) && (
+        <section
+          ref={seccionCargandoRapidaRef}
+          aria-labelledby="gen-rapida-cargando"
+          aria-live="polite"
+          className="rounded-ui border border-brand-line bg-brand-subtle/40 p-4 space-y-2 animate-in fade-in scroll-mt-4"
+        >
+          <div className="flex items-center gap-2.5">
+            <Loader2 size={16} className="animate-spin text-brand-text shrink-0" aria-hidden />
+            <h3 id="gen-rapida-cargando" className="text-sm font-semibold text-ink">
+              Generando requerimientos...
+            </h3>
+          </div>
+          <p className="text-xs text-ink-muted">
+            Analizando el sistema y redactando las propuestas de requerimientos.
+          </p>
+        </section>
+      )}
+
       {/* Paso 1: mapa de áreas editable */}
       {fase === 'revisando-plan' && plan && (
-        <section aria-labelledby="gen-mapa" className="rounded-ui border border-brand-line bg-brand-subtle/40 p-4 space-y-3">
+        <section
+          ref={seccionMapaRef}
+          id="gen-mapa"
+          aria-labelledby="gen-mapa-titulo"
+          className="rounded-ui border border-brand-line bg-brand-subtle/40 p-4 space-y-3 animate-in fade-in scroll-mt-4"
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 id="gen-mapa" className="text-sm font-semibold text-ink flex items-center gap-1.5">
+              <h3 id="gen-mapa-titulo" className="text-sm font-semibold text-ink flex items-center gap-1.5">
                 <MapaIcono size={15} aria-hidden className="text-brand-text" />
                 Mapa de áreas ({plan.alcance === 'sistema' ? 'sistema completo' : 'un módulo'})
               </h3>
@@ -469,9 +546,14 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, bloqueado }:
 
       {/* Paso 2: progreso por área */}
       {(fase === 'generando' || fase === 'listo') && progreso && progreso.areas.length > 0 && (
-        <section aria-labelledby="gen-progreso" className="rounded-ui border border-line p-3 space-y-2">
+        <section
+          ref={seccionProgresoRef}
+          id="gen-progreso"
+          aria-labelledby="gen-progreso-titulo"
+          className="rounded-ui border border-line p-3 space-y-2 animate-in fade-in scroll-mt-4"
+        >
           <div className="flex items-center justify-between gap-2">
-            <h3 id="gen-progreso" className="text-sm font-semibold text-ink">
+            <h3 id="gen-progreso-titulo" className="text-sm font-semibold text-ink">
               {fase === 'generando'
                 ? progreso.fase === 'cobertura'
                   ? 'Revisando que no falte nada...'

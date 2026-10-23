@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Clock, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, Copy, ListPlus, ListOrdered,
-  Check, XCircle, Send, Download, Folder, X, Layers
+  Check, XCircle, Send, Download, Folder, X, Layers, Map as MapaIcono
 } from 'lucide-react';
 import {
   generateSingleRequirement,
@@ -839,13 +839,25 @@ export default function RequerimientosPage() {
   const idGeneradoConIA = () => modalidades.find(m => m.nombre_modalidad === MODALIDAD_GENERADO_IA)?.id;
 
   const handleAIGenerate = async () => {
+    // Si el plan ya está listo para revisar, bajar la vista al mapa de áreas
+    if (gen.fase === 'revisando-plan') {
+      const seccion = document.getElementById('gen-mapa') ?? document.getElementById('contenedor-generacion-ia');
+      seccion?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     // Enter en el campo de la IA no debe lanzar otra generación encima de la que está en marcha
     if (isAILoading || gen.ocupado) return;
     if (!aiPrompt.trim()) {
       toast.error(esMasivo ? 'Describe qué parte del sistema (o el sistema completo) quieres especificar' : 'Describe la funcionalidad para generar el requerimiento');
       return;
     }
-    if (esMasivo) return handleAIGenerateMasivo();
+    if (esMasivo) {
+      // Al iniciar generación, bajar la vista al panel del plan/progreso
+      requestAnimationFrame(() => {
+        document.getElementById('contenedor-generacion-ia')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      return handleAIGenerateMasivo();
+    }
 
     setIsAILoading(true);
     try {
@@ -2004,19 +2016,23 @@ export default function RequerimientosPage() {
                     <button
                       type="button"
                       onClick={handleAIGenerate}
-                      disabled={isAILoading || gen.ocupado || !aiPrompt.trim()}
+                      disabled={isAILoading || (gen.ocupado && gen.fase !== 'revisando-plan') || !aiPrompt.trim()}
                       className="px-3.5 min-h-8 bg-brand-solid hover:bg-brand-solid-hover text-on-solid rounded-ui text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                     >
-                      {isAILoading || gen.ocupado ? (
+                      {isAILoading || gen.fase === 'planificando' || gen.fase === 'generando' ? (
                         <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : gen.fase === 'revisando-plan' ? (
+                        <MapaIcono size={13} aria-hidden />
                       ) : (
                         <Sparkles size={13} aria-hidden />
                       )}
                       {gen.fase === 'planificando'
                         ? 'Armando el mapa...'
-                        : gen.ocupado
-                          ? 'Generando...'
-                          : isAILoading ? (esMasivo ? 'Analizando el sistema...' : 'Generando...') : esMasivo ? 'Generar varios' : 'Generar'}
+                        : gen.fase === 'revisando-plan'
+                          ? 'Revisa el mapa abajo'
+                          : gen.fase === 'generando'
+                            ? 'Generando...'
+                            : isAILoading ? (esMasivo ? 'Analizando el sistema...' : 'Generando...') : esMasivo ? 'Generar varios' : 'Generar'}
                     </button>
                   </div>
                 </div>
@@ -2100,13 +2116,15 @@ export default function RequerimientosPage() {
 
             {esMasivo ? (
               /* Mapa de áreas, progreso y propuestas de la generación con IA (KAN-40) */
-              <PanelGeneracionIterativa
-                gen={gen}
-                bloqueado={registrandoMasivo !== null}
-                nombreTipo={(p) =>
-                  tiposReq.find(t => t.tipo_req === (formData.id_tipo_requerimiento || tipoDesdeFurps(p.type_furps)))?.nombre ?? p.type_furps
-                }
-              />
+              <div id="contenedor-generacion-ia" className="scroll-mt-4">
+                <PanelGeneracionIterativa
+                  gen={gen}
+                  bloqueado={registrandoMasivo !== null}
+                  nombreTipo={(p) =>
+                    tiposReq.find(t => t.tipo_req === (formData.id_tipo_requerimiento || tipoDesdeFurps(p.type_furps)))?.nombre ?? p.type_furps
+                  }
+                />
+              </div>
             ) : (
               /* 4. Enunciado */
               <div>
