@@ -135,8 +135,9 @@ export function puedeReenviarRequerimiento(
 /**
  * ¿Puede este usuario leer y escribir en el hilo? Regla: `esMiembroDelHilo`.
  *
- * Se le pasa el resultado de `esMiembroDelProyecto`, que es quien resuelve la
- * membresía, igual que en el resto de la página.
+ * Se le pasa el resultado de la membresía del hilo: `esMiembroDelProyecto` para
+ * quien está en el proyecto de forma directa, o `esMiembroPorEquipoVinculado`
+ * para quien llega por un equipo. La página combina las dos y pasa el booleano.
  */
 export function puedeComentarRequerimiento(esMiembroProyecto: boolean): boolean {
   return esMiembroProyecto;

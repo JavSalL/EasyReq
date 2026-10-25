@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useId, useState } from 'react';
-import { Check, MessageSquare, Pencil, Trash2 } from 'lucide-react';
+import React, { useId, useRef, useState } from 'react';
+import { Check, Loader2, MessageSquare, Pencil, Trash2 } from 'lucide-react';
 import { Comentario, Requerimiento } from '@/lib/database.types';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
 import { puedeBorrarComentario, puedeEditarComentario } from '@/lib/permisos';
 import {
@@ -39,8 +40,10 @@ interface ModalComentariosProps {
   /** Mientras una operación está en vuelo, para no mandar dos. */
   guardando: boolean;
   codigoDe: (req: Requerimiento) => string | null;
-  onPublicar: (texto: string) => void;
-  onEditar: (comentario: Comentario, texto: string) => void;
+  /** Devuelve si se publicó; solo entonces el modal limpia el borrador. */
+  onPublicar: (texto: string) => Promise<boolean>;
+  /** Devuelve si se guardó; solo entonces el modal cierra la corrección. */
+  onEditar: (comentario: Comentario, texto: string) => Promise<boolean>;
   onBorrar: (comentario: Comentario) => void;
 }
 
@@ -74,39 +77,61 @@ export default function ModalComentarios({
   const ids = useId();
   const idTexto = `${ids}-texto`;
   const idEdicion = `${ids}-edicion`;
+  const confirmar = useConfirm();
   const [texto, setTexto] = useState('');
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [textoEdicion, setTextoEdicion] = useState('');
+  // Un ref además del prop `guardando`: entre el primer clic y el render que
+  // deshabilita el botón cabe un segundo clic, y no queremos dos altas.
+  const enviandoRef = useRef(false);
 
   // El borrador y la corrección en curso se limpian al cerrar sin usar un efecto:
   // quien renderiza el modal le pasa una `key` que cambia con el requerimiento
   // abierto, y eso monta el componente de nuevo con su estado vacío. Un `useEffect`
   // que hiciera lo mismo encadena renders y el lint lo rechaza, con razón.
 
-  const publicar = (evento: React.FormEvent) => {
+  const publicar = async (evento: React.FormEvent) => {
     evento.preventDefault();
     const limpio = texto.trim();
-    if (!limpio || guardando) return;
-    onPublicar(limpio);
-    setTexto('');
+    if (!limpio || guardando || enviandoRef.current) return;
+    enviandoRef.current = true;
+    try {
+      // El borrador se conserva si el alta falla: perder lo escrito por un error
+      // de red obliga a redactarlo otra vez.
+      const publicado = await onPublicar(limpio);
+      if (publicado) setTexto('');
+    } finally {
+      enviandoRef.current = false;
+    }
   };
 
-  const guardarEdicion = (comentario: Comentario) => {
+  const guardarEdicion = async (comentario: Comentario) => {
     const limpio = textoEdicion.trim();
-    if (!limpio || guardando) return;
-    onEditar(comentario, limpio);
-    setEditandoId(null);
-    setTextoEdicion('');
+    if (!limpio || guardando || enviandoRef.current) return;
+    enviandoRef.current = true;
+    try {
+      const guardado = await onEditar(comentario, limpio);
+      if (guardado) {
+        setEditandoId(null);
+        setTextoEdicion('');
+      }
+    } finally {
+      enviandoRef.current = false;
+    }
   };
 
-  const confirmarBorrado = (comentario: Comentario) => {
+  const confirmarBorrado = async (comentario: Comentario) => {
     const quien =
       comentario.autor?.nombre || comentario.autor?.correo || 'esta persona';
     // Se confirma porque es irreversible, y con el nombre del autor del comentario
     // para que no haya duda de cuál se va.
-    if (window.confirm(`¿Borrar el comentario de ${quien}?`)) {
-      onBorrar(comentario);
-    }
+    const ok = await confirmar({
+      titulo: '¿Borrar comentario?',
+      mensaje: `El comentario de ${quien} se eliminará del hilo. Esta acción no se puede deshacer.`,
+      textoConfirmar: 'Borrar',
+      peligro: true
+    });
+    if (ok) onBorrar(comentario);
   };
 
   const titulo = requerimiento && codigoDe(requerimiento)
@@ -121,7 +146,7 @@ export default function ModalComentarios({
       description="Lo que la gente del proyecto dice sobre este requerimiento."
       size="lg"
     >
-      <form onSubmit={publicar} className="flex flex-col flex-1 min-h-0">
+      <form onSubmit={publicar} aria-busy={guardando} className="flex flex-col flex-1 min-h-0">
         <ModalBody className="space-y-3">
           {requerimiento && (
             <p className="font-mono text-xs text-ink-muted line-clamp-2 border-l-2 border-line-strong pl-2">
@@ -156,6 +181,9 @@ export default function ModalComentarios({
                 const fechaValida =
                   !!comentario.created_at &&
                   !Number.isNaN(Date.parse(comentario.created_at));
+                const fechaCorreccionValida =
+                  !!comentario.updated_at &&
+                  !Number.isNaN(Date.parse(comentario.updated_at));
                 return (
                   <li
                     key={comentario.id}
@@ -193,6 +221,7 @@ export default function ModalComentarios({
                           rows={3}
                           maxLength={COMENTARIO_MAXIMO}
                           value={textoEdicion}
+                          disabled={guardando}
                           onChange={e => setTextoEdicion(e.target.value)}
                         />
                         <div className="flex items-center justify-end gap-2">
@@ -203,16 +232,22 @@ export default function ModalComentarios({
                               setTextoEdicion('');
                             }}
                             className={btnSecundario}
+                            disabled={guardando}
                           >
                             Cancelar
                           </button>
                           <button
                             type="button"
-                            onClick={() => guardarEdicion(comentario)}
+                            onClick={() => void guardarEdicion(comentario)}
                             disabled={guardando || !textoEdicion.trim()}
                             className={btnPrimario}
                           >
-                            Guardar
+                            {guardando ? (
+                              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                            ) : (
+                              <Check size={16} aria-hidden="true" />
+                            )}
+                            {guardando ? 'Guardando…' : 'Guardar'}
                           </button>
                         </div>
                       </div>
@@ -223,9 +258,19 @@ export default function ModalComentarios({
                         </p>
                         <div className="flex items-center justify-end gap-1">
                           {comentario.updated_at && (
-                            <span className="text-xs text-ink-subtle mr-auto">
-                              Corregido
-                            </span>
+                            fechaCorreccionValida ? (
+                              <time
+                                dateTime={comentario.updated_at}
+                                title={fechaCompleta(comentario.updated_at)}
+                                className="text-xs text-ink-subtle mr-auto"
+                              >
+                                Corregido {fechaRelativa(comentario.updated_at)}
+                              </time>
+                            ) : (
+                              <span className="text-xs text-ink-subtle mr-auto">
+                                Corregido
+                              </span>
+                            )
                           )}
                           {esEditable && (
                             <button
@@ -237,6 +282,7 @@ export default function ModalComentarios({
                               title="Corregir mi comentario"
                               aria-label="Corregir mi comentario"
                               className={btnIcono}
+                              disabled={guardando}
                             >
                               <Pencil size={14} />
                             </button>
@@ -244,10 +290,11 @@ export default function ModalComentarios({
                           {puedeBorrar && (
                             <button
                               type="button"
-                              onClick={() => confirmarBorrado(comentario)}
+                              onClick={() => void confirmarBorrado(comentario)}
                               title="Borrar comentario"
                               aria-label="Borrar comentario"
                               className={btnIconoPeligro}
+                              disabled={guardando}
                             >
                               <Trash2 size={14} />
                             </button>
@@ -273,6 +320,7 @@ export default function ModalComentarios({
                 maxLength={COMENTARIO_MAXIMO}
                 placeholder="Comenta este requerimiento…"
                 value={texto}
+                disabled={guardando}
                 onChange={e => setTexto(e.target.value)}
               />
             </div>
@@ -286,8 +334,12 @@ export default function ModalComentarios({
               disabled={guardando || !texto.trim()}
               className={btnPrimario}
             >
-              <Check size={16} />
-              Publicar
+              {guardando ? (
+                <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <Check size={16} aria-hidden="true" />
+              )}
+              {guardando ? 'Publicando…' : 'Publicar'}
             </button>
           )}
         </ModalFooter>

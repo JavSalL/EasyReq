@@ -11,7 +11,10 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { codigoRequerimiento } from '../requerimientos';
-import { borrarComentariosDeRequerimiento } from './comentarios-service';
+import {
+  borrarComentariosDeRequerimiento,
+  listarComentariosDeRequerimiento
+} from './comentarios-service';
 import { Requerimiento, LogRequerimiento } from '../database.types';
 import { 
   getTiposRequerimientos, 
@@ -506,6 +509,11 @@ export async function deleteRequerimiento(id: string, id_autor: string): Promise
     throw new Error('No se pudo determinar el proyecto del requerimiento que intentas eliminar.');
   }
 
+  // El hilo se lista ANTES de borrar el requerimiento. La regla de lectura de
+  // comentarios resuelve la membresía con el requerimiento del path: una vez
+  // borrado, la consulta se deniega y no habría forma de enumerar qué borrar.
+  const comentarios = await listarComentariosDeRequerimiento(id);
+
   const proyectoRef = doc(db, 'proyecto', id_proyecto);
   const proyectoInicial = await getDoc(proyectoRef);
   const contadorInicial = proyectoInicial.exists()
@@ -585,15 +593,15 @@ export async function deleteRequerimiento(id: string, id_autor: string): Promise
     }));
   });
 
-  // El requerimiento ya no existe (la transacción lo borró), así que el hilo de
-  // comentarios se puede borrar por la rama huérfana de las reglas. El orden no es
-  // casual: ver `borrarComentariosDeRequerimiento`.
+  // El requerimiento ya no existe (la transacción lo borró), así que los
+  // comentarios listados al principio se pueden borrar por la rama huérfana de las
+  // reglas. El orden no es casual: ver `listarComentariosDeRequerimiento`.
   //
   // Se espera, no se dispara a ciegas, porque el criterio del ticket es que al
   // borrar el requerimiento se borren sus comentarios. Si esto falla, el
   // requerimiento ya se habrá ido y el hilo quedará huérfano, pero todavía borrable
   // por cualquiera, así que no queda nada irrecuperable.
-  await borrarComentariosDeRequerimiento(id);
+  await borrarComentariosDeRequerimiento(comentarios);
 
   if (renumerados.length > 0) {
     void Promise.all(

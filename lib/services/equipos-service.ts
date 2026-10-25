@@ -9,9 +9,7 @@ import {
   where, 
   documentId,
   writeBatch, 
-  runTransaction,
-  arrayUnion,
-  arrayRemove
+  runTransaction
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
@@ -75,7 +73,6 @@ export async function createEquipo(data: {
     id_roles: [data.id_rol_lider]
   });
   await batch.commit();
-  await addUsuarioToProyectosDeEquipo(docRef.id, data.id_creador);
 
   return {
     equipo_id: docRef.id,
@@ -123,14 +120,6 @@ export async function createEquipoEnProyecto(data: {
   });
   batch.set(vinculoRef, { id_proyecto: data.id_proyecto, id_equipo: docRef.id });
   await batch.commit();
-  await addUsuarioToProyectosDeEquipo(docRef.id, data.id_creador);
-  try {
-    await updateDoc(doc(db, 'proyecto', data.id_proyecto), {
-      ids_equipos_vinculados: arrayUnion(docRef.id)
-    });
-  } catch (e) {
-    console.warn('No se pudo actualizar ids_equipos_vinculados:', e);
-  }
 
   return {
     equipo_id: docRef.id,
@@ -301,33 +290,84 @@ export async function actualizarRolesMiembro(id_equipo: string, id_usuario: stri
 export async function removeMiembroEquipo(id_equipo: string, id_usuario: string): Promise<void> {
   const docId = `${id_equipo}_${id_usuario}`;
   await deleteDoc(doc(db, 'miembros_equipo', docId));
-  await removeUsuarioFromProyectosDeEquipo(id_equipo, id_usuario);
 }
 
 /**
- * Comprueba si el usuario es miembro de algún equipo vinculado al proyecto.
- * Usado como fallback en cliente mientras se sincroniza ids_miembros (KAN-27).
+ * Devuelve el ID de un equipo vinculado al proyecto del que el usuario es
+ * miembro, o `null` si no hay ninguno.
+ *
+ * Mira las relaciones reales (`proyecto_equipos` + `miembros_equipo`) y no una
+ * caché en el proyecto. Además exige que los IDs de documento sean los
+ * compuestos que validan las reglas (`{proyecto}_{equipo}` y `{equipo}_{uid}`):
+ * un documento legacy con ID automático no sirve para autorizar aunque sus
+ * campos digan lo contrario.
  */
-export async function esMiembroPorEquipoVinculado(proyectoId: string, uid: string): Promise<boolean> {
-  if (!proyectoId || !uid) return false;
+export async function equipoVinculadoDelUsuario(
+  proyectoId: string,
+  uid: string
+): Promise<string | null> {
+  if (!proyectoId || !uid) return null;
   try {
     const [vinculosSnap, misMembresiasSnap] = await Promise.all([
       getDocs(query(collection(db, 'proyecto_equipos'), where('id_proyecto', '==', proyectoId))),
       getDocs(query(collection(db, 'miembros_equipo'), where('id_usuario', '==', uid)))
     ]);
-    if (vinculosSnap.empty || misMembresiasSnap.empty) return false;
+    if (vinculosSnap.empty || misMembresiasSnap.empty) return null;
+
     const equipoIdsVinculados = new Set<string>();
     vinculosSnap.forEach((v) => {
       const dataV = v.data() as { id_equipo?: string };
-      if (dataV.id_equipo) equipoIdsVinculados.add(dataV.id_equipo);
+      if (dataV.id_equipo && v.id === `${proyectoId}_${dataV.id_equipo}`) {
+        equipoIdsVinculados.add(dataV.id_equipo);
+      }
     });
-    if (equipoIdsVinculados.size === 0) return false;
-    return misMembresiasSnap.docs.some((m) => {
+    if (equipoIdsVinculados.size === 0) return null;
+
+    for (const m of misMembresiasSnap.docs) {
       const dataM = m.data() as { id_equipo?: string };
-      return dataM.id_equipo ? equipoIdsVinculados.has(dataM.id_equipo) : false;
-    });
+      const idEquipo = dataM.id_equipo;
+      if (
+        idEquipo &&
+        m.id === `${idEquipo}_${uid}` &&
+        equipoIdsVinculados.has(idEquipo)
+      ) {
+        return idEquipo;
+      }
+    }
+    return null;
   } catch (e) {
     console.error('Error comprobando membresía por equipo vinculado:', e);
+    return null;
+  }
+}
+
+/** ¿Es el usuario miembro de algún equipo vinculado al proyecto? */
+export async function esMiembroPorEquipoVinculado(
+  proyectoId: string,
+  uid: string
+): Promise<boolean> {
+  return (await equipoVinculadoDelUsuario(proyectoId, uid)) !== null;
+}
+
+/**
+ * Comprueba un equipo concreto: el usuario debe seguir siendo miembro y el
+ * equipo debe seguir vinculado al proyecto. Es la misma comprobación que hacen
+ * las reglas al leer el puntero de acceso a comentarios.
+ */
+export async function esMiembroDeEquipoVinculadoAProyecto(
+  proyectoId: string,
+  equipoId: string,
+  uid: string
+): Promise<boolean> {
+  if (!proyectoId || !equipoId || !uid) return false;
+  try {
+    const [miembroSnap, vinculoSnap] = await Promise.all([
+      getDoc(doc(db, 'miembros_equipo', `${equipoId}_${uid}`)),
+      getDoc(doc(db, 'proyecto_equipos', `${proyectoId}_${equipoId}`))
+    ]);
+    return miembroSnap.exists() && vinculoSnap.exists();
+  } catch (e) {
+    console.error('Error comprobando el vínculo del equipo con el proyecto:', e);
     return false;
   }
 }
@@ -409,7 +449,6 @@ export async function crearInvitacionEquipo(
 export async function aceptarInvitacionEquipo(invitationId: string, userId: string): Promise<void> {
   const invitationRef = doc(db, 'invitaciones_equipo', invitationId);
 
-  let equipoIdInvitacion: string | null = null;
   await runTransaction(db, async transaction => {
     const invitationSnap = await transaction.get(invitationRef);
     if (!invitationSnap.exists()) {
@@ -417,7 +456,6 @@ export async function aceptarInvitacionEquipo(invitationId: string, userId: stri
     }
 
     const invitation = invitationSnap.data() as Omit<InvitacionEquipo, 'id'>;
-    equipoIdInvitacion = invitation.id_equipo;
     if (invitation.id_invitado !== userId || invitation.estado !== 'pendiente') {
       throw new Error('La invitación ya fue respondida o no te pertenece');
     }
@@ -445,9 +483,6 @@ export async function aceptarInvitacionEquipo(invitationId: string, userId: stri
     }
     transaction.update(invitationRef, { estado: 'aceptada' });
   });
-  if (equipoIdInvitacion) {
-    await addUsuarioToProyectosDeEquipo(equipoIdInvitacion, userId);
-  }
 }
 
 export async function rechazarInvitacionEquipo(invitationId: string, userId: string): Promise<void> {
@@ -656,104 +691,11 @@ export async function responderSolicitudProyectoEquipo(
         id_equipo: request.id_equipo,
         id_solicitud: requestId
       });
-      try {
-        transaction.update(doc(db, 'proyecto', request.id_proyecto), {
-          ids_equipos_vinculados: arrayUnion(request.id_equipo)
-        });
-      } catch {
-        // noop
-      }
     } else if (aceptar && request.tipo === 'desvincular') {
       transaction.delete(relationRef);
-      try {
-        transaction.update(doc(db, 'proyecto', request.id_proyecto), {
-          ids_equipos_vinculados: arrayRemove(request.id_equipo)
-        });
-      } catch {
-        // noop
-      }
     }
     transaction.update(requestRef, {
       estado: aceptar ? 'aceptada' : 'rechazada'
     });
   });
-}
-
-/**
- * Añade un usuario a ids_miembros de todos los proyectos vinculados a un equipo.
- * Opción 2 para KAN-27: sincronizar membresía de equipo → proyecto.
- */
-async function addUsuarioToProyectosDeEquipo(equipoId: string, userId: string): Promise<void> {
-  if (!equipoId || !userId) return;
-  const qVinculos = query(collection(db, 'proyecto_equipos'), where('id_equipo', '==', equipoId));
-  const vinculosSnap = await getDocs(qVinculos);
-  if (vinculosSnap.empty) return;
-
-  const batch = writeBatch(db);
-  vinculosSnap.forEach((v) => {
-    const dataV = v.data() as { id_proyecto: string; id_equipo: string };
-    const proyectoRef = doc(db, 'proyecto', dataV.id_proyecto);
-    batch.update(proyectoRef, {
-      ids_miembros: arrayUnion(userId)
-    });
-  });
-  await batch.commit();
-}
-
-/**
- * Elimina un usuario de ids_miembros de proyectos vinculados a un equipo,
- * solo si NO permanece en ningún otro equipo de ese proyecto.
- */
-async function removeUsuarioFromProyectosDeEquipo(equipoId: string, userId: string): Promise<void> {
-  if (!equipoId || !userId) return;
-  const qVinculos = query(collection(db, 'proyecto_equipos'), where('id_equipo', '==', equipoId));
-  const vinculosSnap = await getDocs(qVinculos);
-  if (vinculosSnap.empty) return;
-
-  const batch = writeBatch(db);
-  for (const v of vinculosSnap.docs) {
-    const dataV = v.data() as { id_proyecto: string; id_equipo: string };
-    const proyectoId = dataV.id_proyecto;
-
-    const qEquiposProyecto = query(collection(db, 'proyecto_equipos'), where('id_proyecto', '==', proyectoId));
-    const equiposProyectoSnap = await getDocs(qEquiposProyecto);
-    const equipoIdsProyecto = equiposProyectoSnap.docs
-      .map((d) => {
-        const dataEp = d.data() as { id_equipo?: string };
-        return dataEp.id_equipo;
-      })
-      .filter((id): id is string => Boolean(id));
-
-    if (equipoIdsProyecto.length === 0) {
-      batch.update(doc(db, 'proyecto', proyectoId), {
-        ids_miembros: arrayRemove(userId)
-      });
-      continue;
-    }
-
-    let sigueEnAlgunEquipo = false;
-    const chunks: string[][] = [];
-    for (let i = 0; i < equipoIdsProyecto.length; i += 10) {
-      chunks.push(equipoIdsProyecto.slice(i, i + 10));
-    }
-    for (const chunk of chunks) {
-      const qMiembros = query(
-        collection(db, 'miembros_equipo'),
-        where('id_usuario', '==', userId),
-        where('id_equipo', 'in', chunk)
-      );
-      const miembrosSnap = await getDocs(qMiembros);
-      if (!miembrosSnap.empty) {
-        sigueEnAlgunEquipo = true;
-        break;
-      }
-    }
-
-    if (!sigueEnAlgunEquipo) {
-      batch.update(doc(db, 'proyecto', proyectoId), {
-        ids_miembros: arrayRemove(userId)
-      });
-    }
-  }
-  await batch.commit();
 }

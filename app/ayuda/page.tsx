@@ -79,8 +79,8 @@ const PERMISOS: Array<[string, string]> = [
   ['Reenviar un requerimiento rechazado', 'Su autor'],
   ['Editar un requerimiento ya aprobado', 'Cualquier miembro del proyecto'],
   ['Consultar y restaurar versiones del historial', 'Los miembros del proyecto (restaurar requiere permiso para editar el requerimiento)'],
-  ['Leer y escribir comentarios en un requerimiento', 'Los miembros del proyecto. Comentar no depende del estado del requerimiento'],
-  ['Corregir o borrar comentarios', 'Corregir: su autor. Borrar: su autor, o el creador del proyecto en los comentarios de cualquiera'],
+  ['Leer y escribir comentarios en un requerimiento', 'Los miembros del proyecto, incluidos los que llegan por un equipo vinculado. Comentar no depende del estado del requerimiento'],
+  ['Corregir o borrar comentarios', 'Corregir: su autor. Borrar: su autor, o el creador del proyecto en los comentarios de cualquiera. El creador no puede corregir los ajenos'],
   ['Editar un equipo, invitar miembros y cambiar roles', 'Los líderes del equipo'],
   ['Editar o eliminar patrones y modelos', 'Nadie por ahora. Se pueden copiar y crear nuevos'],
 ];
@@ -132,7 +132,7 @@ const FAQS = [
   },
   {
     pregunta: '¿Cómo comento un requerimiento?',
-    respuesta: 'En la lista, cada tarjeta lleva un icono de burbuja de diálogo con el número de comentarios que tiene. Al abrirlo se ve el hilo completo en orden cronológico, con el autor y la fecha de cada entrada. Cualquier miembro del proyecto puede escribir, sin importar si el requerimiento está pendiente, aprobado o rechazado: comentar no mueve el estado. Puedes corregir tu propio comentario, y borrarlo; el creador del proyecto además puede borrar comentarios de otras personas. El conteo que ves en la tarjeta cuenta los que quedan visibles.',
+    respuesta: 'En la lista, cada tarjeta lleva un icono de burbuja de diálogo con el número de comentarios que tiene. Al abrirlo se ve el hilo completo en orden cronológico, con el autor, la fecha de cada entrada y, si se corrigió, cuándo fue la última corrección. Cualquier miembro del proyecto puede escribir, sin importar si el requerimiento está pendiente, aprobado o rechazado: comentar no mueve el estado. Si alguien comenta mientras tienes el hilo abierto, la lista se actualiza sola. Puedes corregir tu propio comentario y borrarlo; el creador del proyecto además puede borrar comentarios de otras personas, pero no corregirlos. El conteo que ves en la tarjeta cuenta los que quedan visibles.',
   },
   {
     pregunta: '¿A quién pido ayuda si algo falla?',

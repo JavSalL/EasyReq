@@ -49,10 +49,12 @@ import {
   ESTADO_PENDIENTE_APROBACION,
   getContextoProyecto,
   construirContextoIA,
-  getComentariosRequerimiento,
+  suscribirComentariosRequerimiento,
   crearComentario,
   editarComentario,
-  borrarComentario
+  borrarComentario,
+  esMiembroPorEquipoVinculado,
+  asegurarAccesoComentariosProyecto
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
@@ -75,7 +77,6 @@ import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
 import { codigoDe, codigoRequerimiento, numeroDesdeBusqueda } from '@/lib/requerimientos';
 import { esCreadorDelProyecto, esMiembroDelProyecto } from '@/lib/equipos-proyecto';
-import { esMiembroPorEquipoVinculado } from '@/lib/services/equipos-service';
 import {
   estaPendienteDeAprobacion,
   estaRechazado,
@@ -281,11 +282,15 @@ export default function RequerimientosPage() {
 
   // Control de acceso (KAN-18). Lectura total para cualquiera con sesión; escribir
   // requiere ser miembro del proyecto.
-  const esMiembroProyectoBase = esMiembroDelProyecto(proyecto, uid);
+  const esMiembroProyecto = esMiembroDelProyecto(proyecto, uid);
+  // KAN-27: para el hilo de comentarios cuenta además quien llega por un equipo
+  // vinculado. Se mantiene aparte de `esMiembroProyecto` a propósito: las reglas de
+  // requerimientos, historial e invitaciones siguen usando la membresía directa, y
+  // la interfaz no debe ofrecer ahí botones que el backend va a denegar.
   const [esMiembroPorEquipo, setEsMiembroPorEquipo] = useState(false);
   useEffect(() => {
     let activo = true;
-    if (!esMiembroProyectoBase && uid && proyecto?.proyecto_id) {
+    if (!esMiembroProyecto && uid && proyecto?.proyecto_id) {
       esMiembroPorEquipoVinculado(proyecto.proyecto_id, uid)
         .then((res) => { if (activo) setEsMiembroPorEquipo(res); })
         .catch(() => { if (activo) setEsMiembroPorEquipo(false); });
@@ -293,13 +298,13 @@ export default function RequerimientosPage() {
       setEsMiembroPorEquipo(false);
     }
     return () => { activo = false; };
-  }, [esMiembroProyectoBase, uid, proyecto?.proyecto_id]);
-  const esMiembroProyecto = esMiembroProyectoBase || esMiembroPorEquipo;
+  }, [esMiembroProyecto, uid, proyecto?.proyecto_id]);
+  const esMiembroDelHilo = esMiembroProyecto || esMiembroPorEquipo;
   // KAN-27: el creador del proyecto puede borrar comentarios ajenos en el hilo.
   const esCreadorProyecto = esCreadorDelProyecto(proyecto, uid);
   // KAN-27: comentar es cosa de miembros del proyecto, y no depende del estado de
   // aprobación del requerimiento: discutirlo no lo mueve.
-  const puedeComentar = puedeComentarRequerimiento(esMiembroProyecto);
+  const puedeComentar = puedeComentarRequerimiento(esMiembroDelHilo);
 
   // KAN-18: los equipos donde el usuario es líder, que son los únicos que puede
   // aprobar. Se piden una sola vez por sesión, y en paralelo al resto de la carga.
@@ -1100,10 +1105,20 @@ export default function RequerimientosPage() {
   // COMENTARIOS (KAN-27)
   // ==========================================================
   // El contador que muestra la tarjeta vive en el propio requerimiento y lo mueve
-  // el servicio junto al comentario. Tras cada operación se recalcula con la
-  // longitud del hilo que acaba de recargarse: es el dato que hay en pantalla y
-  // sirve para corregir cualquier desajuste del contador sin esperar a recargar la
-  // página.
+  // el servicio junto al comentario. Mientras el hilo está abierto se mantiene una
+  // suscripción en vivo: si otra persona publica, corrige o borra, la lista se
+  // actualiza sin cerrar el modal. La longitud de cada emisión es la fuente que
+  // corrige el indicador de la tarjeta, sin una consulta de conteo por requerimiento.
+
+  // Cada apertura recibe un testigo. Si mientras se repara la caché se cierra el
+  // modal o se abre otro hilo, el testigo deja de coincidir y esa apertura no
+  // llega a suscribirse. Sin él, cerrar y reabrir el mismo requerimiento podía
+  // dejar dos escuchas vivas.
+  const aperturaComentariosRef = useRef(0);
+  const cerrarSuscripcionComentariosRef = useRef<(() => void) | null>(null);
+  // Un ref, y no el estado, porque dos clics seguidos comparten el mismo render y
+  // `guardandoComentario` todavía valdría `false` en el segundo.
+  const guardandoComentarioRef = useRef(false);
 
   const ajustarConteoComentarios = (requerimientoId: string, total: number) => {
     setRequerimientos(prev =>
@@ -1114,71 +1129,132 @@ export default function RequerimientosPage() {
     );
   };
 
+  const cerrarSuscripcionComentarios = useCallback(() => {
+    cerrarSuscripcionComentariosRef.current?.();
+    cerrarSuscripcionComentariosRef.current = null;
+  }, []);
+
+  // La escucha no puede sobrevivir a la página: al desmontar se cancela y se
+  // invalida cualquier apertura que siga esperando la reparación de la caché.
+  useEffect(() => () => {
+    aperturaComentariosRef.current++;
+    cerrarSuscripcionComentarios();
+  }, [cerrarSuscripcionComentarios]);
+
+  const cerrarComentarios = useCallback(() => {
+    aperturaComentariosRef.current++;
+    cerrarSuscripcionComentarios();
+    setReqComentarios(null);
+  }, [cerrarSuscripcionComentarios]);
+
   const abrirComentarios = async (req: Requerimiento) => {
+    const apertura = ++aperturaComentariosRef.current;
+    cerrarSuscripcionComentarios();
     setReqComentarios(req);
     setComentarios([]);
     setComentariosError(null);
     setLoadingComentarios(true);
-    try {
-      const hilo = await getComentariosRequerimiento(req.id);
-      setComentarios(hilo);
-      ajustarConteoComentarios(req.id, hilo.length);
-    } catch (e) {
-      const mensaje = mensajeError(e, 'No se pudo cargar los comentarios');
-      setComentariosError(mensaje);
-      toast.error(mensaje);
-    } finally {
-      setLoadingComentarios(false);
+
+    // Si la membresía llega por un equipo, las reglas leen el puntero de acceso
+    // del proyecto. Se asegura antes de abrir el hilo: si el usuario salió del
+    // equipo o el equipo se desvinculó, el puntero se repara o se descarta.
+    let acceso = false;
+    if (uid) {
+      try {
+        acceso = await asegurarAccesoComentariosProyecto(req.id_proyecto, uid);
+      } catch (e) {
+        if (apertura !== aperturaComentariosRef.current) return;
+        const mensaje = mensajeError(e, 'No se pudo comprobar el acceso a los comentarios');
+        setComentariosError(mensaje);
+        setLoadingComentarios(false);
+        toast.error(mensaje);
+        return;
+      }
     }
+
+    // El modal pudo cerrarse (o cambiarse de requerimiento) mientras se comprobaba
+    // el acceso. Sin esta comprobación quedaría una escucha abierta sin modal que la use.
+    if (apertura !== aperturaComentariosRef.current) return;
+
+    if (!acceso) {
+      const mensaje = 'No tienes acceso a los comentarios de este proyecto.';
+      setComentariosError(mensaje);
+      setLoadingComentarios(false);
+      toast.error(mensaje);
+      return;
+    }
+
+    cerrarSuscripcionComentariosRef.current = suscribirComentariosRequerimiento(
+      req.id,
+      hilo => {
+        setComentarios(hilo);
+        setComentariosError(null);
+        setLoadingComentarios(false);
+        ajustarConteoComentarios(req.id, hilo.length);
+      },
+      error => {
+        const mensaje = mensajeError(error, 'No se pudo cargar los comentarios');
+        setComentariosError(mensaje);
+        setLoadingComentarios(false);
+        toast.error(mensaje);
+      }
+    );
   };
 
-  const recargarHilo = async (requerimientoId: string) => {
-    const hilo = await getComentariosRequerimiento(requerimientoId);
-    setComentarios(hilo);
-    ajustarConteoComentarios(requerimientoId, hilo.length);
-  };
-
-  const handlePublicarComentario = async (texto: string) => {
+  const handlePublicarComentario = async (texto: string): Promise<boolean> => {
     const req = reqComentarios;
-    if (!req || !uid || guardandoComentario) return;
+    if (!req || !uid || guardandoComentarioRef.current) return false;
+    guardandoComentarioRef.current = true;
     setGuardandoComentario(true);
     try {
       await crearComentario(req.id, texto, uid);
-      await recargarHilo(req.id);
+      // El hilo y el contador se actualizan solos con la emisión de la suscripción.
       toast.success('Comentario publicado.');
+      return true;
     } catch (e) {
       toast.error(mensajeError(e, 'No se pudo publicar el comentario'));
+      return false;
     } finally {
+      guardandoComentarioRef.current = false;
       setGuardandoComentario(false);
     }
   };
 
-  const handleEditarComentario = async (comentario: Comentario, texto: string) => {
+  const handleEditarComentario = async (
+    comentario: Comentario,
+    texto: string
+  ): Promise<boolean> => {
     const req = reqComentarios;
-    if (!req || guardandoComentario) return;
+    if (!req || guardandoComentarioRef.current) return false;
+    guardandoComentarioRef.current = true;
     setGuardandoComentario(true);
     try {
       await editarComentario(req.id, comentario.id, texto);
-      await recargarHilo(req.id);
       toast.success('Comentario corregido.');
+      return true;
     } catch (e) {
       toast.error(mensajeError(e, 'No se pudo corregir el comentario'));
+      return false;
     } finally {
+      guardandoComentarioRef.current = false;
       setGuardandoComentario(false);
     }
   };
 
-  const handleBorrarComentario = async (comentario: Comentario) => {
+  const handleBorrarComentario = async (comentario: Comentario): Promise<boolean> => {
     const req = reqComentarios;
-    if (!req || guardandoComentario) return;
+    if (!req || guardandoComentarioRef.current) return false;
+    guardandoComentarioRef.current = true;
     setGuardandoComentario(true);
     try {
       await borrarComentario(req.id, comentario.id);
-      await recargarHilo(req.id);
       toast.success('Comentario borrado.');
+      return true;
     } catch (e) {
       toast.error(mensajeError(e, 'No se pudo borrar el comentario'));
+      return false;
     } finally {
+      guardandoComentarioRef.current = false;
       setGuardandoComentario(false);
     }
   };
@@ -2340,7 +2416,7 @@ export default function RequerimientosPage() {
       <ModalComentarios
         key={reqComentarios?.id ?? 'comentarios-cerrados'}
         open={reqComentarios !== null}
-        onClose={() => setReqComentarios(null)}
+        onClose={cerrarComentarios}
         requerimiento={reqComentarios}
         comentarios={comentarios}
         loading={loadingComentarios}

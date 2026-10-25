@@ -91,8 +91,6 @@ export interface Proyecto {
   id_creador?: UUID | null;
   // Miembros del proyecto (KAN-24), además del creador, que siempre lo es. Se agregan directamente.
   ids_miembros?: UUID[];
-  // Equipos vinculados al proyecto (cache para reglas/validaciones)
-  ids_equipos_vinculados?: UUID[];
   // Permiso para crear equipos en el proyecto. Por defecto, solo el creador.
   quien_crea_equipos?: QuienCreaEquipos;
   // Miembros autorizados cuando `quien_crea_equipos` es 'seleccionados'.
@@ -101,6 +99,18 @@ export interface Proyecto {
   quien_agrega_miembros?: QuienAgregaMiembros;
   ids_gestores_miembros?: UUID[];
   created_at?: string;
+}
+
+/**
+ * Puntero de acceso al hilo de comentarios de un proyecto (KAN-27).
+ *
+ * Vive en `proyecto/{id_proyecto}/acceso_comentarios/{uid}` y guarda el equipo
+ * vinculado por el que entra un miembro que no está en `ids_miembros`. No es una
+ * fuente de autorización: las reglas revalidan en cada operación que el usuario
+ * sigue perteneciendo a ese equipo y que el equipo sigue vinculado al proyecto.
+ */
+export interface AccesoComentariosProyecto {
+  id_equipo: UUID;
 }
 
 export interface Patron {
@@ -187,6 +197,12 @@ export interface Comentario {
   /** Subcoleccionado: el ID es el del documento dentro de `requerimiento/{id}/comentario`. */
   id: UUID;
   id_requerimiento: UUID;
+  /**
+   * Proyecto del requerimiento. Lo copia el servicio al crear y las reglas exigen
+   * que coincida con el `id_proyecto` del requerimiento del path: así un comentario
+   * no se puede colgar de un proyecto ajeno cambiando el campo.
+   */
+  id_proyecto: UUID;
   /** Quién escribió el comentario. Lo pone el sistema; las reglas lo exigen igual al auth. */
   id_autor: UUID;
   texto: string;

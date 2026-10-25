@@ -117,38 +117,55 @@ service cloud.firestore {
     // KAN-24: el proyecto tiene miembros (su creador, que siempre lo es, y los que se agregan
     // directamente en `ids_miembros`) y los equipos se arman con ellos. Estas funciones replican
     // lib/equipos-proyecto.ts: si se cambia una, hay que cambiar la otra.
+    //
+    // Es la membresía "directa" y es la que usan las reglas de requerimientos, logs e
+    // invitaciones. No incluye a los miembros de equipos vinculados a propósito: cada
+    // comprobación adicional cuesta lecturas y el presupuesto de reglas es de 10 por
+    // operación. KAN-27 usa `esMiembroDelProyectoConEquipos` para los comentarios.
     function esMiembroDelProyecto(projectId, userId) {
       let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
       return exists(projectPath) && (
         get(projectPath).data.get('id_creador', null) == userId ||
-        userId in get(projectPath).data.get('ids_miembros', []) ||
-        esMiembroPorEquipoVinculado(projectId, userId)
+        userId in get(projectPath).data.get('ids_miembros', [])
       );
     }
 
-    function esMiembroPorEquipoVinculado(projectId, userId) {
+    // KAN-27: además de los miembros directos, cuenta quien pertenece a un equipo vinculado al
+    // proyecto. Las reglas no pueden enumerar los equipos del proyecto para descubrir si el
+    // usuario está en alguno: cada equipo costaría dos lecturas y el presupuesto es de 10 accesos
+    // por operación. Por eso el cliente deja un puntero en
+    // `proyecto/{id}/acceso_comentarios/{uid}` con **un** equipo por el que entra.
+    //
+    // El puntero no autoriza por sí solo. En cada operación se revalida que el usuario sigue
+    // siendo miembro de ese equipo (`miembros_equipo`) y que el equipo sigue vinculado al
+    // proyecto (`proyecto_equipos`). Si lo sacan del equipo o desvinculan el equipo, el puntero
+    // deja de valer aunque siga escrito. Eso permite cualquier número de equipos sin agotar el
+    // presupuesto: la comprobación cuesta siempre lo mismo, no crece con el proyecto.
+    function esMiembroDelProyectoConEquipos(projectId, userId) {
       let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
-      let projectSnap = get(projectPath);
-      let equipoIds = projectSnap.data.get('ids_equipos_vinculados', []);
-      let i = 0;
-      return exists(projectPath) &&
-        proyectoTieneEquipoVinculado(projectSnap, userId);
+      // `get()` sobre un documento ausente falla en el emulador; el `exists`
+      // explícito evita que una simple lectura de un proyecto borrado se
+      // convierta en un error de evaluación en vez de un `false`. Las llamadas
+      // repetidas a `get()` se sirven de la caché de la misma evaluación.
+      return exists(projectPath) && (
+        get(projectPath).data.get('id_creador', null) == userId ||
+        userId in get(projectPath).data.get('ids_miembros', []) ||
+        esMiembroPorEquipoVinculadoConPuntero(projectId, userId)
+      );
     }
 
-    function proyectoTieneEquipoVinculado(projectSnap, userId) {
-      let equipoIds = projectSnap.data.get('ids_equipos_vinculados', []);
-      return equipoIds.size() >= 1 && (
-        exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[0]) + '_' + userId) ||
-        (equipoIds.size() >= 2 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[1]) + '_' + userId)) ||
-        (equipoIds.size() >= 3 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[2]) + '_' + userId)) ||
-        (equipoIds.size() >= 4 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[3]) + '_' + userId)) ||
-        (equipoIds.size() >= 5 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[4]) + '_' + userId)) ||
-        (equipoIds.size() >= 6 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[5]) + '_' + userId)) ||
-        (equipoIds.size() >= 7 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[6]) + '_' + userId)) ||
-        (equipoIds.size() >= 8 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[7]) + '_' + userId)) ||
-        (equipoIds.size() >= 9 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[8]) + '_' + userId)) ||
-        (equipoIds.size() >= 10 && exists(/databases/$(database)/documents/miembros_equipo/$(equipoIds[9]) + '_' + userId))
-      );
+    function esMiembroPorEquipoVinculadoConPuntero(projectId, userId) {
+      let accesoPath = /databases/$(database)/documents/proyecto/$(projectId)/acceso_comentarios/$(userId);
+      // El valor por defecto es una cadena vacía, no `null`: el verificador de
+      // tipos de las reglas no estrecha `string | null` y avisaría en la suma
+      // del path. Un equipo vacío nunca existe y la condición lo descarta.
+      let equipoId = exists(accesoPath)
+        ? get(accesoPath).data.get('id_equipo', '')
+        : '';
+      return equipoId is string &&
+        equipoId != '' &&
+        exists(/databases/$(database)/documents/miembros_equipo/$(equipoId + "_" + userId)) &&
+        exists(/databases/$(database)/documents/proyecto_equipos/$(projectId + "_" + equipoId));
     }
 
     // Agregar y quitar miembros: el creador y los miembros que él autorizó (`ids_gestores_miembros`).
@@ -398,8 +415,12 @@ service cloud.firestore {
     // cliente. Sin esta vía, el indicador de la lista exigiría una consulta de
     // conteo por requerimiento en cada carga, y la lista no está paginada.
     function esConteoComentarios(data) {
-      return esMiembroDelProyecto(resource.data.id_proyecto, request.auth.uid) &&
-        data.diff(resource.data).affectedKeys().hasOnly(['total_comentarios']);
+      // El diff va primero para que las otras cuatro vías no paguen las lecturas
+      // de membresía cuando el cambio no es del contador. Y esta vía se evalúa
+      // antes que las demás: en la transacción de un comentario, el alta y el
+      // contador comparten el presupuesto de 20 accesos.
+      return data.diff(resource.data).affectedKeys().hasOnly(['total_comentarios']) &&
+        esMiembroDelProyectoConEquipos(resource.data.id_proyecto, request.auth.uid);
     }
 
     // 1. Perfiles de usuario
@@ -517,10 +538,35 @@ service cloud.firestore {
         (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ids_miembros']) ||
           resource.data.get('id_creador', null) == request.auth.uid ||
-          request.auth.uid in resource.data.get('ids_gestores_miembros', []) ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ids_miembros'])
+          request.auth.uid in resource.data.get('ids_gestores_miembros', [])
         );
       allow delete: if isAuthenticated();
+
+      // KAN-27: puntero de acceso al hilo de comentarios para quien entra por un
+      // equipo vinculado. El cliente lo crea para sí mismo; las reglas de los
+      // comentarios no confían en él y revalidan la membresía y el vínculo en cada
+      // operación. Un usuario no puede crear el puntero de otro.
+      match /acceso_comentarios/{userId} {
+        function equipoValido() {
+          let equipoId = request.resource.data.get('id_equipo', null);
+          return request.resource.data.keys().hasOnly(['id_equipo']) &&
+            equipoId is string &&
+            exists(/databases/$(database)/documents/miembros_equipo/$(equipoId + "_" + userId)) &&
+            exists(/databases/$(database)/documents/proyecto_equipos/$(proyectoId + "_" + equipoId));
+        }
+
+        // Los vínculos y las membresías ya son legibles para autenticados; el
+        // puntero no revela nada nuevo y así el proyecto puede limpiarlos al borrarse.
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated() &&
+          request.auth.uid == userId &&
+          equipoValido();
+        allow delete: if isAuthenticated() && (
+          request.auth.uid == userId ||
+          isProjectCreator(proyectoId, request.auth.uid) ||
+          !exists(/databases/$(database)/documents/proyecto/$(proyectoId))
+        );
+      }
     }
 
     // 4. Equipos y vinculaciones
@@ -733,11 +779,14 @@ service cloud.firestore {
     match /requerimiento/{requerimientoId} {
       allow read: if isAuthenticated();
       allow create: if isValidRequerimientoCreate(request.resource.data);
-      allow update: if esReenvioDelAutor(request.resource.data) ||
+      // El contador va primero: su diff es barato de descartar en las otras vías
+      // y, cuando sí es un contador, evita evaluar las vías que leen estado y
+      // equipo. En la transacción del comentario ese ahorro es obligatorio.
+      allow update: if esConteoComentarios(request.resource.data) ||
+        esReenvioDelAutor(request.resource.data) ||
         esDecisionDelAprobador(request.resource.data) ||
         esEdicionEnFlujoNormal(request.resource.data) ||
-        esRenumeracion(request.resource.data) ||
-        esConteoComentarios(request.resource.data);
+        esRenumeracion(request.resource.data);
       allow delete: if isAuthenticated();
 
       // Comentarios del requerimiento (KAN-27).
@@ -764,19 +813,25 @@ service cloud.firestore {
 
         // Quien entra al hilo: los miembros del proyecto del requerimiento al que
         // cuelga. El requerimiento se resuelve leyendo una clave conocida del path
-        // y de ahí se sigue hasta el proyecto.
+        // y de ahí se sigue hasta el proyecto. El `exists` previo evita llamar a
+        // `get()` sobre un requerimiento ya borrado.
         function esMiembroDelHilo(userId) {
-          return exists(requerimientoDelHilo()) &&
-            esMiembroDelProyecto(
-              get(requerimientoDelHilo()).data.id_proyecto,
+          let requerimientoPath = requerimientoDelHilo();
+          // Mismo motivo que en el proyecto: no se llama a `get()` si el
+          // requerimiento ya no existe. Así la rama huérfana del borrado puede
+          // evaluarse sin un error de servicio.
+          return exists(requerimientoPath) &&
+            esMiembroDelProyectoConEquipos(
+              get(requerimientoPath).data.id_proyecto,
               userId
             );
         }
 
         function esAutorDelProyectoDelHilo(userId) {
-          return exists(requerimientoDelHilo()) &&
+          let requerimientoPath = requerimientoDelHilo();
+          return exists(requerimientoPath) &&
             isProjectCreator(
-              get(requerimientoDelHilo()).data.id_proyecto,
+              get(requerimientoPath).data.id_proyecto,
               userId
             );
         }
@@ -792,11 +847,20 @@ service cloud.firestore {
           // formulario no lo trae y las reglas lo exigen igual al de la sesión.
           request.resource.data.id_autor == request.auth.uid &&
           request.resource.data.id_requerimiento == requerimientoId &&
+          // El proyecto es el del requerimiento del path, no el que diga el
+          // cliente. Así un comentario no se puede colgar de un proyecto ajeno
+          // cambiando el campo, y la consulta del hilo sigue siendo la única
+          // fuente de verdad.
+          request.resource.data.id_proyecto == get(requerimientoDelHilo()).data.id_proyecto &&
+          // `serverTimestamp()` se resuelve como `request.time` en las reglas: la
+          // fecha la pone el servidor y no el reloj del navegador.
+          request.resource.data.created_at == request.time &&
+          !request.resource.data.keys().hasAny(['updated_at']) &&
           request.resource.data.texto is string &&
           request.resource.data.texto.size() > 0 &&
           request.resource.data.texto.size() <= 4000 &&
           request.resource.data.keys().hasOnly([
-            'id_requerimiento', 'id_autor', 'texto', 'created_at', 'updated_at'
+            'id_proyecto', 'id_requerimiento', 'id_autor', 'texto', 'created_at'
           ]);
 
         allow update: if isAuthenticated() &&
@@ -808,6 +872,7 @@ service cloud.firestore {
           // `data` suelta (la de las funciones de arriba es un parámetro).
           resource.data.id_autor == request.auth.uid &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['texto', 'updated_at']) &&
+          request.resource.data.updated_at == request.time &&
           request.resource.data.texto is string &&
           request.resource.data.texto.size() > 0 &&
           request.resource.data.texto.size() <= 4000;
