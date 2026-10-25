@@ -8,6 +8,11 @@ export const btnPrimario = `${btnBase} bg-brand-solid hover:bg-brand-solid-hover
 
 export const btnSecundario = `${btnBase} bg-surface border border-line-strong text-ink hover:bg-sunken`;
 
+const btnBaseCompacto =
+  'inline-flex items-center justify-center gap-1.5 px-3 min-h-8 pointer-coarse:min-h-11 rounded-ui text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+
+export const btnSecundarioCompacto = `${btnBaseCompacto} bg-surface border border-line-strong text-ink hover:bg-sunken`;
+
 export const btnPeligro = `${btnBase} bg-danger-solid hover:bg-danger-solid-hover text-white`;
 
 export const btnIcono =

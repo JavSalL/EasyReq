@@ -20,7 +20,14 @@ import {
   type ResultadoIterativo
 } from '@/lib/ai-actions';
 import { clasificarDuplicado, IndiceDuplicados } from '@/lib/dedup-requerimientos';
-import { btnPrimario, btnSecundario, btnIconoPeligro, campo } from '@/components/ui/estilos';
+import {
+  aplicarSeleccion,
+  contarSeleccionadas,
+  esSeleccionable,
+  estadoSeleccion,
+  todasSeleccionadas
+} from '@/lib/seleccion-propuestas';
+import { btnPrimario, btnSecundario, btnSecundarioCompacto, btnIconoPeligro, campo } from '@/components/ui/estilos';
 
 // ==========================================
 // GENERACIÓN ITERATIVA DE REQUERIMIENTOS (KAN-40)
@@ -372,17 +379,37 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, bloqueado }:
     });
 
   const actualizar = (clave: string, cambio: Partial<PropuestaRevisable>) =>
-    setPropuestas(prev => prev?.map(p => (p.clave === clave ? { ...p, ...cambio } : p)) ?? null);
+    setPropuestas(prev => prev?.map(p => {
+      if (p.clave !== clave) return p;
+      const siguiente = { ...p, ...cambio };
+      // Una propuesta sin texto no se puede registrar; si el usuario borra el
+      // enunciado de una que estaba elegida, deja de estarlo.
+      return esSeleccionable(siguiente) ? siguiente : { ...siguiente, elegida: false };
+    }) ?? null);
 
-  /** Elige o quita de una vez un conjunto de propuestas (las visibles de un área, o todas las visibles). */
-  const elegirVarias = (claves: string[], elegida: boolean) => {
-    const set = new Set(claves);
-    setPropuestas(prev => prev?.map(p => (set.has(p.clave) ? { ...p, elegida } : p)) ?? null);
+  /** Elige o quita de una vez un conjunto de propuestas. */
+  const elegirVarias = (claves: Iterable<string>, elegida: boolean) => {
+    setPropuestas(prev => prev ? aplicarSeleccion(prev, claves, elegida) : null);
   };
 
+  // El estado de selección vive en cada propuesta, así que los filtros y los
+  // cambios de área no lo tocan. `propuestasPorArea` sirve para que el checkbox
+  // de un área seleccione también lo que los filtros ocultan.
+  const propuestasPorArea = useMemo(() => {
+    const mapa = new Map<string, PropuestaRevisable[]>();
+    for (const p of propuestas ?? []) {
+      mapa.set(p.area, [...(mapa.get(p.area) ?? []), p]);
+    }
+    return mapa;
+  }, [propuestas]);
+
+  const seleccionables = useMemo(() => (propuestas ?? []).filter(esSeleccionable), [propuestas]);
+  const visiblesSeleccionables = useMemo(() => visibles.filter(esSeleccionable), [visibles]);
   const hayFiltros = JSON.stringify(filtros) !== JSON.stringify(FILTROS_VACIOS);
-  const elegidas = propuestas?.filter(p => p.elegida).length ?? 0;
-  const todasVisiblesElegidas = visibles.length > 0 && visibles.every(p => p.elegida);
+  const total = propuestas?.length ?? 0;
+  const elegidas = contarSeleccionadas(seleccionables);
+  const todasElegidas = todasSeleccionadas(seleccionables);
+  const todasVisiblesElegidas = todasSeleccionadas(visiblesSeleccionables);
   const hayPropuestas = !!propuestas?.length;
 
   // Cómo terminó la última corrida, si hay algo que contar además de las propuestas.
@@ -607,19 +634,73 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, bloqueado }:
       {/* Paso 3: revisión de las propuestas */}
       {propuestas && propuestas.length > 0 && (
         <section aria-labelledby="gen-propuestas" className="space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 id="gen-propuestas" className="text-sm font-semibold text-ink">
-              Propuestas de la IA{' '}
-              <span className="font-normal text-ink-subtle">({elegidas} de {propuestas.length} elegidas)</span>
-            </h3>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 id="gen-propuestas" className="text-sm font-semibold text-ink">
+                Propuestas de la IA{' '}
+                <span className="font-normal text-ink-subtle">
+                  ({total} {total === 1 ? 'propuesta' : 'propuestas'})
+                </span>
+              </h3>
+              <p className="text-xs text-ink-muted mt-0.5">
+                Revisa y elige las que se registrarán. La selección se conserva al cambiar de filtro.
+              </p>
+            </div>
+            <p
+              role="status"
+              aria-live="polite"
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${
+                elegidas > 0
+                  ? 'border-brand-line bg-brand-subtle text-brand-text'
+                  : 'border-line bg-surface text-ink-muted'
+              }`}
+            >
+              <Check size={13} aria-hidden />
+              {elegidas} de {total} {total === 1 ? 'seleccionado' : 'seleccionados'}
+            </p>
+          </div>
+
+          <div
+            role="group"
+            aria-label="Selección de propuestas"
+            className="flex flex-wrap items-center gap-2 rounded-ui border border-line bg-sunken/40 p-2"
+          >
             <button
               type="button"
-              onClick={() => elegirVarias(visibles.map(p => p.clave), !todasVisiblesElegidas)}
-              disabled={bloqueado || visibles.length === 0}
-              className="text-xs font-semibold text-brand-text hover:underline cursor-pointer disabled:opacity-50"
+              onClick={() => elegirVarias(seleccionables.map(p => p.clave), true)}
+              disabled={bloqueado || seleccionables.length === 0 || todasElegidas}
+              className={btnSecundarioCompacto}
+              title="Selecciona todos los requerimientos, incluidos los ocultos por los filtros. No los registra."
             >
-              {todasVisiblesElegidas ? 'Quitar las visibles' : 'Elegir las visibles'}
+              <Check size={14} aria-hidden />
+              Aprobar todos
             </button>
+            <button
+              type="button"
+              onClick={() => elegirVarias((propuestas ?? []).map(p => p.clave), false)}
+              disabled={bloqueado || elegidas === 0}
+              className={btnSecundarioCompacto}
+              title="Desmarca todos los requerimientos seleccionados."
+            >
+              <X size={14} aria-hidden />
+              Quitar selección
+            </button>
+            {hayFiltros && (
+              <button
+                type="button"
+                onClick={() => elegirVarias(visiblesSeleccionables.map(p => p.clave), true)}
+                disabled={bloqueado || visiblesSeleccionables.length === 0 || todasVisiblesElegidas}
+                className={btnSecundarioCompacto}
+                title={`Selecciona solo los ${visiblesSeleccionables.length} requerimientos visibles con los filtros actuales.`}
+              >
+                <Search size={14} aria-hidden />
+                Seleccionar filtrados ({visiblesSeleccionables.length})
+              </button>
+            )}
+            <p className="basis-full text-[11px] text-ink-subtle">
+              Aprobar todos solo marca la selección; el registro se confirma con el botón de abajo.
+              {hayFiltros && ' Aprobar todos incluye los ocultos; Seleccionar filtrados solo los visibles.'}
+            </p>
           </div>
 
           {/* Filtros */}
@@ -629,6 +710,8 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, bloqueado }:
               <input
                 value={filtros.q}
                 onChange={e => setFiltros(f => ({ ...f, q: e.target.value }))}
+                // Enter en el buscador no debe enviar el formulario ni abrir el registro.
+                onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
                 placeholder="Buscar en las propuestas"
                 aria-label="Buscar en las propuestas"
                 className={`${selectChico} w-full pl-7`}
@@ -653,7 +736,7 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, bloqueado }:
               ))}
             </select>
             <select value={filtros.duplicados} onChange={e => setFiltros(f => ({ ...f, duplicados: e.target.value as FiltrosPropuestas['duplicados'] }))} aria-label="Filtrar posibles duplicados" className={selectChico}>
-              <option value="todos">Con posibles duplicados</option>
+              <option value="todos">Todos</option>
               <option value="ocultar">Sin posibles duplicados</option>
               <option value="solo">Solo posibles duplicados</option>
             </select>
@@ -669,79 +752,108 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, bloqueado }:
           ) : (
             <div className="sm:max-h-[28rem] sm:overflow-y-auto rounded-ui border border-line custom-scrollbar">
               {grupos.map(([area, lista]) => {
-                const todasElegidas = lista.every(p => p.elegida);
+                const delArea = propuestasPorArea.get(area) ?? lista;
+                const seleccionablesArea = delArea.filter(esSeleccionable);
+                const estadoArea = estadoSeleccion(seleccionablesArea);
+                const parcial = estadoArea === 'parcial';
+                const todasArea = estadoArea === 'completa';
+                const seleccionadasArea = contarSeleccionadas(seleccionablesArea);
+                const totalArea = seleccionablesArea.length;
+                const ocultas = delArea.length - lista.length;
+                const sinTexto = delArea.length - totalArea;
+                const detalleArea = [
+                  `${seleccionadasArea} de ${totalArea} seleccionables`,
+                  ocultas > 0 ? `${ocultas} ocultas por los filtros` : '',
+                  sinTexto > 0 ? `${sinTexto} sin texto` : ''
+                ].filter(Boolean).join('; ');
                 return (
                   <section key={area} aria-label={`Área ${area}`}>
                     <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-sunken border-b border-line">
                       <input
                         type="checkbox"
-                        checked={todasElegidas}
-                        disabled={bloqueado}
-                        onChange={() => elegirVarias(lista.map(p => p.clave), !todasElegidas)}
+                        checked={todasArea}
+                        ref={el => { if (el) el.indeterminate = parcial; }}
+                        disabled={bloqueado || totalArea === 0}
+                        onChange={() => elegirVarias(seleccionablesArea.map(p => p.clave), !todasArea)}
                         aria-label={`Seleccionar toda el área ${area}`}
-                        title="Seleccionar toda el área"
-                        className="size-4 accent-brand-text shrink-0 cursor-pointer"
+                        aria-checked={parcial ? 'mixed' : todasArea}
+                        title={totalArea === 0 ? `No hay propuestas con texto en ${area}` : `${todasArea ? 'Desmarcar' : 'Seleccionar'} todo el área ${area}: ${detalleArea}`}
+                        className="size-4 accent-brand-text shrink-0 cursor-pointer disabled:cursor-not-allowed"
                       />
                       <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted truncate">{area}</span>
-                      <span className="ml-auto text-[11px] text-ink-subtle tabular-nums">
-                        {lista.filter(p => p.elegida).length}/{lista.length}
+                      {ocultas > 0 && (
+                        <span className="text-[10px] text-ink-subtle" title={`Los filtros ocultan ${ocultas} propuestas de esta área`}>
+                          {ocultas} ocultas
+                        </span>
+                      )}
+                      <span className="ml-auto text-[11px] text-ink-subtle tabular-nums" title={detalleArea}>
+                        {seleccionadasArea}/{totalArea}
                       </span>
                     </div>
                     <ul className="divide-y divide-line">
-                      {lista.map(p => (
-                        <li key={p.clave} className={`flex items-start gap-3 px-3 py-2.5 ${p.elegida ? '' : 'opacity-60'}`}>
-                          <input
-                            type="checkbox"
-                            checked={p.elegida}
-                            disabled={bloqueado}
-                            onChange={() => actualizar(p.clave, { elegida: !p.elegida })}
-                            aria-label={`Registrar: ${p.texto.slice(0, 60)}`}
-                            className="mt-2 size-4 accent-brand-text shrink-0 cursor-pointer"
-                          />
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <TextareaAutoajustable
-                              value={p.texto}
-                              disabled={bloqueado}
-                              onChange={texto => actualizar(p.clave, { texto })}
-                              aria-label="Texto de la propuesta"
+                      {lista.map(p => {
+                        const disponible = esSeleccionable(p);
+                        return (
+                          <li key={p.clave} className={`flex items-start gap-3 px-3 py-2.5 ${p.elegida ? 'bg-brand-subtle/20' : disponible ? 'opacity-70' : ''}`}>
+                            <input
+                              type="checkbox"
+                              checked={p.elegida}
+                              disabled={bloqueado || !disponible}
+                              onChange={() => actualizar(p.clave, { elegida: !p.elegida })}
+                              aria-label={`Seleccionar: ${p.texto.trim().slice(0, 60) || 'propuesta sin texto'}`}
+                              title={disponible ? undefined : 'Escribe el enunciado para poder seleccionarlo'}
+                              className="mt-2 size-4 accent-brand-text shrink-0 cursor-pointer disabled:cursor-not-allowed"
                             />
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className={`${etiquetaChip} bg-sunken text-ink-muted border-line`}>{nombreTipo(p)}</span>
-                              {p.prioridad && (
-                                <span className={`${etiquetaChip} bg-surface text-ink-muted border-line`} title="Prioridad MoSCoW propuesta">
-                                  {p.prioridad === 'Wont' ? "Won't" : p.prioridad}
-                                </span>
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <TextareaAutoajustable
+                                value={p.texto}
+                                disabled={bloqueado}
+                                onChange={texto => actualizar(p.clave, { texto })}
+                                aria-label="Texto de la propuesta"
+                              />
+                              {!disponible && (
+                                <p className="text-[11px] text-warning">
+                                  Escribe el enunciado para poder seleccionarlo.
+                                </p>
                               )}
-                              {p.origen === 'inferido' && (
-                                <span className={`${etiquetaChip} bg-brand-subtle text-brand-text border-brand-line`} title="La IA lo dedujo: el pedido y el contexto no lo dicen">
-                                  Inferido
-                                </span>
-                              )}
-                              {p.posibleDuplicado && (
-                                <span className={`${etiquetaChip} bg-warning-subtle text-warning border-warning-line`}>
-                                  <Copy size={10} aria-hidden />
-                                  Posible duplicado de {p.posibleDuplicado.etiqueta}
-                                  <span className="font-normal opacity-80">
-                                    ({p.posibleDuplicado.semantico ? 'mismo significado' : 'texto parecido'}, {Math.round(p.posibleDuplicado.similitud * 100)} %)
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className={`${etiquetaChip} bg-sunken text-ink-muted border-line`}>{nombreTipo(p)}</span>
+                                {p.prioridad && (
+                                  <span className={`${etiquetaChip} bg-surface text-ink-muted border-line`} title="Prioridad MoSCoW propuesta">
+                                    {p.prioridad === 'Wont' ? "Won't" : p.prioridad}
                                   </span>
-                                </span>
+                                )}
+                                {p.origen === 'inferido' && (
+                                  <span className={`${etiquetaChip} bg-brand-subtle text-brand-text border-brand-line`} title="La IA lo dedujo: el pedido y el contexto no lo dicen">
+                                    Inferido
+                                  </span>
+                                )}
+                                {p.posibleDuplicado && (
+                                  <span className={`${etiquetaChip} bg-warning-subtle text-warning border-warning-line`}>
+                                    <Copy size={10} aria-hidden />
+                                    Posible duplicado de {p.posibleDuplicado.etiqueta}
+                                    <span className="font-normal opacity-80">
+                                      ({p.posibleDuplicado.semantico ? 'mismo significado' : 'texto parecido'}, {Math.round(p.posibleDuplicado.similitud * 100)} %)
+                                    </span>
+                                  </span>
+                                )}
+                                {p.cifras_sin_respaldo?.length ? (
+                                  <span className={`${etiquetaChip} bg-danger-subtle text-danger border-danger-line`} title="Estas cifras no aparecen en el pedido ni en el contexto">
+                                    <AlertTriangle size={10} aria-hidden />
+                                    Revisa: {p.cifras_sin_respaldo.join(', ')}
+                                  </span>
+                                ) : null}
+                              </div>
+                              {p.posibleDuplicado?.texto && (
+                                <p className="text-xs text-ink-muted leading-snug border-l-2 border-warning-line pl-2">
+                                  <span className="font-semibold">{p.posibleDuplicado.etiqueta}:</span> {p.posibleDuplicado.texto}
+                                </p>
                               )}
-                              {p.cifras_sin_respaldo?.length ? (
-                                <span className={`${etiquetaChip} bg-danger-subtle text-danger border-danger-line`} title="Estas cifras no aparecen en el pedido ni en el contexto">
-                                  <AlertTriangle size={10} aria-hidden />
-                                  Revisa: {p.cifras_sin_respaldo.join(', ')}
-                                </span>
-                              ) : null}
+                              {p.justificacion && <p className="text-[11px] text-ink-subtle leading-snug">{p.justificacion}</p>}
                             </div>
-                            {p.posibleDuplicado?.texto && (
-                              <p className="text-xs text-ink-muted leading-snug border-l-2 border-warning-line pl-2">
-                                <span className="font-semibold">{p.posibleDuplicado.etiqueta}:</span> {p.posibleDuplicado.texto}
-                              </p>
-                            )}
-                            {p.justificacion && <p className="text-[11px] text-ink-subtle leading-snug">{p.justificacion}</p>}
-                          </div>
-                        </li>
-                      ))}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </section>
                 );

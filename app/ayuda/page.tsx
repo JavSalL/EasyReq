@@ -41,6 +41,9 @@ const SECCIONES = [
     puntos: [
       'Dentro del formulario de un requerimiento, describe la funcionalidad y presiona "Generar".',
       'La IA redacta el enunciado siguiendo el patrón seleccionado; revísalo antes de guardar.',
+      'En «Varios requerimientos», marca las propuestas que quieres registrar. «Aprobar todos» marca todas, «Quitar selección» las desmarca y la casilla de un área marca ese módulo completo, incluidas las propuestas que los filtros ocultan.',
+      'Los filtros por prioridad, tipo y posibles duplicados solo cambian lo que ves: no borran lo que ya marcaste. Con filtros activos, «Seleccionar filtrados» marca solo lo visible y el contador muestra cuántos van seleccionados sobre el total.',
+      'El botón de registrar indica cuántos se procesarán y pide confirmación; solo se registran los seleccionados, y quedan pendientes de la aprobación de su líder.',
       'Lo generado con IA se registra con la modalidad «Generado con IA» puesta sola, para que se distinga de lo escrito a mano.',
       'Un requerimiento generado con IA sigue el mismo camino: también espera la aprobación de su líder.',
     ],
@@ -127,6 +130,10 @@ const FAQS = [
   {
     pregunta: 'Mi requerimiento dice “Sin equipo”. ¿Qué significa?',
     respuesta: 'Que se creó antes de que existiera la aprobación por líder. Esos requerimientos no guardan a qué equipo pertenecían, así que no hay un líder concreto que pueda aprobarlos: se pueden editar como cualquier otro del proyecto. Los nuevos sí llevan equipo y sí pasan por aprobación.',
+  },
+  {
+    pregunta: '¿Puedo registrar solo algunos de los requerimientos que generó la IA?',
+    respuesta: 'Sí. Cada propuesta tiene su casilla y puedes combinarla con «Aprobar todos», «Quitar selección», la casilla de un área o «Seleccionar filtrados». El contador y la confirmación muestran cuántos se van a registrar; los que dejes sin marcar permanecen en la revisión y no se envían al flujo de aprobación.',
   },
   {
     pregunta: '¿A quién pido ayuda si algo falla?',
