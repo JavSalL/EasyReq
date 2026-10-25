@@ -332,11 +332,25 @@ service cloud.firestore {
         // la transacción de `createRequerimiento`, no el formulario. `id_patron`
         // (KAN-28) guarda la plantilla usada al redactar y se muestra en la
         // especificación exportada.
+        // `modulo`, `origen_ia` y `prioridad` (KAN-40) los pone la generación con IA.
         data.keys().hasOnly([
           'enunciado', 'id_tipo_requerimiento', 'id_proyecto', 'id_equipo',
           'id_autor', 'id_aprobador', 'id_modalidad', 'id_estado', 'id_modelo',
-          'id_patron', 'numero', 'codigo', 'created_at'
-        ]);
+          'id_patron', 'numero', 'codigo', 'created_at',
+          'modulo', 'origen_ia', 'prioridad'
+        ]) &&
+        sonValidosCamposIA(data);
+    }
+
+    // Campos opcionales de la generación con IA (KAN-40). Ausentes o null valen siempre (los
+    // requerimientos a mano y los anteriores no los tienen); si vienen, con su tipo y tamaño.
+    function sonValidosCamposIA(data) {
+      return (
+          data.get('modulo', null) == null ||
+          (data.modulo is string && data.modulo.size() <= 120)
+        ) &&
+        (data.get('origen_ia', null) == null || data.origen_ia in ['explicito', 'inferido']) &&
+        (data.get('prioridad', null) == null || data.prioridad in ['Must', 'Should', 'Could', 'Wont']);
     }
 
     // Un requerimiento se actualiza por UNA de estas cinco situaciones. Se
@@ -779,14 +793,20 @@ service cloud.firestore {
     match /requerimiento/{requerimientoId} {
       allow read: if isAuthenticated();
       allow create: if isValidRequerimientoCreate(request.resource.data);
-      // El contador va primero: su diff es barato de descartar en las otras vías
-      // y, cuando sí es un contador, evita evaluar las vías que leen estado y
-      // equipo. En la transacción del comentario ese ahorro es obligatorio.
-      allow update: if esConteoComentarios(request.resource.data) ||
+      // KAN-40: una edición tampoco puede dejar el módulo, el origen o la prioridad con un
+      // valor que el alta no admitiría.
+      //
+      // KAN-27: el contador va primero dentro del paréntesis: su diff es barato de
+      // descartar en las otras vías y, cuando sí es un contador, evita evaluar las
+      // vías que leen estado y equipo. En la transacción del comentario ese ahorro
+      // es obligatorio.
+      allow update: if sonValidosCamposIA(request.resource.data) && (
+        esConteoComentarios(request.resource.data) ||
         esReenvioDelAutor(request.resource.data) ||
         esDecisionDelAprobador(request.resource.data) ||
         esEdicionEnFlujoNormal(request.resource.data) ||
-        esRenumeracion(request.resource.data);
+        esRenumeracion(request.resource.data)
+      );
       allow delete: if isAuthenticated();
 
       // Comentarios del requerimiento (KAN-27).
