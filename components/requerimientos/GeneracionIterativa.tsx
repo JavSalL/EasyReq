@@ -6,10 +6,12 @@ import {
 } from 'lucide-react';
 import {
   AIError,
+  continuarGeneracion,
   generateBulkRequirements,
   runIterativeGeneration,
   type AlcanceGeneracion,
   type AreaGeneracion,
+  type Estrictez,
   type OpcionesGeneracion,
   type OrigenIA,
   type PlanGeneracion,
@@ -41,7 +43,28 @@ export interface PropuestaRevisable extends Omit<PropuestaIA, 'origen' | 'priori
   elegida: boolean;
 }
 
-type Fase = 'inactivo' | 'planificando' | 'revisando-plan' | 'generando' | 'listo';
+export type Fase = 'inactivo' | 'planificando' | 'revisando-plan' | 'generando' | 'listo';
+
+// Datos que se guardan en sessionStorage para recuperar la corrida tras recargar la pestaña.
+export interface OpcionesGuardadas {
+  pattern?: string;
+  tipo?: string;
+  estrictez?: Estrictez;
+  ejemplos?: string[];
+  contexto?: string;
+  alcance: AlcanceGeneracion | 'auto';
+}
+
+export interface EstadoGeneracionGuardada {
+  fase: Fase;
+  plan: PlanGeneracion | null;
+  areasPlan: AreaGeneracion[];
+  progreso: ProgresoGeneracion | null;
+  propuestas: PropuestaRevisable[] | null;
+  resultado: { estado: ResultadoIterativo['estado'] | 'rapida'; motivo?: string } | null;
+  userPrompt: string;
+  opciones: OpcionesGuardadas;
+}
 
 // Todas nacen elegidas, también los posibles duplicados: la etiqueta dice de cuál podrían
 // serlo y el usuario decide si los quita.
@@ -63,25 +86,107 @@ export function ordenarPorArea<T extends { area: string }>(lista: T[], ordenArea
     .map(x => x.p);
 }
 
-export function useGeneracionIterativa() {
+export function useGeneracionIterativa(proyectoId: string | null) {
   const [fase, setFase] = useState<Fase>('inactivo');
   const [plan, setPlan] = useState<PlanGeneracion | null>(null);
   const [areasPlan, setAreasPlan] = useState<AreaGeneracion[]>([]);
   const [progreso, setProgreso] = useState<ProgresoGeneracion | null>(null);
   const [propuestas, setPropuestas] = useState<PropuestaRevisable[] | null>(null);
   const [resultado, setResultado] = useState<{ estado: ResultadoIterativo['estado'] | 'rapida'; motivo?: string } | null>(null);
+  // Datos de la última corrida iniciada: se guardan para poder reanudar tras una recarga sin
+  // volver a pedir el plan ni gastar otro uso diario.
+  const promptRef = useRef<string>('');
+  const opcionesRef = useRef<OpcionesGuardadas>({ alcance: 'auto' });
+
   const controladorRef = useRef<AbortController | null>(null);
   // La promesa que espera el orquestador mientras el usuario edita el mapa de áreas.
   const resolverPlanRef = useRef<((areas: AreaGeneracion[] | null) => void) | null>(null);
   // Orden de las áreas confirmadas: el de la lista de propuestas.
   const ordenAreasRef = useRef<string[]>([]);
 
+  const CLAVE = proyectoId ? `easyreq:gen:${proyectoId}` : null;
+
+  function leerEstado(clave: string | null): EstadoGeneracionGuardada | null {
+    if (!clave || typeof window === 'undefined') return null;
+    try {
+      const raw = window.sessionStorage.getItem(clave);
+      return raw === null ? null : (JSON.parse(raw) as EstadoGeneracionGuardada);
+    } catch { return null; }
+  }
+
+  const [claveActual, setClaveActual] = useState(CLAVE);
+  const [guardado, setGuardado] = useState<EstadoGeneracionGuardada | null>(() => leerEstado(CLAVE));
+  // Vuelve a leer cuando cambia el proyecto (se conoce tras cargar la URL de la pestaña).
+  if (CLAVE !== claveActual) {
+    setClaveActual(CLAVE);
+    setGuardado(leerEstado(CLAVE));
+  }
+
   const ocupado = fase === 'planificando' || fase === 'revisando-plan' || fase === 'generando';
+  // Un trabajo cuya corrida falló o agotó sus llamadas no se puede restaurar.
+  const hayGuardado = !!guardado && !(guardado.resultado?.estado === 'error' || guardado.resultado?.estado === 'limite');
+
+  /** Guarda el estado en curso (o lo limpia) en sessionStorage. Si no hay almacenamiento
+   *  disponible (o se agota el cupo), la corrida sigue viviendo solo en memoria y la app
+   *  funciona igual. */
+  useEffect(() => {
+    if (!CLAVE) return;
+    const hayEstado = fase !== 'inactivo' && fase !== 'planificando';
+    const hayPropuestas = (propuestas ?? []).length > 0;
+    // Si el trabajo murió (error o tope agotado) no hay nada que restaurar en otra sesión.
+    const trabajoMuerto = resultado?.estado === 'error' || resultado?.estado === 'limite';
+    const payload: EstadoGeneracionGuardada | null = (hayEstado || hayPropuestas) && !trabajoMuerto
+      ? { fase, plan, areasPlan, progreso, propuestas, resultado, userPrompt: promptRef.current, opciones: opcionesRef.current }
+      : null;
+    try {
+      if (payload) window.sessionStorage.setItem(CLAVE, JSON.stringify(payload));
+      else window.sessionStorage.removeItem(CLAVE);
+    } catch {
+      // Sin almacenamiento disponible: nada que persistir, solo memoria.
+    }
+  }, [CLAVE, fase, plan, areasPlan, progreso, propuestas, resultado]);
+
+  const limpiarGuardado = useCallback(() => {
+    setGuardado(null);
+    if (!CLAVE) return;
+    try { window.sessionStorage.removeItem(CLAVE); } catch {}
+  }, [CLAVE]);
+
+  /**
+   * Aplica lo guardado al estado del hook y devuelve los datos para reanudar la corrida
+   * (prompt, opciones, plan, áreas, progreso y propuestas). Solo se aplica una vez.
+   */
+  const aplicarGuardado = useCallback((): EstadoGeneracionGuardada | null => {
+    const g = guardado;
+    if (!g) return null;
+    // Un trabajo cuya corrida falló o agotó sus llamadas no se puede restaurar.
+    if (g.resultado?.estado === 'error' || g.resultado?.estado === 'limite') return null;
+    setFase(g.fase);
+    setPlan(g.plan);
+    setAreasPlan(g.areasPlan);
+    setProgreso(g.progreso);
+    setPropuestas(g.propuestas);
+    setResultado(g.resultado);
+    ordenAreasRef.current = g.areasPlan.map(a => a.nombre);
+    promptRef.current = g.userPrompt;
+    opcionesRef.current = g.opciones;
+    setGuardado(null);
+    return g;
+  }, [guardado]);
+
+  // (Se limpia al registrar y al descartar a través de `reiniciar`/`limpiarGuardado`,
+  //  y el efecto de abajo borra lo guardado cuando el trabajo muere.)
 
   const iniciar = useCallback(async (
     userPrompt: string,
     opciones: OpcionesGeneracion & { alcance: AlcanceGeneracion | 'auto'; existentes: RequerimientoExistente[] }
   ): Promise<ResultadoIterativo> => {
+    limpiarGuardado();
+    promptRef.current = userPrompt;
+    opcionesRef.current = {
+      pattern: opciones.pattern, tipo: opciones.tipo, estrictez: opciones.estrictez,
+      ejemplos: opciones.ejemplos, contexto: opciones.contexto, alcance: opciones.alcance ?? 'auto'
+    };
     controladorRef.current?.abort();
     const controlador = new AbortController();
     controladorRef.current = controlador;
@@ -124,13 +229,16 @@ export function useGeneracionIterativa() {
     }
     setResultado({ estado: res.estado, motivo: res.motivo });
     return res;
-  }, []);
+  }, [limpiarGuardado]);
 
   /** Generación masiva de una sola pasada (la de antes), con el mismo filtro de repetidos. */
   const iniciarRapida = useCallback(async (
     userPrompt: string,
     opciones: OpcionesGeneracion & { existentes: RequerimientoExistente[] }
   ) => {
+    limpiarGuardado();
+    promptRef.current = userPrompt;
+    opcionesRef.current = { ...opciones, alcance: 'auto' };
     setFase('generando');
     setPlan(null);
     setProgreso(null);
@@ -169,7 +277,81 @@ export function useGeneracionIterativa() {
       setResultado({ estado: 'error', motivo });
       return { cantidad: 0, motivo };
     }
-  }, []);
+  }, [limpiarGuardado]);
+
+  /**
+   * Reanuda una corrida interrumpida por recarga desde las áreas que quedaron pendientes,
+   * sin pedir otro plan ni gastar otro uso diario (mientras el job siga vigente).
+   */
+  const continuar = useCallback(async (
+    userPrompt: string,
+    opciones: OpcionesGeneracion & { alcance: AlcanceGeneracion | 'auto' },
+    existentes: RequerimientoExistente[]
+  ): Promise<ResultadoIterativo> => {
+    if (!plan || !progreso || areasPlan.length === 0 || !propuestas) {
+      return { estado: 'error', motivo: 'No hay una corrida guardada para reanudar.', plan: null, propuestas: [] };
+    }
+    controladorRef.current?.abort();
+    const controlador = new AbortController();
+    controladorRef.current = controlador;
+    promptRef.current = userPrompt;
+    opcionesRef.current = {
+      pattern: opciones.pattern, tipo: opciones.tipo, estrictez: opciones.estrictez,
+      ejemplos: opciones.ejemplos, contexto: opciones.contexto, alcance: opciones.alcance
+    };
+    setFase('generando');
+    setResultado(null);
+    try {
+      const propuestasIA: PropuestaIA[] = propuestas.map(p => ({
+        clave: p.clave,
+        name: p.name,
+        area: p.area,
+        type_furps: p.type_furps,
+        ai_evaluation: p.ai_evaluation,
+        ai_observations: p.ai_observations,
+        origen: p.origen ?? 'explicito',
+        prioridad: p.prioridad ?? 'Must',
+        justificacion: p.justificacion ?? '',
+        cifras_sin_respaldo: p.cifras_sin_respaldo,
+        posibleDuplicado: p.posibleDuplicado
+      }));
+      const res = await continuarGeneracion(
+        userPrompt,
+        { ...opciones, alcance: opciones.alcance, existentes, signal: controlador.signal },
+        {
+          revisarPlan: async () => areasPlan,
+          onProgreso: setProgreso,
+          onPropuestas: nuevas =>
+            setPropuestas(prev => ordenarPorArea([...(prev ?? []), ...nuevas.map(aRevisable)], ordenAreasRef.current)),
+          // Un parecido por significado se marca igual que uno léxico; la propuesta sigue elegida.
+          onDuplicadosSemanticos: marcas => {
+            const porClave = new Map(marcas.map(m => [m.clave, m]));
+            setPropuestas(prev => prev?.map(p => {
+              const m = porClave.get(p.clave);
+              return m ? { ...p, posibleDuplicado: { etiqueta: m.etiqueta, texto: m.texto, similitud: m.similitud, semantico: true } } : p;
+            }) ?? null);
+          }
+        },
+        plan, areasPlan, progreso, propuestasIA
+      );
+      resolverPlanRef.current = null;
+      if (controladorRef.current === controlador) controladorRef.current = null;
+      setResultado({ estado: res.estado, motivo: res.motivo });
+      if (res.propuestas.length === 0) {
+        setPropuestas(null);
+        setFase('inactivo');
+      } else {
+        setFase('listo');
+      }
+      return res;
+    } catch (err) {
+      if (controladorRef.current === controlador) controladorRef.current = null;
+      setFase('inactivo');
+      const motivo = err instanceof AIError ? err.message : 'No se pudo reanudar la generación. Inténtalo de nuevo.';
+      setResultado({ estado: 'error', motivo });
+      return { estado: 'error', motivo, plan: null, propuestas: [] };
+    }
+  }, [plan, areasPlan, progreso, propuestas]);
 
   const confirmarPlan = useCallback(() => {
     const areas = areasPlan
@@ -201,12 +383,13 @@ export function useGeneracionIterativa() {
     controladorRef.current?.abort();
     resolverPlanRef.current?.(null);
     resolverPlanRef.current = null;
+    limpiarGuardado();
     setFase('inactivo');
     setPlan(null);
     setProgreso(null);
     setPropuestas(null);
     setResultado(null);
-  }, []);
+  }, [limpiarGuardado]);
 
   /** Quita de la revisión las propuestas ya registradas. */
   const quitar = useCallback((claves: Set<string>) => {
@@ -221,7 +404,8 @@ export function useGeneracionIterativa() {
 
   return {
     fase, ocupado, plan, areasPlan, setAreasPlan, progreso, propuestas, setPropuestas, resultado,
-    iniciar, iniciarRapida, confirmarPlan, cancelarPlan, detener, reiniciar, quitar
+    hayGuardado, aplicarGuardado, limpiarGuardado,
+    iniciar, iniciarRapida, continuar, confirmarPlan, cancelarPlan, detener, reiniciar, quitar
   };
 }
 

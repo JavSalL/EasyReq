@@ -415,32 +415,50 @@ export async function planificarGeneracion(userPrompt: string, opciones: Opcione
  * igual (≥ 0,85) se descarta, si se parece (0,6-0,85) se marca como posible duplicado. Cancelar
  * (con `signal`) conserva lo generado hasta ese momento.
  */
-export async function runIterativeGeneration(
-  userPrompt: string,
-  opciones: OpcionesIterativas,
-  callbacks: CallbacksGeneracion
-): Promise<ResultadoIterativo> {
-  const { signal } = opciones;
-  const existentes = opciones.existentes ?? [];
-  const propuestas: PropuestaIA[] = [];
-  const progreso: ProgresoGeneracion = { fase: 'plan', areas: [], total: 0, llamadasRestantes: 0 };
+/**
+ * Corre los pasos 2 a 4 de una corrida ya planeada: lotes por área, cobertura y duplicados por
+ * significado. `progreso` y `propuestas` vienen ya inicializados (de cero al planear una corrida
+ * nueva, o desde lo guardado al reanudar una interrumpida) y se mutan a medida que avanza. Las
+ * áreas cuyo estado no es `pendiente` se respetan: la corrida se reanuda desde las que quedaron.
+ */
+async function correrIterativo(ctx: {
+  userPrompt: string;
+  plan: PlanGeneracion;
+  areas: AreaGeneracion[];
+  alcance: AlcanceGeneracion;
+  jobId: string;
+  existentes: RequerimientoExistente[];
+  opciones: OpcionesIterativas;
+  signal: AbortSignal | undefined;
+  callbacks: CallbacksGeneracion;
+  progreso: ProgresoGeneracion;
+  propuestas: PropuestaIA[];
+  indice: IndiceDuplicados;
+  secuencia: { valor: number };
+}): Promise<ResultadoIterativo> {
+  const { userPrompt, plan, areas, alcance, jobId, existentes, opciones, signal, callbacks, progreso, propuestas, indice } = ctx;
+  const secuencia = ctx.secuencia;
+  const nombres = areas.map(a => a.nombre);
   const avisar = () => callbacks.onProgreso?.({ ...progreso, areas: progreso.areas.map(a => ({ ...a })) });
   const onEspera = (segundos: number | undefined) => {
     progreso.esperando = segundos;
     avisar();
   };
+  const resumenResto = (area: string) =>
+    resumirExistentes(existentes.filter(r => !esDelArea(r.modulo, area)), MAX_RESUMEN / 2);
+  const existentesArea = (area: string) =>
+    existentes
+      .filter(r => esDelArea(r.modulo, area))
+      .slice(0, MAX_EXISTENTES_AREA)
+      .map(r => lineaExistente(r, MAX_LINEA - 20));
+  const base = cuerpoOpciones(opciones);
 
-  // Índice de lo conocido: lo existente desde el principio y cada propuesta al aceptarla.
-  const indice = new IndiceDuplicados();
-  existentes.forEach(r => indice.agregar(r.enunciado, r.codigo));
-
-  let secuencia = 0;
   /** Filtra repetidos, registra las que pasan y devuelve cuántas entraron y cuántas se descartaron. */
   const incorporar = (candidatas: RequerimientoIA[], area: string) => {
     const nuevas: PropuestaIA[] = [];
     let descartadas = 0;
     for (const c of candidatas) {
-      if (propuestas.length + nuevas.length >= MAX_PROPUESTAS) break;
+      if (propuestas.length >= MAX_PROPUESTAS) break;
       const veredicto = clasificarDuplicado(indice, c.name);
       if (veredicto.tipo === 'duplicado') {
         descartadas++;
@@ -449,7 +467,7 @@ export async function runIterativeGeneration(
       const propuesta: PropuestaIA = {
         ...c,
         area: c.area || area,
-        clave: `${Date.now().toString(36)}-${(secuencia++).toString(36)}`,
+        clave: `${Date.now().toString(36)}-${(secuencia.valor++).toString(36)}`,
         ...(veredicto.tipo === 'posible' ? { posibleDuplicado: veredicto.de } : {})
       };
       indice.agregar(c.name, `otra propuesta (${propuesta.area})`);
@@ -461,38 +479,15 @@ export async function runIterativeGeneration(
     return { nuevas: nuevas.length, descartadas };
   };
 
-  const base = cuerpoOpciones(opciones);
-  let plan: PlanGeneracion | null = null;
   try {
-    // 1. Plan
-    avisar();
-    plan = await planificarGeneracion(userPrompt, opciones);
-    if (!plan.valido || plan.areas.length === 0 || !plan.job_id) {
-      return { estado: 'invalido', motivo: plan.motivo || 'El pedido no da base para generar requerimientos.', plan, propuestas };
-    }
-    progreso.llamadasRestantes = plan.llamadas_restantes ?? 0;
-    progreso.fase = 'revision-plan';
-    avisar();
-
-    const areas = await callbacks.revisarPlan(plan);
-    if (!areas || areas.length === 0 || signal?.aborted) return { estado: 'cancelado', plan, propuestas };
-    const jobId = plan.job_id;
-    const alcance = plan.alcance;
-    const nombres = areas.map(a => a.nombre);
-
-    const resumenResto = (area: string) =>
-      resumirExistentes(existentes.filter(r => !esDelArea(r.modulo, area)), MAX_RESUMEN / 2);
-    const existentesArea = (area: string) =>
-      existentes
-        .filter(r => esDelArea(r.modulo, area))
-        .slice(0, MAX_EXISTENTES_AREA)
-        .map(r => lineaExistente(r, MAX_LINEA - 20));
-
     // 2. Lotes por área, por rondas
     progreso.fase = 'areas';
-    progreso.areas = areas.map(a => ({ nombre: a.nombre, estado: 'pendiente', lotes: 0, nuevas: 0, descartadas: 0 }));
     avisar();
-    const estado = areas.map(() => ({ pendiente: [] as string[], flojos: 0, terminada: false }));
+    // Las áreas ya terminadas no se tocan: se reanuda desde las que quedaron pendientes.
+    const estado = areas.map((_, i) => {
+      const prev = progreso.areas[i];
+      return { pendiente: [] as string[], flojos: 0, terminada: prev && prev.estado !== 'pendiente' };
+    });
     // Lo comparten las áreas que corren en paralelo: un objeto para que el cierre lo vea al día.
     const control: { limite: boolean; error: AIError | null } = { limite: false, error: null };
 
@@ -657,6 +652,61 @@ export async function runIterativeGeneration(
       return { estado: 'cancelado', plan, propuestas };
     }
     return { estado: control.limite ? 'limite' : 'completo', plan, propuestas };
+  } finally {
+    progreso.fase = 'fin';
+    progreso.esperando = undefined;
+    avisar();
+  }
+}
+
+export async function runIterativeGeneration(
+  userPrompt: string,
+  opciones: OpcionesIterativas,
+  callbacks: CallbacksGeneracion
+): Promise<ResultadoIterativo> {
+  const { signal } = opciones;
+  const existentes = opciones.existentes ?? [];
+  const propuestas: PropuestaIA[] = [];
+  const progreso: ProgresoGeneracion = { fase: 'plan', areas: [], total: 0, llamadasRestantes: 0 };
+  // Índice de lo conocido: lo existente desde el principio y cada propuesta al aceptarla.
+  const indice = new IndiceDuplicados();
+  existentes.forEach(r => indice.agregar(r.enunciado, r.codigo));
+  const secuencia = { valor: 0 };
+  let plan: PlanGeneracion | null = null;
+  try {
+    // 1. Plan: pide el mapa de áreas (abre el job de la corrida y consume 1 uso de la cuota diaria).
+    const avisar = () => callbacks.onProgreso?.({ ...progreso, areas: progreso.areas.map(a => ({ ...a })) });
+    avisar();
+    plan = await planificarGeneracion(userPrompt, opciones);
+    if (!plan.valido || plan.areas.length === 0 || !plan.job_id) {
+      return { estado: 'invalido', motivo: plan.motivo || 'El pedido no da base para generar requerimientos.', plan, propuestas };
+    }
+    progreso.llamadasRestantes = plan.llamadas_restantes ?? 0;
+    progreso.fase = 'revision-plan';
+    avisar();
+
+    const areas = await callbacks.revisarPlan(plan);
+    if (!areas || areas.length === 0 || signal?.aborted) return { estado: 'cancelado', plan, propuestas };
+    const jobId = plan.job_id;
+
+    progreso.fase = 'areas';
+    progreso.areas = areas.map(a => ({ nombre: a.nombre, estado: 'pendiente', lotes: 0, nuevas: 0, descartadas: 0 }));
+    avisar();
+    return await correrIterativo({
+      userPrompt,
+      plan,
+      areas,
+      alcance: plan.alcance,
+      jobId,
+      existentes,
+      opciones,
+      signal,
+      callbacks,
+      progreso,
+      propuestas,
+      indice,
+      secuencia
+    });
   } catch (err) {
     if (esCancelacion(err) || signal?.aborted) {
       marcarDetenidas(progreso);
@@ -671,8 +721,55 @@ export async function runIterativeGeneration(
   } finally {
     progreso.fase = 'fin';
     progreso.esperando = undefined;
-    avisar();
+    callbacks.onProgreso?.({ ...progreso, areas: progreso.areas.map(a => ({ ...a })) });
   }
+}
+
+/**
+ * Reanuda una corrida guardada sin volver a pedir el plan ni gastar otro uso diario: el job
+ * abierto al planear sigue vigente (6 h) y los pasos siguientes solo consumen sus llamadas.
+ * Devuelve `error` si el job caducó, agotó sus llamadas o ya no pertenece al usuario.
+ */
+export async function continuarGeneracion(
+  userPrompt: string,
+  opciones: OpcionesIterativas,
+  callbacks: CallbacksGeneracion,
+  plan: PlanGeneracion,
+  areas: AreaGeneracion[],
+  progresoInicial: ProgresoGeneracion,
+  propuestasIniciales: PropuestaIA[]
+): Promise<ResultadoIterativo> {
+  const { signal } = opciones;
+  const existentes = opciones.existentes ?? [];
+  const propuestas: PropuestaIA[] = [...propuestasIniciales];
+  const progreso: ProgresoGeneracion = {
+    ...progresoInicial,
+    areas: progresoInicial.areas.map(a => ({ ...a })),
+    esperando: undefined
+  };
+  if (!plan.job_id) {
+    return { estado: 'error', motivo: 'El trabajo guardado ya no es válido. Inicia una generación nueva.', plan, propuestas };
+  }
+  // Índice de duplicados: lo existente más lo ya generado en esta corrida, para no repetir al reanudar.
+  const indice = new IndiceDuplicados();
+  existentes.forEach(r => indice.agregar(r.enunciado, r.codigo));
+  propuestas.forEach(p => indice.agregar(p.name, `otra propuesta (${p.area})`));
+  const secuencia = { valor: propuestasIniciales.length };
+  return await correrIterativo({
+    userPrompt,
+    plan,
+    areas,
+    alcance: plan.alcance,
+    jobId: plan.job_id,
+    existentes,
+    opciones,
+    signal,
+    callbacks,
+    progreso,
+    propuestas,
+    indice,
+    secuencia
+  });
 }
 
 function marcarDetenidas(progreso: ProgresoGeneracion) {

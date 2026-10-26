@@ -313,8 +313,9 @@ export default function RequerimientosPage() {
   const [carpetasElegidas, setCarpetasElegidas] = useState<string[]>([]);
   const [cantidadContexto, setCantidadContexto] = useState<number | null>(null);
   // Generación de varios requerimientos (KAN-40): la corrida y las propuestas a revisar viven en
-  // el hook; aquí solo se elige el alcance y se registran las elegidas.
-  const gen = useGeneracionIterativa();
+  // el hook, que ahora recuerda el estado en sessionStorage por proyecto para no perderlo al
+  // recargar; aquí solo se elige el alcance y se registran las elegidas.
+  const gen = useGeneracionIterativa(proyectoId);
   const propuestas = gen.propuestas;
   const [alcanceIA, setAlcanceIA] = useState<AlcanceGeneracion | 'auto'>('auto');
   const [profundidad, setProfundidad] = useState<Profundidad>('completa');
@@ -530,7 +531,7 @@ export default function RequerimientosPage() {
   };
 
   // Apertura de modal nuevo
-  const abrirNuevo = (despuesDe: Requerimiento | null) => {
+  const abrirNuevo = async (despuesDe: Requerimiento | null) => {
     if (!esMiembroProyecto) {
       toast.error('Solo los miembros del proyecto pueden registrar requerimientos');
       return;
@@ -541,6 +542,46 @@ export default function RequerimientosPage() {
     if (equiposProyecto.length === 0) {
       toast.error('Este proyecto no tiene equipos. Crea al menos uno antes de registrar requerimientos.');
       return;
+    }
+
+    // Si hay una generación guardada de esta sesión (p. ej. tras recargar la pestaña),
+    // se ofrece restaurarla o descartarla antes de abrir el modal.
+    if (proyectoId && gen.hayGuardado) {
+      const restaurar = await confirmar({
+        titulo: '¿Restaurar la generación previa?',
+        mensaje: 'Hay un mapa de áreas y propuestas de esta sesión que aún no se han registrado. Restaurar las sigue desde donde quedaron, sin gastar otro uso de IA diario.',
+        textoConfirmar: 'Restaurar'
+      });
+      if (restaurar) {
+        const datos = gen.aplicarGuardado();
+        if (datos) {
+          setAiPrompt(datos.userPrompt);
+          setProfundidad('completa');
+          setAlcanceIA(datos.opciones.alcance);
+          setEstrictez(datos.opciones.estrictez ?? ESTRICTEZ_POR_DEFECTO);
+          setEjemplos(datos.opciones.ejemplos ?? []);
+          // Mejor esfuerzo: recuperar la clasificación que se usó en la corrida guardada.
+          if (datos.opciones.tipo) {
+            const t = tiposReq.find(t => t.nombre === datos.opciones.tipo);
+            if (t) setFormData(prev => ({ ...prev, id_tipo_requerimiento: t.tipo_req }));
+          }
+          if (datos.opciones.pattern) {
+            const p = patrones.find(pt => pt.promt === datos.opciones.pattern);
+            if (p) setFormData(prev => ({ ...prev, id_patron_seleccionado: p.patron_id }));
+          }
+          setIsModalOpen(true);
+          void cargarContexto();
+          // Si la corrida iba en marcha al recargar, se reanuda desde las áreas pendientes.
+          if (gen.fase === 'generando' && gen.plan && gen.progreso) {
+            toast('Reanudando la generación desde donde quedó...');
+            await gen.continuar(datos.userPrompt, datos.opciones, existentesParaIA()).catch(err => {
+              toast.error(err instanceof AIError ? err.message : 'No se pudo reanudar la generación.');
+            });
+          }
+        }
+        return;
+      }
+      gen.limpiarGuardado();
     }
     setEditingReq(null);
     const codigoBase = despuesDe ? codigoDe(despuesDe) : null;
@@ -2016,7 +2057,7 @@ export default function RequerimientosPage() {
                     <button
                       type="button"
                       onClick={handleAIGenerate}
-                      disabled={isAILoading || (gen.ocupado && gen.fase !== 'revisando-plan') || !aiPrompt.trim()}
+                      disabled={isAILoading || (gen.fase !== 'inactivo' && gen.fase !== 'revisando-plan') || !aiPrompt.trim()}
                       className="px-3.5 min-h-8 bg-brand-solid hover:bg-brand-solid-hover text-on-solid rounded-ui text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                     >
                       {isAILoading || gen.fase === 'planificando' || gen.fase === 'generando' ? (
