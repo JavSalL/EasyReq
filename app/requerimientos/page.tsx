@@ -77,6 +77,7 @@ import PanelGeneracionIterativa, {
   type PropuestaRevisable
 } from '@/components/requerimientos/GeneracionIterativa';
 import type { AlcanceGeneracion } from '@/lib/ai-actions';
+import { prepararRegistro } from '@/lib/seleccion-propuestas';
 import { irA, leerNavegacion, suscribirNavegacion, type VistaProyecto } from '@/lib/navegacion-proyecto';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
@@ -346,6 +347,8 @@ export default function RequerimientosPage() {
   const [alcanceIA, setAlcanceIA] = useState<AlcanceGeneracion | 'auto'>('auto');
   const [profundidad, setProfundidad] = useState<Profundidad>('completa');
   const [registrandoMasivo, setRegistrandoMasivo] = useState<{ hechos: number; total: number } | null>(null);
+  // Evita que un doble clic o un Enter repetido lancen dos registros del mismo lote.
+  const registrandoMasivoRef = useRef(false);
 
   // Al registrar varios requerimientos seguidos: "guardar y añadir otro" y
   // recordar la clasificación del último para no volver a elegirla.
@@ -671,7 +674,12 @@ export default function RequerimientosPage() {
     e.preventDefault();
     if (esMasivo) {
       crearOtroRef.current = false;
-      if (!gen.ocupado && propuestas?.some(p => p.elegida)) void registrarPropuestas();
+      if (registrandoMasivoRef.current || gen.ocupado) return;
+      if (propuestas?.some(p => p.elegida && p.texto.trim())) {
+        void registrarPropuestas();
+      } else {
+        toast.error('Selecciona al menos un requerimiento para registrar');
+      }
       return;
     }
     const crearOtro = crearOtroRef.current;
@@ -848,6 +856,8 @@ export default function RequerimientosPage() {
   // El modo masivo no aplica al editar ni al insertar en una posición concreta
   const masivoDisponible = !editingReq && !insertarDespuesDe;
   const esMasivo = modoMasivo && masivoDisponible;
+  // Mismo criterio que el envío: seleccionadas, con texto y sin claves repetidas.
+  const cantidadSeleccionada = prepararRegistro(propuestas ?? []).elegidas.length;
 
   /** Tipo del catálogo que corresponde a la categoría FURPS que devolvió la IA. */
   const tipoDesdeFurps = (furps?: AIRequirement['type_furps']) => {
@@ -962,24 +972,51 @@ export default function RequerimientosPage() {
   };
 
   /**
-   * Registra las propuestas elegidas con la clasificación del formulario. Los números se reservan
-   * de una vez y los documentos se escriben por lotes (`crearRequerimientosEnLote`); el área de
-   * la IA se guarda como módulo.
+   * Registra únicamente las propuestas seleccionadas con la clasificación del formulario. Los
+   * números se reservan de una vez y los documentos se escriben por lotes
+   * (`crearRequerimientosEnLote`); el área de la IA se guarda como módulo.
+   *
+   * La selección vive en las propuestas, no en un estado aparte: lo que se manda al servicio es
+   * exactamente lo que el usuario marcó. `registrandoMasivoRef` cubre el doble clic y el Enter
+   * repetido antes de que React alcance a deshabilitar el botón.
    */
   const registrarPropuestas = async () => {
-    const elegidas = (propuestas ?? []).filter(p => p.elegida && p.texto.trim());
+    if (registrandoMasivoRef.current) return;
+
     if (!esMiembroProyecto || !uid) {
       toast.error('No tienes permiso para registrar requerimientos en este proyecto');
       return;
     }
-    if (elegidas.length === 0) {
+
+    const { elegidas, sinTexto } = prepararRegistro(propuestas ?? []);
+    if (elegidas.length === 0 && sinTexto === 0) {
       toast.error('Elige al menos un requerimiento para registrar');
+      return;
+    }
+    if (sinTexto > 0) {
+      toast.error(
+        `Hay ${sinTexto} ${sinTexto === 1 ? 'propuesta seleccionada' : 'propuestas seleccionadas'} sin texto. Escribe el enunciado o desmárcalas antes de registrar.`
+      );
       return;
     }
     if (!formData.id_equipo) {
       toast.error('Elige el equipo al que pertenecen los requerimientos: su líder es quien los aprueba.');
       return;
     }
+
+    const totalPropuestas = (propuestas ?? []).length;
+    const totalTexto = `${totalPropuestas} ${totalPropuestas === 1 ? 'propuesta' : 'propuestas'}`;
+    registrandoMasivoRef.current = true;
+    const ok = await confirmar({
+      titulo: `¿Registrar ${elegidas.length} ${elegidas.length === 1 ? 'requerimiento' : 'requerimientos'}?`,
+      mensaje: `Se registrarán ${elegidas.length} de ${totalTexto}. Las que no seleccionaste no se registrarán. Quedarán pendientes de aprobación del líder de ${nombreEquipoDe(formData.id_equipo)}.`,
+      textoConfirmar: 'Registrar'
+    });
+    if (!ok) {
+      registrandoMasivoRef.current = false;
+      return;
+    }
+
     const idIA = idGeneradoConIA();
     const moduloDe = (p: PropuestaRevisable) => {
       const area = p.area.trim().slice(0, 120);
@@ -1007,7 +1044,9 @@ export default function RequerimientosPage() {
       // Las que ya se registraron salen de la lista para no duplicarlas al reintentar
       gen.quitar(new Set(elegidas.slice(0, creados.length).map(p => p.clave)));
       if (logsFallidos > 0) {
-        toast.error(`${logsFallidos} requerimientos se registraron sin su entrada de historial.`);
+        toast.error(
+          `${logsFallidos} ${logsFallidos === 1 ? 'requerimiento se registró' : 'requerimientos se registraron'} sin su entrada de historial.`
+        );
       }
       if (error) {
         console.error(error);
@@ -1015,7 +1054,7 @@ export default function RequerimientosPage() {
         return;
       }
       toast.success(
-        `${creados.length} requerimientos registrados. Quedan pendientes de que los apruebe el líder de ${nombreEquipoDe(formData.id_equipo)}.`
+        `${creados.length} ${creados.length === 1 ? 'requerimiento registrado' : 'requerimientos registrados'}. Quedan pendientes de que los apruebe el líder de ${nombreEquipoDe(formData.id_equipo)}.`
       );
       ultimaClasificacionRef.current = {
         id_tipo_requerimiento: formData.id_tipo_requerimiento,
@@ -1034,6 +1073,7 @@ export default function RequerimientosPage() {
       console.error(err);
       toast.error(mensajeError(err, 'No se pudieron registrar los requerimientos'));
     } finally {
+      registrandoMasivoRef.current = false;
       setRegistrandoMasivo(null);
       fetchRequerimientos();
     }
@@ -2441,14 +2481,15 @@ export default function RequerimientosPage() {
               <button
                 type="button"
                 onClick={registrarPropuestas}
-                disabled={registrandoMasivo !== null || gen.ocupado || !propuestas?.some(p => p.elegida)}
+                disabled={registrandoMasivo !== null || gen.ocupado || cantidadSeleccionada === 0}
                 className={btnPrimario}
+                title={cantidadSeleccionada === 0 ? 'Selecciona al menos un requerimiento con texto' : undefined}
               >
                 <Save size={16} />
                 {registrandoMasivo
                   ? `Registrando ${registrandoMasivo.hechos} de ${registrandoMasivo.total}...`
-                  : propuestas?.some(p => p.elegida)
-                    ? `Registrar ${propuestas.filter(p => p.elegida).length} requerimientos`
+                  : cantidadSeleccionada > 0
+                    ? `Registrar ${cantidadSeleccionada} ${cantidadSeleccionada === 1 ? 'requerimiento' : 'requerimientos'}`
                     : 'Registrar requerimientos'}
               </button>
             ) : (
