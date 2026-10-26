@@ -11,11 +11,18 @@ import {
   arrayUnion,
   arrayRemove
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { Proyecto, UUID, MiembroEquipo, QuienCreaEquipos, QuienAgregaMiembros } from '../database.types';
 import { getTiposSistema } from './catalogos-service';
 import { getProyectoEquipos, getMiembrosEquipo } from './equipos-service';
 import { eliminarContextoDeProyecto } from './contexto-service';
+import {
+  asegurarAccesoComentariosProyecto,
+  borrarAccesosComentariosProyecto,
+  borrarComentariosDeRequerimiento,
+  listarAccesosComentariosProyecto,
+  listarComentariosDeRequerimiento
+} from './comentarios-service';
 
 // ==========================================
 // PROYECTOS
@@ -177,6 +184,29 @@ export async function quitarMiembroProyecto(id_proyecto: string, id_usuario: UUI
 export async function deleteProyecto(id: string): Promise<void> {
   // El contexto va primero: sus reglas comprueban la membresía leyendo el proyecto, que aún debe existir
   await eliminarContextoDeProyecto(id);
+
+  // Un miembro que entra por un equipo necesita su puntero de comentarios para
+  // poder listar los hilos antes de borrarlos. Se asegura aquí para que el
+  // cascado no falle a mitad; si no es miembro, el listado de comentarios
+  // denegará y la operación se detendrá antes de borrar nada.
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    await asegurarAccesoComentariosProyecto(id, uid);
+  }
+
+  // Requerimientos e hilos se listan antes de borrar el proyecto. La lectura de
+  // comentarios resuelve la membresía leyendo el proyecto del requerimiento; si el
+  // proyecto ya no existe, la consulta se deniega y los hilos quedarían sin forma
+  // de enumerarse. El borrado posterior sí funciona por la rama huérfana.
+  const reqSnap = await getDocs(query(collection(db, 'requerimiento'), where('id_proyecto', '==', id)));
+  const hilos = await Promise.all(
+    reqSnap.docs.map(d => listarComentariosDeRequerimiento(d.id))
+  );
+  // Los punteros de acceso a comentarios también se listan antes: después de
+  // borrar el proyecto el `delete` funciona por la rama huérfana, pero el listado
+  // se hace aquí para no depender de una subcolección cuyo padre ya no existe.
+  const accesos = await listarAccesosComentariosProyecto(id);
+
   await deleteDoc(doc(db, 'proyecto', id));
   // Los equipos pertenecen al proyecto: se eliminan con él (las reglas lo permiten
   // una vez que el proyecto ya no existe), junto con sus miembros e invitaciones.
@@ -199,10 +229,20 @@ export async function deleteProyecto(id: string): Promise<void> {
   for (const d of requestsSnap.docs) {
     await deleteDoc(d.ref);
   }
-  const reqSnap = await getDocs(query(collection(db, 'requerimiento'), where('id_proyecto', '==', id)));
   for (const d of reqSnap.docs) {
     await deleteDoc(d.ref);
   }
+  // Los comentarios van DESPUÉS, no en el mismo bucle, y el orden no es casual:
+  // Firestore no hace cascada y sus reglas solo permiten borrar un comentario cuyo
+  // requerimiento ya no existe, porque sin él no hay cómo resolver a qué proyecto
+  // pertenece. El hilo ya se listó antes de borrar el proyecto; aquí solo se borran
+  // las referencias. El detalle está en `listarComentariosDeRequerimiento`.
+  for (const hilo of hilos) {
+    await borrarComentariosDeRequerimiento(hilo);
+  }
+  // Los punteros ya no tienen proyecto al que apuntar; se borran por la rama
+  // huérfana de su regla, igual que los comentarios.
+  await borrarAccesosComentariosProyecto(accesos);
 }
 
 // ==========================================
