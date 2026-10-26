@@ -9,7 +9,7 @@ import {
   where, 
   documentId,
   writeBatch, 
-  runTransaction 
+  runTransaction
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
@@ -290,6 +290,86 @@ export async function actualizarRolesMiembro(id_equipo: string, id_usuario: stri
 export async function removeMiembroEquipo(id_equipo: string, id_usuario: string): Promise<void> {
   const docId = `${id_equipo}_${id_usuario}`;
   await deleteDoc(doc(db, 'miembros_equipo', docId));
+}
+
+/**
+ * Devuelve el ID de un equipo vinculado al proyecto del que el usuario es
+ * miembro, o `null` si no hay ninguno.
+ *
+ * Mira las relaciones reales (`proyecto_equipos` + `miembros_equipo`) y no una
+ * caché en el proyecto. Además exige que los IDs de documento sean los
+ * compuestos que validan las reglas (`{proyecto}_{equipo}` y `{equipo}_{uid}`):
+ * un documento legacy con ID automático no sirve para autorizar aunque sus
+ * campos digan lo contrario.
+ */
+export async function equipoVinculadoDelUsuario(
+  proyectoId: string,
+  uid: string
+): Promise<string | null> {
+  if (!proyectoId || !uid) return null;
+  try {
+    const [vinculosSnap, misMembresiasSnap] = await Promise.all([
+      getDocs(query(collection(db, 'proyecto_equipos'), where('id_proyecto', '==', proyectoId))),
+      getDocs(query(collection(db, 'miembros_equipo'), where('id_usuario', '==', uid)))
+    ]);
+    if (vinculosSnap.empty || misMembresiasSnap.empty) return null;
+
+    const equipoIdsVinculados = new Set<string>();
+    vinculosSnap.forEach((v) => {
+      const dataV = v.data() as { id_equipo?: string };
+      if (dataV.id_equipo && v.id === `${proyectoId}_${dataV.id_equipo}`) {
+        equipoIdsVinculados.add(dataV.id_equipo);
+      }
+    });
+    if (equipoIdsVinculados.size === 0) return null;
+
+    for (const m of misMembresiasSnap.docs) {
+      const dataM = m.data() as { id_equipo?: string };
+      const idEquipo = dataM.id_equipo;
+      if (
+        idEquipo &&
+        m.id === `${idEquipo}_${uid}` &&
+        equipoIdsVinculados.has(idEquipo)
+      ) {
+        return idEquipo;
+      }
+    }
+    return null;
+  } catch (e) {
+    console.error('Error comprobando membresía por equipo vinculado:', e);
+    return null;
+  }
+}
+
+/** ¿Es el usuario miembro de algún equipo vinculado al proyecto? */
+export async function esMiembroPorEquipoVinculado(
+  proyectoId: string,
+  uid: string
+): Promise<boolean> {
+  return (await equipoVinculadoDelUsuario(proyectoId, uid)) !== null;
+}
+
+/**
+ * Comprueba un equipo concreto: el usuario debe seguir siendo miembro y el
+ * equipo debe seguir vinculado al proyecto. Es la misma comprobación que hacen
+ * las reglas al leer el puntero de acceso a comentarios.
+ */
+export async function esMiembroDeEquipoVinculadoAProyecto(
+  proyectoId: string,
+  equipoId: string,
+  uid: string
+): Promise<boolean> {
+  if (!proyectoId || !equipoId || !uid) return false;
+  try {
+    const [miembroSnap, vinculoSnap] = await Promise.all([
+      getDoc(doc(db, 'miembros_equipo', `${equipoId}_${uid}`)),
+      getDoc(doc(db, 'proyecto_equipos', `${proyectoId}_${equipoId}`))
+    ]);
+    return miembroSnap.exists() && vinculoSnap.exists();
+  } catch (e) {
+    console.error('Error comprobando el vínculo del equipo con el proyecto:', e);
+    return false;
+  }
 }
 
 // ==========================================
