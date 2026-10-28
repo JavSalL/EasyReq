@@ -286,9 +286,22 @@ export function useGeneracionIterativa(proyectoId: string | null) {
   const continuar = useCallback(async (
     userPrompt: string,
     opciones: OpcionesGeneracion & { alcance: AlcanceGeneracion | 'auto' },
-    existentes: RequerimientoExistente[]
+    existentes: RequerimientoExistente[],
+    /** Datos restaurados de sessionStorage. Se pasan explícitamente porque el setState de
+     *  `aplicarGuardado` aún no se ha reflejado en el estado del hook en este mismo render. */
+    datosParaReanudar?: {
+      plan: PlanGeneracion;
+      areasPlan: AreaGeneracion[];
+      progreso: ProgresoGeneracion;
+      propuestas: PropuestaRevisable[];
+    }
   ): Promise<ResultadoIterativo> => {
-    if (!plan || !progreso || areasPlan.length === 0 || !propuestas) {
+    const planActual = datosParaReanudar?.plan ?? plan;
+    const areasPlanActual = datosParaReanudar?.areasPlan ?? areasPlan;
+    const progresoActual = datosParaReanudar?.progreso ?? progreso;
+    const propuestasActual = datosParaReanudar?.propuestas ?? propuestas;
+
+    if (!planActual || !progresoActual || areasPlanActual.length === 0 || !propuestasActual) {
       return { estado: 'error', motivo: 'No hay una corrida guardada para reanudar.', plan: null, propuestas: [] };
     }
     controladorRef.current?.abort();
@@ -302,7 +315,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
     setFase('generando');
     setResultado(null);
     try {
-      const propuestasIA: PropuestaIA[] = propuestas.map(p => ({
+      const propuestasIA: PropuestaIA[] = propuestasActual.map(p => ({
         clave: p.clave,
         name: p.name,
         area: p.area,
@@ -319,7 +332,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
         userPrompt,
         { ...opciones, alcance: opciones.alcance, existentes, signal: controlador.signal },
         {
-          revisarPlan: async () => areasPlan,
+          revisarPlan: async () => areasPlanActual,
           onProgreso: setProgreso,
           onPropuestas: nuevas =>
             setPropuestas(prev => ordenarPorArea([...(prev ?? []), ...nuevas.map(aRevisable)], ordenAreasRef.current)),
@@ -332,7 +345,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
             }) ?? null);
           }
         },
-        plan, areasPlan, progreso, propuestasIA
+        planActual, areasPlanActual, progresoActual, propuestasIA
       );
       resolverPlanRef.current = null;
       if (controladorRef.current === controlador) controladorRef.current = null;

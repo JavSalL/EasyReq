@@ -572,9 +572,16 @@ export default function RequerimientosPage() {
           setIsModalOpen(true);
           void cargarContexto();
           // Si la corrida iba en marcha al recargar, se reanuda desde las áreas pendientes.
-          if (gen.fase === 'generando' && gen.plan && gen.progreso) {
+          // Se usa `datos` (no `gen.fase/plan/progreso`) porque `aplicarGuardado` hace setState
+          // que aún no se ha reflejado en el estado del hook en este mismo render.
+          if (datos.fase === 'generando' && datos.plan && datos.progreso && datos.propuestas) {
             toast('Reanudando la generación desde donde quedó...');
-            await gen.continuar(datos.userPrompt, datos.opciones, existentesParaIA()).catch(err => {
+            await gen.continuar(datos.userPrompt, datos.opciones, existentesParaIA(), {
+              plan: datos.plan,
+              areasPlan: datos.areasPlan,
+              progreso: datos.progreso,
+              propuestas: datos.propuestas
+            }).catch(err => {
               toast.error(err instanceof AIError ? err.message : 'No se pudo reanudar la generación.');
             });
           }
