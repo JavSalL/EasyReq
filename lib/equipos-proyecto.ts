@@ -45,6 +45,19 @@ export function esMiembroDelProyecto(proyecto: PermisosProyecto | null | undefin
 }
 
 /**
+ * ¿Es el creador del proyecto? Espejo de `isProjectCreator` de `firestore.rules`,
+ * que desde KAN-27 decide quién puede borrar comentarios ajenos en el hilo de un
+ * requerimiento.
+ */
+export function esCreadorDelProyecto(
+  proyecto: PermisosProyecto | null | undefined,
+  uid: string | null | undefined
+): boolean {
+  if (!proyecto || !uid) return false;
+  return proyecto.id_creador === uid;
+}
+
+/**
  * ¿Puede este usuario crear equipos en el proyecto? El creador siempre; los demás según el
  * permiso que el creador configuró, y siempre que sean miembros. Es la misma regla que aplica
  * `firestore.rules` (función `puedeCrearEquipoEnProyecto`): si se cambia una, hay que cambiar la otra.
