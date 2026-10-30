@@ -9,6 +9,7 @@ interface OpcionesConfirmacion {
   titulo: string;
   mensaje: React.ReactNode;
   textoConfirmar?: string;
+  textoCancelar?: string;
   /** Acción destructiva: botón rojo e ícono de advertencia. */
   peligro?: boolean;
 }
@@ -60,7 +61,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
         </ModalBody>
         <ModalFooter>
           <button type="button" onClick={() => responder(false)} className={btnSecundario}>
-            Cancelar
+            {opciones?.textoCancelar ?? 'Cancelar'}
           </button>
           <button
             type="button"

@@ -234,6 +234,10 @@ export interface ProgresoArea {
   nuevas: number;
   /** Candidatas descartadas por repetir algo existente o ya generado. */
   descartadas: number;
+  /** Subtemas pendientes devueltos por la IA en el último lote de esta área (para reanudar). */
+  pendiente?: string[];
+  /** Lotes consecutivos con pocas propuestas nuevas (para reanudar). */
+  flojos?: number;
   mensaje?: string;
 }
 
@@ -246,11 +250,20 @@ export interface ProgresoGeneracion {
   esperando?: number;
 }
 
+export interface EstadoInicialIterativo {
+  plan: PlanGeneracion;
+  areas: AreaGeneracion[];
+  progreso: ProgresoGeneracion;
+  propuestas: PropuestaIA[];
+}
+
 export interface OpcionesIterativas extends OpcionesGeneracion {
   /** 'auto' deja que la IA decida si el pedido es del sistema completo o de un módulo. */
   alcance?: AlcanceGeneracion | 'auto';
   existentes?: RequerimientoExistente[];
   signal?: AbortSignal;
+  /** Estado previo para reanudar una corrida interrumpida sin pedir un nuevo plan. */
+  estadoInicial?: EstadoInicialIterativo;
 }
 
 export interface CallbacksGeneracion {
@@ -270,6 +283,7 @@ export interface ResultadoIterativo {
   /** completo: terminó; cancelado: el usuario lo detuvo; limite: se agotó el presupuesto; error: falló. */
   estado: 'completo' | 'cancelado' | 'limite' | 'error' | 'invalido';
   motivo?: string;
+  codigoError?: AIErrorCode;
   plan: PlanGeneracion | null;
   propuestas: PropuestaIA[];
 }
@@ -297,7 +311,7 @@ const MAX_GENERADOS = 800;
 const MAX_EMBED_EXISTENTES = 600;
 
 const normalizarModulo = (texto: string) =>
-  texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 /** "REQ-001 | Pagos | enunciado", recortado a `max` caracteres de enunciado. */
 const lineaExistente = (r: RequerimientoExistente, max: number) =>
@@ -403,23 +417,10 @@ export async function planificarGeneracion(userPrompt: string, opciones: Opcione
 }
 
 /**
- * Genera todos los requerimientos del pedido (el sistema completo o un módulo) iterando por áreas.
- *
- * 1. Plan: la IA propone el mapa de áreas y el usuario lo edita (`revisarPlan`).
- * 2. Por área, lotes de ~20 hasta que la IA la dé por completa, o dos lotes seguidos aporten menos
- *    de 3 propuestas nuevas, o se llegue a 8 lotes. Las áreas avanzan por rondas para que el
- *    presupuesto de llamadas alcance a todas.
- * 3. Cobertura: hasta 3 revisiones que solo añaden lo que falte.
- *
- * Cada candidata se compara con los requerimientos existentes y con lo ya generado: si es casi
- * igual (≥ 0,85) se descarta, si se parece (0,6-0,85) se marca como posible duplicado. Cancelar
- * (con `signal`) conserva lo generado hasta ese momento.
- */
-/**
  * Corre los pasos 2 a 4 de una corrida ya planeada: lotes por área, cobertura y duplicados por
  * significado. `progreso` y `propuestas` vienen ya inicializados (de cero al planear una corrida
  * nueva, o desde lo guardado al reanudar una interrumpida) y se mutan a medida que avanza. Las
- * áreas cuyo estado no es `pendiente` se respetan: la corrida se reanuda desde las que quedaron.
+ * áreas cuyo estado ya es `completa` se respetan: la corrida se reanuda desde las que quedaron.
  */
 async function correrIterativo(ctx: {
   userPrompt: string;
@@ -439,7 +440,10 @@ async function correrIterativo(ctx: {
   const { userPrompt, plan, areas, alcance, jobId, existentes, opciones, signal, callbacks, progreso, propuestas, indice } = ctx;
   const secuencia = ctx.secuencia;
   const nombres = areas.map(a => a.nombre);
-  const avisar = () => callbacks.onProgreso?.({ ...progreso, areas: progreso.areas.map(a => ({ ...a })) });
+  const avisar = () => callbacks.onProgreso?.({
+    ...progreso,
+    areas: progreso.areas.map(a => ({ ...a, ...(a.pendiente ? { pendiente: [...a.pendiente] } : {}) }))
+  });
   const onEspera = (segundos: number | undefined) => {
     progreso.esperando = segundos;
     avisar();
@@ -480,14 +484,31 @@ async function correrIterativo(ctx: {
   };
 
   try {
-    // 2. Lotes por área, por rondas
-    progreso.fase = 'areas';
-    avisar();
-    // Las áreas ya terminadas no se tocan: se reanuda desde las que quedaron pendientes.
-    const estado = areas.map((_, i) => {
-      const prev = progreso.areas[i];
-      return { pendiente: [] as string[], flojos: 0, terminada: prev && prev.estado !== 'pendiente' };
+    // 2. Lotes por área, por rondas.
+    // Al reanudar tras una recarga, cualquier área que haya quedado a medias ('generando',
+    // 'detenida' o 'error') vuelve a 'pendiente' conservando sus lotes hechos y su lista `pendiente`.
+    const estado = areas.map((area, i) => {
+      let prev = progreso.areas[i];
+      if (!prev) {
+        prev = { nombre: area.nombre, estado: 'pendiente', lotes: 0, nuevas: 0, descartadas: 0 };
+        progreso.areas[i] = prev;
+      }
+      const yaCompleta = prev.estado === 'completa';
+      if (!yaCompleta) {
+        prev.estado = 'pendiente';
+        prev.mensaje = undefined;
+      }
+      return {
+        pendiente: Array.isArray(prev.pendiente) ? [...prev.pendiente] : ([] as string[]),
+        flojos: prev.flojos ?? 0,
+        terminada: yaCompleta
+      };
     });
+
+    progreso.fase = 'areas';
+    progreso.total = propuestas.length;
+    avisar();
+
     // Lo comparten las áreas que corren en paralelo: un objeto para que el cierre lo vea al día.
     const control: { limite: boolean; error: AIError | null } = { limite: false, error: null };
 
@@ -534,9 +555,12 @@ async function correrIterativo(ctx: {
         p.descartadas += descartadas;
         e.pendiente = Array.isArray(lote?.pendiente) ? lote.pendiente : [];
         e.flojos = nuevas < MIN_NUEVAS_POR_LOTE ? e.flojos + 1 : 0;
+        p.pendiente = e.pendiente;
+        p.flojos = e.flojos;
         if (lote?.completo || e.flojos >= MAX_LOTES_FLOJOS || p.lotes >= MAX_LOTES_POR_AREA) {
           e.terminada = true;
           p.estado = 'completa';
+          p.pendiente = [];
         } else {
           p.estado = 'pendiente';
         }
@@ -568,7 +592,7 @@ async function correrIterativo(ctx: {
     }
     if (control.error) {
       marcarDetenidas(progreso);
-      return { estado: 'error', motivo: control.error.message, plan, propuestas };
+      return { estado: 'error', motivo: control.error.message, codigoError: control.error.code, plan, propuestas };
     }
 
     // 3. Cobertura en ciclo, mientras encuentre algo y quede presupuesto
@@ -607,6 +631,9 @@ async function correrIterativo(ctx: {
       } catch (err) {
         if (esCancelacion(err) || signal?.aborted) break;
         if (err instanceof AIError && err.code === 'JOB_LIMIT') control.limite = true;
+        if (err instanceof AIError && err.code === 'JOB_INVALID') {
+          return { estado: 'error', motivo: err.message, codigoError: err.code, plan, propuestas };
+        }
         // Sin la revisión, lo generado sigue siendo válido.
         break;
       }
@@ -659,11 +686,21 @@ async function correrIterativo(ctx: {
   }
 }
 
+/**
+ * Genera todos los requerimientos del pedido (el sistema completo o un módulo) iterando por áreas.
+ * Si recibe `opciones.estadoInicial`, reanuda la corrida desde el estado provisto sin volver a
+ * pedir un plan ni consumir otro uso diario.
+ */
 export async function runIterativeGeneration(
   userPrompt: string,
   opciones: OpcionesIterativas,
   callbacks: CallbacksGeneracion
 ): Promise<ResultadoIterativo> {
+  if (opciones.estadoInicial) {
+    const { plan, areas, progreso, propuestas } = opciones.estadoInicial;
+    return continuarGeneracion(userPrompt, opciones, callbacks, plan, areas, progreso, propuestas);
+  }
+
   const { signal } = opciones;
   const existentes = opciones.existentes ?? [];
   const propuestas: PropuestaIA[] = [];
@@ -715,6 +752,7 @@ export async function runIterativeGeneration(
     return {
       estado: 'error',
       motivo: err instanceof AIError ? err.message : 'No se pudo conectar con el servicio de IA. Inténtalo de nuevo.',
+      codigoError: err instanceof AIError ? err.code : undefined,
       plan,
       propuestas
     };
@@ -744,11 +782,20 @@ export async function continuarGeneracion(
   const propuestas: PropuestaIA[] = [...propuestasIniciales];
   const progreso: ProgresoGeneracion = {
     ...progresoInicial,
-    areas: progresoInicial.areas.map(a => ({ ...a })),
+    areas: progresoInicial.areas.map(a => ({
+      ...a,
+      ...(a.pendiente ? { pendiente: [...a.pendiente] } : {})
+    })),
     esperando: undefined
   };
   if (!plan.job_id) {
-    return { estado: 'error', motivo: 'El trabajo guardado ya no es válido. Inicia una generación nueva.', plan, propuestas };
+    return {
+      estado: 'error',
+      motivo: 'El trabajo guardado ya no es válido. Inicia una generación nueva.',
+      codigoError: 'JOB_INVALID',
+      plan,
+      propuestas
+    };
   }
   // Índice de duplicados: lo existente más lo ya generado en esta corrida, para no repetir al reanudar.
   const indice = new IndiceDuplicados();
