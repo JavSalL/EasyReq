@@ -73,6 +73,7 @@ import ContextoDelProyecto from '@/components/proyectos/ContextoDelProyecto';
 import ControlEstrictez from '@/components/requerimientos/ControlEstrictez';
 import PanelGeneracionIterativa, {
   useGeneracionIterativa,
+  type OpcionesGuardadas,
   type Profundidad,
   type PropuestaRevisable
 } from '@/components/requerimientos/GeneracionIterativa';
@@ -341,8 +342,9 @@ export default function RequerimientosPage() {
   const [carpetasElegidas, setCarpetasElegidas] = useState<string[]>([]);
   const [cantidadContexto, setCantidadContexto] = useState<number | null>(null);
   // Generación de varios requerimientos (KAN-40): la corrida y las propuestas a revisar viven en
-  // el hook; aquí solo se elige el alcance y se registran las elegidas.
-  const gen = useGeneracionIterativa();
+  // el hook, que ahora recuerda el estado en sessionStorage por proyecto para no perderlo al
+  // recargar; aquí solo se elige el alcance y se registran las elegidas.
+  const gen = useGeneracionIterativa(proyectoId);
   const propuestas = gen.propuestas;
   const [alcanceIA, setAlcanceIA] = useState<AlcanceGeneracion | 'auto'>('auto');
   const [profundidad, setProfundidad] = useState<Profundidad>('completa');
@@ -371,6 +373,19 @@ export default function RequerimientosPage() {
     },
     () => setIsModalOpen(false)
   );
+
+  // Aviso nativo del navegador antes de recargar o cerrar la pestaña si hay una generación en curso
+  // o propuestas sin registrar (KAN-42 / KAN-45).
+  const tieneTrabajoIAPendiente = gen.ocupado || (propuestas?.length ?? 0) > 0;
+  useEffect(() => {
+    if (!tieneTrabajoIAPendiente) return;
+    const alSalir = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', alSalir);
+    return () => window.removeEventListener('beforeunload', alSalir);
+  }, [tieneTrabajoIAPendiente]);
 
   // Cerrar el modal detiene una generación en marcha (no sigue gastando llamadas de fondo)
   const { detener: detenerGeneracion } = gen;
@@ -559,8 +574,135 @@ export default function RequerimientosPage() {
     return estaPendienteDeAprobacion(nombre) || estaRechazado(nombre);
   };
 
+  /** Requerimientos del proyecto en la forma compacta que la IA usa para no repetirlos. */
+  const existentesParaIA = useCallback(() =>
+    [...requerimientos]
+      .sort((a, b) => (a.numero ?? Number.MAX_SAFE_INTEGER) - (b.numero ?? Number.MAX_SAFE_INTEGER))
+      .map(r => ({ codigo: codigoDe(r) ?? 'REQ-?', modulo: r.modulo ?? null, enunciado: r.enunciado })),
+  [requerimientos]);
+
+  /**
+   * Construye el estado inicial de `formData` para un requerimiento nuevo, respetando la última
+   * clasificación usada en la sesión o las opciones de una corrida guardada.
+   */
+  const construirFormInicial = useCallback((opcionesGuardadas?: OpcionesGuardadas) => {
+    const primerModelo = modelos[0]?.id || '';
+    const primerPatron = patrones.find(p => p.id_modelo === primerModelo);
+    const previa = ultimaClasificacionRef.current;
+    const sigueExistiendo = (lista: Array<string>, id?: string) => !!id && lista.includes(id);
+
+    let modeloInicial = sigueExistiendo(modelos.map(m => m.id), previa?.id_modelo) ? previa!.id_modelo! : primerModelo;
+    let patronInicial =
+      patrones.find(p => p.patron_id === previa?.id_patron_seleccionado && p.id_modelo === modeloInicial) ??
+      patrones.find(p => p.id_modelo === modeloInicial) ??
+      primerPatron;
+
+    if (opcionesGuardadas?.pattern) {
+      const patronGuardado = patrones.find(pt => pt.promt === opcionesGuardadas.pattern);
+      if (patronGuardado) {
+        patronInicial = patronGuardado;
+        if (patronGuardado.id_modelo) modeloInicial = patronGuardado.id_modelo;
+      }
+    }
+
+    let tipoInicial = sigueExistiendo(tiposReq.map(t => t.tipo_req), previa?.id_tipo_requerimiento)
+      ? previa!.id_tipo_requerimiento!
+      : tiposReq[0]?.tipo_req || '';
+
+    if (opcionesGuardadas) {
+      const tipoGuardado = opcionesGuardadas.tipo ? tiposReq.find(t => t.nombre === opcionesGuardadas.tipo) : null;
+      // En modo masivo, sin tipo explícito significa "Todos (la IA los clasifica)" ('')
+      tipoInicial = tipoGuardado ? tipoGuardado.tipo_req : '';
+    }
+
+    return {
+      ...FORM_VACIO,
+      id_tipo_requerimiento: tipoInicial,
+      id_modalidad: sigueExistiendo(modalidades.map(m => m.id), previa?.id_modalidad)
+        ? previa!.id_modalidad!
+        : modalidades[0]?.id || '',
+      id_modelo: modeloInicial,
+      id_patron_seleccionado: patronInicial?.patron_id || '',
+      id_equipo: equiposProyecto.length === 1
+        ? equiposProyecto[0].equipo_id
+        : sigueExistiendo(equiposProyecto.map(e => e.equipo_id), previa?.id_equipo)
+          ? previa!.id_equipo!
+          : ''
+    };
+  }, [modelos, patrones, tiposReq, modalidades, equiposProyecto]);
+
+  /**
+   * Pregunta al usuario si desea restaurar o descartar la generación guardada en sessionStorage.
+   * Si elige restaurar, abre el modal en modo masivo con el estado recuperado y reanuda la corrida
+   * si había quedado en curso. Devuelve `true` si se restauró.
+   */
+  const ofrecerRestaurarGeneracion = useCallback(async (): Promise<boolean> => {
+    if (!proyectoId || !gen.hayGuardado) return false;
+    const estadoGuardado = gen.guardado;
+    const ibaEnMarcha = estadoGuardado?.fase === 'generando';
+    const cantPropuestas = estadoGuardado?.propuestas?.length ?? 0;
+
+    const restaurar = await confirmar({
+      titulo: ibaEnMarcha ? '¿Reanudar la generación interrumpida?' : '¿Restaurar la generación previa?',
+      mensaje: ibaEnMarcha
+        ? `La generación de requerimientos se interrumpió al recargar la página${cantPropuestas > 0 ? ` (llevaba ${cantPropuestas} propuestas)` : ''}. Puedes reanudarla desde el área en que quedó sin gastar otro uso diario de IA, o descartarla.`
+        : 'Hay un mapa de áreas y propuestas de esta sesión que aún no se han registrado. Puedes restaurarlos para continuar donde quedaste o descartarlos.',
+      textoConfirmar: ibaEnMarcha ? 'Reanudar generación' : 'Restaurar',
+      textoCancelar: 'Descartar'
+    });
+
+    if (!restaurar) {
+      gen.limpiarGuardado();
+      return false;
+    }
+
+    const datos = gen.aplicarGuardado();
+    if (!datos) return false;
+
+    setEditingReq(null);
+    setInsertarDespuesDe(null);
+    setModoMasivo(true);
+    setAiPrompt(datos.userPrompt);
+    setProfundidad(datos.resultado?.estado === 'rapida' ? 'rapida' : 'completa');
+    setAlcanceIA(datos.opciones.alcance);
+    setEstrictez(datos.opciones.estrictez ?? ESTRICTEZ_POR_DEFECTO);
+    setEjemplos(datos.opciones.ejemplos ?? []);
+    setFormData(construirFormInicial(datos.opciones));
+    setIsModalOpen(true);
+    void cargarContexto();
+
+    if (datos.fase === 'generando' && datos.plan) {
+      toast('Reanudando la generación desde donde quedó...');
+      void gen.continuar(datos.userPrompt, datos.opciones, existentesParaIA(), {
+        plan: datos.plan,
+        areasPlan: datos.areasPlan,
+        progreso: datos.progreso,
+        propuestas: datos.propuestas
+      }).then(res => {
+        if (res.estado === 'error') {
+          toast.error(res.motivo || 'No se pudo reanudar la generación.');
+        } else if (res.propuestas.length > 0 && res.estado === 'completo') {
+          const areas = new Set(res.propuestas.map(p => p.area)).size;
+          toast.success(`Generación completada: ${res.propuestas.length} requerimientos en ${areas} ${areas === 1 ? 'área' : 'áreas'}.`);
+        }
+      });
+    }
+    return true;
+  }, [proyectoId, gen, confirmar, construirFormInicial, cargarContexto, existentesParaIA]);
+
+  // Al cargar la página (p. ej. tras un refresh en mitad de la generación), si hay una sesión
+  // guardada se ofrece inmediatamente restaurarla o descartarla sin esperar a pulsar "Nuevo requerimiento".
+  const avisoRecargaMostradoRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || !proyectoId || !esMiembroProyecto || equiposProyecto.length === 0) return;
+    if (!gen.hayGuardado || isModalOpen) return;
+    if (avisoRecargaMostradoRef.current === proyectoId) return;
+    avisoRecargaMostradoRef.current = proyectoId;
+    void ofrecerRestaurarGeneracion();
+  }, [loading, proyectoId, esMiembroProyecto, equiposProyecto.length, gen.hayGuardado, isModalOpen, ofrecerRestaurarGeneracion]);
+
   // Apertura de modal nuevo
-  const abrirNuevo = (despuesDe: Requerimiento | null) => {
+  const abrirNuevo = async (despuesDe: Requerimiento | null) => {
     if (!esMiembroProyecto) {
       toast.error('Solo los miembros del proyecto pueden registrar requerimientos');
       return;
@@ -572,36 +714,19 @@ export default function RequerimientosPage() {
       toast.error('Este proyecto no tiene equipos. Crea al menos uno antes de registrar requerimientos.');
       return;
     }
+
+    // Si hay una generación guardada de esta sesión y aún no se ha decidido sobre ella,
+    // se ofrece restaurarla o descartarla antes de abrir el modal.
+    if (!despuesDe && proyectoId && gen.hayGuardado) {
+      avisoRecargaMostradoRef.current = proyectoId;
+      const restaurada = await ofrecerRestaurarGeneracion();
+      if (restaurada) return;
+    }
+
     setEditingReq(null);
     const codigoBase = despuesDe ? codigoDe(despuesDe) : null;
     setInsertarDespuesDe(despuesDe && codigoBase && despuesDe.numero != null ? { numero: despuesDe.numero, codigo: codigoBase } : null);
-    const primerModelo = modelos[0]?.id || '';
-    const primerPatron = patrones.find(p => p.id_modelo === primerModelo);
-
-    const previa = ultimaClasificacionRef.current;
-    const sigueExistiendo = (lista: Array<string>, id?: string) => !!id && lista.includes(id);
-    const modeloInicial = sigueExistiendo(modelos.map(m => m.id), previa?.id_modelo) ? previa!.id_modelo! : primerModelo;
-    const patronPrevio = patrones.find(p => p.patron_id === previa?.id_patron_seleccionado && p.id_modelo === modeloInicial);
-    const patronInicial = patronPrevio ?? patrones.find(p => p.id_modelo === modeloInicial) ?? primerPatron;
-
-    setFormData({
-      ...FORM_VACIO,
-      id_tipo_requerimiento: sigueExistiendo(tiposReq.map(t => t.tipo_req), previa?.id_tipo_requerimiento)
-        ? previa!.id_tipo_requerimiento!
-        : tiposReq[0]?.tipo_req || '',
-      id_modalidad: sigueExistiendo(modalidades.map(m => m.id), previa?.id_modalidad)
-        ? previa!.id_modalidad!
-        : modalidades[0]?.id || '',
-      id_modelo: modeloInicial,
-      id_patron_seleccionado: patronInicial?.patron_id || '',
-      // Si el proyecto tiene un solo equipo no hay nada que decidir; con varios se
-      // recuerda el último, que es lo que se viene eligendo al encadenar altas.
-      id_equipo: equiposProyecto.length === 1
-        ? equiposProyecto[0].equipo_id
-        : sigueExistiendo(equiposProyecto.map(e => e.equipo_id), previa?.id_equipo)
-          ? previa!.id_equipo!
-          : ''
-    });
+    setFormData(construirFormInicial());
     setAiPrompt('');
     gen.reiniciar();
     setIsModalOpen(true);
@@ -931,12 +1056,6 @@ export default function RequerimientosPage() {
     }
   };
 
-  /** Requerimientos del proyecto en la forma compacta que la IA usa para no repetirlos. */
-  const existentesParaIA = () =>
-    [...requerimientos]
-      .sort((a, b) => (a.numero ?? Number.MAX_SAFE_INTEGER) - (b.numero ?? Number.MAX_SAFE_INTEGER))
-      .map(r => ({ codigo: codigoDe(r) ?? 'REQ-?', modulo: r.modulo ?? null, enunciado: r.enunciado }));
-
   /**
    * Varios requerimientos. "Completa" (KAN-40): la IA arma un mapa de áreas que el usuario edita
    * y luego redacta cada área por lotes hasta cubrirla. "Rápida": la generación masiva de una sola
@@ -1080,8 +1199,8 @@ export default function RequerimientosPage() {
   };
 
   // ==========================================
-// DECISIÓN DE APROBACIÓN (KAN-18)
-// ==========================================
+  // DECISIÓN DE APROBACIÓN (KAN-18)
+  // ==========================================
   // El estado ya no se cambia con un desplegable. Antes cualquier miembro del
   // proyecto podía poner el que quisiera, incluido "Aprobado", y su propio
   // requerimiento se saltaba la revisión solo. Ahora hay dos verbos y cada uno
@@ -2263,7 +2382,7 @@ export default function RequerimientosPage() {
                     <button
                       type="button"
                       onClick={handleAIGenerate}
-                      disabled={isAILoading || (gen.ocupado && gen.fase !== 'revisando-plan') || !aiPrompt.trim()}
+                      disabled={isAILoading || (gen.fase !== 'inactivo' && gen.fase !== 'revisando-plan') || !aiPrompt.trim()}
                       className="px-3.5 min-h-8 bg-brand-solid hover:bg-brand-solid-hover text-on-solid rounded-ui text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                     >
                       {isAILoading || gen.fase === 'planificando' || gen.fase === 'generando' ? (
@@ -2366,6 +2485,7 @@ export default function RequerimientosPage() {
               <div id="contenedor-generacion-ia" className="scroll-mt-4">
                 <PanelGeneracionIterativa
                   gen={gen}
+                  existentes={existentesParaIA()}
                   bloqueado={registrandoMasivo !== null}
                   nombreTipo={(p) =>
                     tiposReq.find(t => t.tipo_req === (formData.id_tipo_requerimiento || tipoDesdeFurps(p.type_furps)))?.nombre ?? p.type_furps
