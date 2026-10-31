@@ -17,6 +17,9 @@ export interface ItemExportacion {
   patron: string;
   modelo: string;
   estado: string;
+  modulo: string;
+  prioridad: string;
+  origen: string;
 }
 
 export function nombreTipoFurps(req: Requerimiento): string {
@@ -47,6 +50,23 @@ export function nombreEstado(req: Requerimiento): string {
   return req.estado?.nombre_estado?.trim() || 'Sin estado';
 }
 
+/** Módulo del requerimiento, o "—" cuando no tiene uno asignado. */
+export function nombreModulo(req: Requerimiento): string {
+  return (req.modulo || '').trim() || '—';
+}
+
+/** Prioridad MoSCoW del requerimiento, o "—" cuando no tiene una asignada. */
+export function nombrePrioridad(req: Requerimiento): string {
+  if (!req.prioridad) return '—';
+  return req.prioridad === 'Wont' ? "Won't" : req.prioridad;
+}
+
+/** Origen de la generación con IA, o "—" cuando no se sabe / no aplica. */
+export function nombreOrigenIA(req: Requerimiento): string {
+  if (!req.origen_ia) return '—';
+  return req.origen_ia === 'explicito' ? 'Explícito' : 'Inferido';
+}
+
 /**
  * Convierte la lista a exportar en items con código, orden y nombres legibles.
  * `listaAExportar` debe venir en el orden de la pantalla. El identificador es
@@ -66,6 +86,9 @@ export function prepararItems(
     patron: nombrePatron(req, patrones),
     modelo: nombreModelo(req),
     estado: nombreEstado(req),
+    modulo: nombreModulo(req),
+    prioridad: nombrePrioridad(req),
+    origen: nombreOrigenIA(req),
   }));
 }
 
@@ -149,6 +172,9 @@ export function generarMarkdown(
     lineas.push(`- **Patrón:** ${item.patron}`);
     lineas.push(`- **Modelo:** ${item.modelo}`);
     lineas.push(`- **Estado:** ${item.estado}`);
+    lineas.push(`- **Módulo:** ${item.modulo}`);
+    lineas.push(`- **Prioridad:** ${item.prioridad}`);
+    lineas.push(`- **Origen:** ${item.origen}`);
     lineas.push('');
   };
 
@@ -196,6 +222,9 @@ export function generarHtmlParaWord(
         <tr><td><b>Patrón</b></td><td>${escaparHtml(item.patron)}</td></tr>
         <tr><td><b>Modelo</b></td><td>${escaparHtml(item.modelo)}</td></tr>
         <tr><td><b>Estado</b></td><td>${escaparHtml(item.estado)}</td></tr>
+        <tr><td><b>Módulo</b></td><td>${escaparHtml(item.modulo)}</td></tr>
+        <tr><td><b>Prioridad</b></td><td>${escaparHtml(item.prioridad)}</td></tr>
+        <tr><td><b>Origen</b></td><td>${escaparHtml(item.origen)}</td></tr>
       </table>`
       )
       .join('\n');
@@ -319,7 +348,7 @@ export async function exportarPdf(
 
   const pintarItem = (item: ItemExportacion) => {
     const titulo = `${item.codigo} · ${item.tipoFurps}`;
-    const meta = `Patrón: ${item.patron} · Modelo: ${item.modelo} · Estado: ${item.estado}`;
+    const meta = `Patrón: ${item.patron} · Modelo: ${item.modelo} · Estado: ${item.estado} · Módulo: ${item.modulo} · Prioridad: ${item.prioridad} · Origen: ${item.origen}`;
     // Reserva aproximada: título + texto + metadatos.
     const lineasTexto = (doc.splitTextToSize(item.requerimiento.enunciado, anchoUtil) as string[]).length;
     necesitaSalto(6 + lineasTexto * 4.5 + 10);
