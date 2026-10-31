@@ -19,7 +19,7 @@ import {
 import type {
   Proyecto, Requerimiento, TipoRequerimiento, Estado,
   Modalidad, Modelo, Patron, PerfilUsuario, LogRequerimiento, Equipo, ArchivoContexto,
-  Comentario
+  Comentario, PrioridadMoSCoW
 } from '@/lib/database.types';
 import {
   getProyectoById,
@@ -121,7 +121,9 @@ const FORM_VACIO = {
   id_modalidad: '',
   id_modelo: '',
   id_patron_seleccionado: '',
-  id_equipo: ''
+  id_equipo: '',
+  modulo: '',
+  prioridad: ''
 };
 
 // Nombres legibles de los campos, para describir qué cambió en el historial.
@@ -130,14 +132,22 @@ const FORM_VACIO = {
 // "campos modificados". El estado tiene su propio historial en el log.
 // `id_patron` (KAN-28) sí se edita: guarda la plantilla usada al redactar.
 const CAMPOS_EDITABLES: Array<[
-  'enunciado' | 'id_tipo_requerimiento' | 'id_modalidad' | 'id_modelo' | 'id_patron',
+  | 'enunciado'
+  | 'id_tipo_requerimiento'
+  | 'id_modalidad'
+  | 'id_modelo'
+  | 'id_patron'
+  | 'modulo'
+  | 'prioridad',
   string
 ]> = [
   ['enunciado', 'enunciado'],
   ['id_tipo_requerimiento', 'tipo'],
   ['id_modalidad', 'modalidad'],
   ['id_modelo', 'modelo'],
-  ['id_patron', 'patrón']
+  ['id_patron', 'patrón'],
+  ['modulo', 'módulo'],
+  ['prioridad', 'prioridad']
 ];
 
 /** Máximo de ejemplos (few-shot) que se le dan a la IA. */
@@ -368,7 +378,7 @@ export default function RequerimientosPage() {
       propuestas: propuestas?.length ?? 0,
       generando: gen.ocupado,
       resto: editingReq
-        ? [formData.id_tipo_requerimiento, formData.id_modalidad, formData.id_modelo, formData.id_equipo]
+        ? [formData.id_tipo_requerimiento, formData.id_modalidad, formData.id_modelo, formData.id_equipo, formData.modulo, formData.prioridad]
         : null
     },
     () => setIsModalOpen(false)
@@ -763,7 +773,9 @@ export default function RequerimientosPage() {
       // Conserva el patrón guardado (KAN-28); solo como respaldo se infiere por
       // modelo, para documentos anteriores que no lo guardaban.
       id_patron_seleccionado: req.id_patron || patrones.find(p => p.id_modelo === req.id_modelo)?.patron_id || '',
-      id_equipo: req.id_equipo || ''
+      id_equipo: req.id_equipo || '',
+      modulo: req.modulo || '',
+      prioridad: req.prioridad || ''
     });
     setAiPrompt('');
     gen.reiniciar();
@@ -845,7 +857,11 @@ export default function RequerimientosPage() {
       // para que la especificación exportada la muestre. Las reglas la admiten
       // en el alta (`isValidRequerimientoCreate`) y no la prohíben al editar.
       id_patron: formData.id_patron_seleccionado || null,
-      id_equipo: formData.id_equipo
+      id_equipo: formData.id_equipo,
+      // Módulo y prioridad (KAN-44): se ven y se editan tanto al crear como al
+      // editar. Los requerimientos antiguos los guardan en null y siguen igual.
+      modulo: formData.modulo.trim() || null,
+      prioridad: formData.prioridad ? (formData.prioridad as PrioridadMoSCoW) : null
     };
 
     setSaving(true);
@@ -880,6 +896,10 @@ export default function RequerimientosPage() {
               return modelos.find(modelo => modelo.id === id)?.nombre || 'Modelo no disponible';
             case 'patrón':
               return patrones.find(patron => patron.patron_id === id)?.nombre || 'Patrón no disponible';
+            case 'módulo':
+              return id || 'Sin módulo';
+            case 'prioridad':
+              return id === 'Wont' ? "Won't" : (id || 'Sin prioridad');
             default:
               return id;
           }
@@ -904,7 +924,9 @@ export default function RequerimientosPage() {
           id_tipo_requerimiento: datos.id_tipo_requerimiento,
           id_modalidad: datos.id_modalidad,
           id_modelo: datos.id_modelo,
-          id_patron: datos.id_patron
+          id_patron: datos.id_patron,
+          modulo: datos.modulo,
+          prioridad: datos.prioridad
         }, uid!, cambios, cambiosClasificacion);
         toast.success('Requerimiento actualizado');
       } else {
@@ -951,7 +973,9 @@ export default function RequerimientosPage() {
           id_modalidad: formData.id_modalidad,
           id_modelo: formData.id_modelo,
           id_patron_seleccionado: formData.id_patron_seleccionado,
-          id_equipo: formData.id_equipo
+          id_equipo: formData.id_equipo,
+          modulo: formData.modulo,
+          prioridad: formData.prioridad
         };
       }
 
@@ -2554,6 +2578,74 @@ export default function RequerimientosPage() {
                   ? 'Su líder aprueba los requerimientos registrados. Se marcan como «Generado con IA».'
                   : 'Su líder es quien aprueba este requerimiento. No se puede cambiar después.'}
             </p>
+            </div>
+
+            {/* Módulo y prioridad (KAN-44): se ven y se editan tanto al crear como al editar.
+                El módulo sugiere los que ya usa el proyecto y permite escribir uno nuevo. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="req-modulo" className={etiqueta}>Módulo</label>
+                <div className="relative">
+                  <select
+                    id="req-modulo"
+                    value={formData.modulo}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData({
+                        ...formData,
+                        modulo: val === '__otro__' ? '' : val
+                      });
+                    }}
+                    className={campo}
+                  >
+                    <option value="">Sin módulo</option>
+                    {modulosProyecto.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                    <option value="__otro__">Otro (escribir)</option>
+                  </select>
+                  {(formData.modulo || '') !== '' &&
+                    !modulosProyecto.includes(formData.modulo) && (
+                    <input
+                      id="req-modulo-libre"
+                      value={formData.modulo}
+                      onChange={(e) =>
+                        setFormData({ ...formData, modulo: e.target.value })
+                      }
+                      placeholder="Escribe el módulo"
+                      maxLength={120}
+                      className={campo}
+                    />
+                  )}
+                </div>
+                <p className="text-xs text-ink-subtle mt-1">
+                  Sugerencias: los módulos que ya usa el proyecto (máx. 120 caracteres).
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="req-prioridad" className={etiqueta}>
+                  Prioridad (MoSCoW)
+                </label>
+                <select
+                  id="req-prioridad"
+                  value={formData.prioridad}
+                  onChange={(e) =>
+                    setFormData({ ...formData, prioridad: e.target.value })
+                  }
+                  className={campo}
+                >
+                  <option value="">Sin prioridad</option>
+                  <option value="Must">Must</option>
+                  <option value="Should">Should</option>
+                  <option value="Could">Could</option>
+                  <option value="Wont">Won&apos;t</option>
+                </select>
+                <p className="text-xs text-ink-subtle mt-1">
+                  MoSCoW: Must (imprescindible), Should (debería), Could (podría),
+                  Won&apos;t (no ahora).
+                </p>
+              </div>
             </div>
 
             {/* Estado, autor y aprobador: información de solo lectura.
