@@ -268,9 +268,6 @@ export default function RequerimientosPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingReq, setEditingReq] = useState<Requerimiento | null>(null);
   const [formData, setFormData] = useState(FORM_VACIO);
-  // Cuando el usuario elige "Otro (escribir)" en el select de módulo se activa
-  // el input libre para escribir un módulo nuevo.
-  const [moduloModoLibre, setModuloModoLibre] = useState(false);
   const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -2591,14 +2588,12 @@ export default function RequerimientosPage() {
                 <div className="relative">
                   <select
                     id="req-modulo"
-                    value={formData.modulo || ''}
+                    value={formData.modulo}
                     onChange={(e) => {
                       const val = e.target.value;
-                      const esOtro = val === '__otro__';
-                      setModuloModoLibre(esOtro);
                       setFormData({
                         ...formData,
-                        modulo: esOtro ? '' : val
+                        modulo: val === '__otro__' ? '' : val
                       });
                     }}
                     className={campo}
@@ -2609,12 +2604,11 @@ export default function RequerimientosPage() {
                     ))}
                     <option value="__otro__">Otro (escribir)</option>
                   </select>
-                  {(moduloModoLibre ||
-                    ((formData.modulo || '') !== '' &&
-                      !modulosProyecto.includes(formData.modulo))) && (
+                  {(formData.modulo || '') !== '' &&
+                    !modulosProyecto.includes(formData.modulo) && (
                     <input
                       id="req-modulo-libre"
-                      value={formData.modulo || ''}
+                      value={formData.modulo}
                       onChange={(e) =>
                         setFormData({ ...formData, modulo: e.target.value })
                       }
