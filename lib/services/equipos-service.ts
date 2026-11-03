@@ -3,6 +3,7 @@ import {
   doc, 
   getDoc, 
   getDocs, 
+  addDoc,
   deleteDoc, 
   updateDoc, 
   query, 
@@ -20,6 +21,7 @@ import {
   SolicitudProyectoEquipo, 
   Rol, 
   Proyecto, 
+  LogIntegrante,
   UUID 
 } from '../database.types';
 import { getAllUsers } from './usuarios-service';
@@ -120,6 +122,12 @@ export async function createEquipoEnProyecto(data: {
   });
   batch.set(vinculoRef, { id_proyecto: data.id_proyecto, id_equipo: docRef.id });
   await batch.commit();
+  await addLogIntegrante({
+    id_equipo: docRef.id,
+    accion: 'Equipo creado',
+    id_autor: data.id_creador,
+    detalles: { nombre: data.nombre, descripcion: data.descripcion ?? '' }
+  });
 
   return {
     equipo_id: docRef.id,
@@ -131,14 +139,31 @@ export async function createEquipoEnProyecto(data: {
   };
 }
 
-export async function updateEquipo(id: string, data: { nombre: string; descripcion?: string }): Promise<void> {
+export async function updateEquipo(
+  id: string,
+  data: { nombre: string; descripcion?: string },
+  idAutor?: string | null
+): Promise<void> {
+  const antesSnap = await getDoc(doc(db, 'equipo', id));
+  const antes = antesSnap.exists() ? antesSnap.data() : null;
   await updateDoc(doc(db, 'equipo', id), {
     nombre: data.nombre,
     descripcion: data.descripcion ?? ''
   });
+  await addLogIntegrante({
+    id_equipo: id,
+    accion: 'Datos del equipo actualizados',
+    id_autor: idAutor ?? null,
+    detalles: {
+      nombre_anterior: antes?.nombre ?? null,
+      nombre_nuevo: data.nombre,
+      descripcion_anterior: antes?.descripcion ?? '',
+      descripcion_nueva: data.descripcion ?? ''
+    }
+  });
 }
 
-export async function deleteEquipo(id: string): Promise<void> {
+export async function deleteEquipo(id: string, datos?: { nombre?: string; idAutor?: string | null }): Promise<void> {
   await deleteDoc(doc(db, 'equipo', id));
   const peSnap = await getDocs(query(collection(db, 'proyecto_equipos'), where('id_equipo', '==', id)));
   for (const d of peSnap.docs) {
@@ -159,6 +184,12 @@ export async function deleteEquipo(id: string): Promise<void> {
   for (const d of mbSnap.docs) {
     await deleteDoc(d.ref);
   }
+  await addLogIntegrante({
+    id_equipo: id,
+    accion: 'Equipo eliminado',
+    id_autor: datos?.idAutor ?? null,
+    detalles: { nombre: datos?.nombre ?? null }
+  });
 }
 
 // ==========================================
@@ -278,18 +309,94 @@ async function ordenarRolesLiderPrimero(id_roles: string[]): Promise<string[]> {
 }
 
 /** Cambia los roles de un miembro existente (solo el líder del equipo). */
-export async function actualizarRolesMiembro(id_equipo: string, id_usuario: string, id_roles: string[]): Promise<void> {
+export async function actualizarRolesMiembro(
+  id_equipo: string,
+  id_usuario: string,
+  id_roles: string[],
+  idAutor?: string | null
+): Promise<void> {
   const ordenados = await ordenarRolesLiderPrimero(id_roles);
   await updateDoc(doc(db, 'miembros_equipo', `${id_equipo}_${id_usuario}`), {
     id_roles: ordenados,
     // Compatibilidad: reglas y código previo a KAN-13 solo leen `id_rol`
     id_rol: ordenados[0] ?? null
   });
+  await addLogIntegrante({
+    id_equipo,
+    id_usuario_afectado: id_usuario,
+    accion: 'Roles del miembro actualizados',
+    id_autor: idAutor ?? null,
+    detalles: { roles_nuevos: ordenados }
+  });
 }
 
-export async function removeMiembroEquipo(id_equipo: string, id_usuario: string): Promise<void> {
+export async function removeMiembroEquipo(
+  id_equipo: string,
+  id_usuario: string,
+  idAutor?: string | null
+): Promise<void> {
   const docId = `${id_equipo}_${id_usuario}`;
   await deleteDoc(doc(db, 'miembros_equipo', docId));
+  await addLogIntegrante({
+    id_equipo,
+    id_usuario_afectado: id_usuario,
+    accion: 'Miembro removido',
+    id_autor: idAutor ?? null,
+    detalles: {}
+  });
+}
+
+// ==========================================
+// HISTORIAL DE EQUIPOS
+// ==========================================
+export async function addLogIntegrante(data: {
+  id_equipo: string;
+  accion: string;
+  id_autor: string | null;
+  id_usuario_afectado?: string | null;
+  detalles?: Record<string, unknown>;
+}): Promise<void> {
+  if (!data.id_equipo) return;
+  try {
+    await addDoc(collection(db, 'logs_integrantes'), {
+      ...data,
+      id_usuario_afectado: data.id_usuario_afectado ?? null,
+      fecha_hora: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('Error creating team history log:', e);
+  }
+}
+
+export async function getLogsIntegrantes(id_equipo: string): Promise<LogIntegrante[]> {
+  if (!id_equipo) return [];
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'logs_integrantes'),
+      where('id_equipo', '==', id_equipo)
+    ));
+    const users = await getAllUsers();
+    const userMap = new Map(users.map(u => [u.id, u]));
+    const logs = snap.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        id_equipo: data.id_equipo,
+        id_usuario_afectado: data.id_usuario_afectado ?? null,
+        accion: data.accion,
+        id_autor: data.id_autor ?? null,
+        id_lider_en_momento: data.id_lider_en_momento ?? null,
+        fecha_hora: data.fecha_hora || new Date().toISOString(),
+        detalles: data.detalles ?? {},
+        usuario_afectado: data.id_usuario_afectado ? userMap.get(data.id_usuario_afectado) ?? null : null,
+        autor: data.id_autor ? userMap.get(data.id_autor) ?? null : null
+      } as LogIntegrante;
+    });
+    return logs.sort((a, b) => new Date(b.fecha_hora).getTime() - new Date(a.fecha_hora).getTime());
+  } catch (e) {
+    console.error('Error fetching team history logs:', e);
+    return [];
+  }
 }
 
 // ==========================================
@@ -364,6 +471,13 @@ export async function crearInvitacionEquipo(
       created_at: new Date().toISOString()
     });
   });
+  await addLogIntegrante({
+    id_equipo,
+    id_usuario_afectado: id_invitado,
+    accion: 'Invitación enviada',
+    id_autor: id_invitador,
+    detalles: { roles: rolesOrdenados }
+  });
 }
 
 export async function aceptarInvitacionEquipo(invitationId: string, userId: string): Promise<void> {
@@ -403,6 +517,15 @@ export async function aceptarInvitacionEquipo(invitationId: string, userId: stri
     }
     transaction.update(invitationRef, { estado: 'aceptada' });
   });
+  const invitacionActualizada = await getDoc(invitationRef);
+  const datosInvitacion = invitacionActualizada.exists() ? invitacionActualizada.data() : null;
+  await addLogIntegrante({
+    id_equipo: datosInvitacion?.id_equipo ?? '',
+    id_usuario_afectado: userId,
+    accion: 'Invitación aceptada',
+    id_autor: userId,
+    detalles: {}
+  });
 }
 
 export async function rechazarInvitacionEquipo(invitationId: string, userId: string): Promise<void> {
@@ -420,6 +543,15 @@ export async function rechazarInvitacionEquipo(invitationId: string, userId: str
     }
 
     transaction.update(invitationRef, { estado: 'rechazada' });
+  });
+  const invitacionActualizada = await getDoc(invitationRef);
+  const datosInvitacion = invitacionActualizada.exists() ? invitacionActualizada.data() : null;
+  await addLogIntegrante({
+    id_equipo: datosInvitacion?.id_equipo ?? '',
+    id_usuario_afectado: userId,
+    accion: 'Invitación rechazada',
+    id_autor: userId,
+    detalles: {}
   });
 }
 

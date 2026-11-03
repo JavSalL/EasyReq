@@ -3,9 +3,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Users, Plus, ChevronRight, ChevronLeft, Save, Edit2, Trash2, Crown, UserPlus, Check, Lock, Send
+  Users, Plus, ChevronRight, ChevronLeft, Save, Edit2, Trash2, Crown, UserPlus, Check, Lock, Send, History
 } from 'lucide-react';
-import type { Equipo, PerfilUsuario, Proyecto, Rol } from '@/lib/database.types';
+import type { Equipo, PerfilUsuario, Proyecto, Rol, LogIntegrante } from '@/lib/database.types';
 import {
   getEquipos,
   createEquipoEnProyecto,
@@ -19,7 +19,8 @@ import {
   removeMiembroEquipo,
   getEquiposLideradosPor,
   esRolLider,
-  crearInvitacionEquipo
+  crearInvitacionEquipo,
+  getLogsIntegrantes
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
@@ -31,6 +32,8 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
 import ModalFormEquipo from '@/components/equipos/ModalFormEquipo';
+import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
+import { fechaCompleta } from '@/lib/fechas';
 
 interface MiembroDetallado {
   usuario: PerfilUsuario;
@@ -161,6 +164,9 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
   const [memberForm, setMemberForm] = useState({ id_usuario: '', id_roles: [] as string[] });
   const [guardandoMiembro, setGuardandoMiembro] = useState(false);
   const [filtroUsuario, setFiltroUsuario] = useState('');
+  const [historialEquipo, setHistorialEquipo] = useState<EquipoDetallado | null>(null);
+  const [logsEquipo, setLogsEquipo] = useState<LogIntegrante[]>([]);
+  const [loadingLogsEquipo, setLoadingLogsEquipo] = useState(false);
 
   useEffect(() => {
     const leerUrl = () => {
@@ -230,6 +236,15 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
     window.scrollTo({ top: 0 });
   };
   const cerrarEquipo = () => irA(proyectoId, 'equipos');
+  const abrirHistorialEquipo = async (team: EquipoDetallado) => {
+    setHistorialEquipo(team);
+    setLoadingLogsEquipo(true);
+    try {
+      setLogsEquipo(await getLogsIntegrantes(team.equipo_id));
+    } finally {
+      setLoadingLogsEquipo(false);
+    }
+  };
 
   // Crear un equipo (editar se hace en la pantalla del equipo, junto con sus miembros)
   const openModal = () => {
@@ -258,7 +273,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
     }
     setGuardandoDatos(true);
     try {
-      await updateEquipo(team.equipo_id, { nombre: datos.nombre.trim(), descripcion: datos.descripcion.trim() });
+      await updateEquipo(team.equipo_id, { nombre: datos.nombre.trim(), descripcion: datos.descripcion.trim() }, uid);
       toast.success('Equipo actualizado');
       await recargar();
     } catch (err) {
@@ -331,7 +346,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
     });
     if (!ok) return;
     try {
-      await deleteEquipo(team.equipo_id);
+      await deleteEquipo(team.equipo_id, { nombre: team.nombre, idAutor: uid });
       toast.success('Equipo eliminado');
       if (equipoAbiertoId === team.equipo_id) cerrarEquipo();
       await recargar();
@@ -372,7 +387,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
     setGuardandoMiembro(true);
     try {
       if (esMiembroExistente) {
-        await actualizarRolesMiembro(equipoAbierto.equipo_id, memberForm.id_usuario, memberForm.id_roles);
+        await actualizarRolesMiembro(equipoAbierto.equipo_id, memberForm.id_usuario, memberForm.id_roles, uid);
         toast.success('Roles actualizados');
         await recargar();
       } else {
@@ -408,7 +423,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
     });
     if (!ok) return;
     try {
-      await removeMiembroEquipo(equipoAbierto.equipo_id, miembro.usuario.id);
+      await removeMiembroEquipo(equipoAbierto.equipo_id, miembro.usuario.id, uid);
       toast.success('Miembro removido');
       if (memberForm.id_usuario === miembro.usuario.id) setMemberForm({ id_usuario: '', id_roles: [] });
       await recargar();
@@ -472,7 +487,18 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
             <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
             Equipos del proyecto
           </button>
-          <h2 className="text-2xl font-semibold text-ink">{equipoAbierto.nombre}</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-2xl font-semibold text-ink">{equipoAbierto.nombre}</h2>
+            <button
+              type="button"
+              onClick={() => void abrirHistorialEquipo(equipoAbierto)}
+              className={btnSecundario}
+              title="Ver historial del equipo"
+            >
+              <History size={16} />
+              Historial
+            </button>
+          </div>
           {!puedeGestionar && (
             <p className="text-base text-ink-muted mt-2 max-w-prose">{equipoAbierto.descripcion || 'Sin descripción.'}</p>
           )}
@@ -671,6 +697,63 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
             )}
           </ul>
         </section>
+
+        <Modal
+          open={historialEquipo !== null}
+          onClose={() => setHistorialEquipo(null)}
+          title={historialEquipo ? `Historial de ${historialEquipo.nombre}` : 'Historial del equipo'}
+          description="Cambios registrados en los datos, miembros y roles del equipo."
+          size="lg"
+        >
+          <ModalBody className="space-y-3">
+            {loadingLogsEquipo ? (
+              [1, 2].map(i => <div key={i} className="h-14 bg-sunken rounded-ui animate-pulse" />)
+            ) : logsEquipo.length === 0 ? (
+              <p className="text-xs text-ink-subtle text-center py-6">No hay registros de cambios todavía.</p>
+            ) : (
+              <ol className="space-y-2">
+                {logsEquipo.map(log => {
+                  const autor = log.autor ? (log.autor.nombre || log.autor.correo) : null;
+                  const afectado = log.usuario_afectado
+                    ? (log.usuario_afectado.nombre || log.usuario_afectado.correo)
+                    : null;
+                  return (
+                    <li key={log.id} className="p-3 bg-sunken rounded-ui border border-line text-xs space-y-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="font-semibold text-ink">{log.accion}</span>
+                        <time className="text-xs text-ink-subtle shrink-0" dateTime={log.fecha_hora}>
+                          {fechaCompleta(log.fecha_hora)}
+                        </time>
+                      </div>
+                      {afectado && (
+                        <p className="text-xs text-ink-subtle">
+                          Usuario: <strong className="text-ink-muted">{afectado}</strong>
+                        </p>
+                      )}
+                      {Array.isArray(log.detalles?.roles_nuevos) && (
+                        <p className="text-xs text-ink-subtle">
+                          Roles: {log.detalles.roles_nuevos
+                            .map((id: string) => roles.find(r => r.id === id)?.nombre_rol ?? id)
+                            .join(', ') || 'Sin rol'}
+                        </p>
+                      )}
+                      {autor && (
+                        <p className="text-xs text-ink-subtle">
+                          Por <strong className="text-ink-muted">{autor}</strong>
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <button type="button" onClick={() => setHistorialEquipo(null)} className={btnSecundario}>
+              Cerrar
+            </button>
+          </ModalFooter>
+        </Modal>
 
         {modalEquipo}
       </div>

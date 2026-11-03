@@ -702,6 +702,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // 6b. Historial de equipos y sus integrantes (inmutable)
+    match /logs_integrantes/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
     // 7. Patrones de Prompting / IA
     // Catálogo congelado (KAN-17): se lee y se copia, no se edita ni se borra.
     // `create` sigue abierta porque `seedCatalogsIfEmpty()` siembra desde el
