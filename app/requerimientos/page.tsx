@@ -2612,16 +2612,31 @@ export default function RequerimientosPage() {
                   {(moduloModoLibre ||
                     ((formData.modulo || '') !== '' &&
                       !modulosProyecto.includes(formData.modulo))) && (
-                    <input
-                      id="req-modulo-libre"
-                      value={formData.modulo || ''}
-                      onChange={(e) =>
-                        setFormData({ ...formData, modulo: e.target.value })
-                      }
-                      placeholder="Escribe el módulo"
-                      maxLength={120}
-                      className={campo}
-                    />
+                    <div className="flex items-center gap-1">
+                      <input
+                        id="req-modulo-libre"
+                        value={formData.modulo || ''}
+                        onChange={(e) =>
+                          setFormData({ ...formData, modulo: e.target.value })
+                        }
+                        placeholder="Escribe el módulo"
+                        maxLength={120}
+                        className={campo}
+                      />
+                      {formData.modulo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData({ ...formData, modulo: '' });
+                            setModuloModoLibre(false);
+                          }}
+                          aria-label="Borrar módulo"
+                          className="inline-flex items-center justify-center size-6 rounded-ui border border-line-strong bg-surface text-ink-muted hover:bg-sunken hover:text-ink transition-colors"
+                        >
+                          <X size={12} aria-hidden />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
                 <p className="text-xs text-ink-subtle mt-1">
