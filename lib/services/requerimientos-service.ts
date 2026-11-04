@@ -22,7 +22,7 @@ import {
   getTiposRequerimientos, 
   getEstados, 
   getModalidades, 
-  getModelos,
+  getMapaModelosCanonicos,
   idCatalogoPorNombre,
   ESTADO_PENDIENTE_APROBACION,
   ESTADO_APROBADO,
@@ -41,11 +41,11 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
       : collection(db, 'requerimiento');
     const snap = await getDocs(q);
     
-    const [tipos, estados, modalidades, modelos, usuarios, patrones] = await Promise.all([
+    const [tipos, estados, modalidades, modelMap, usuarios, patrones] = await Promise.all([
       getTiposRequerimientos(),
       getEstados(),
       getModalidades(),
-      getModelos(),
+      getMapaModelosCanonicos(),
       getAllUsers(),
       getPatrones()
     ]);
@@ -53,7 +53,6 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
     const tipoMap = new Map(tipos.map(t => [t.tipo_req, t]));
     const estadoMap = new Map(estados.map(e => [e.id, e]));
     const modMap = new Map(modalidades.map(m => [m.id, m]));
-    const modelMap = new Map(modelos.map(m => [m.id, m]));
     const userMap = new Map(usuarios.map(u => [u.id, u]));
     const patronMap = new Map(patrones.map(p => [p.patron_id, p]));
 
@@ -75,7 +74,7 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
         id_equipo: data.id_equipo || null,
         id_modalidad: data.id_modalidad || null,
         id_estado: data.id_estado || null,
-        id_modelo: data.id_modelo || null,
+        id_modelo: data.id_modelo ? (modelMap.get(data.id_modelo)?.id ?? data.id_modelo) : null,
         // KAN-28: patrón usado al redactar. Los documentos anteriores no lo
         // guardaban y se normaliza a null (el documento muestra "—").
         id_patron: (data.id_patron as string | null | undefined) ?? null,

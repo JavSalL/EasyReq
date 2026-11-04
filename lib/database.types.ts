@@ -348,7 +348,7 @@ export interface LogIntegrante {
   id_autor: UUID | null;
   id_lider_en_momento: UUID | null;
   fecha_hora: string;
-  detalles?: any;
+  detalles?: Record<string, unknown> | null;
   usuario_afectado?: PerfilUsuario | null;
   autor?: PerfilUsuario | null;
   lider?: PerfilUsuario | null;

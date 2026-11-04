@@ -807,6 +807,13 @@ export default function RequerimientosPage() {
       if (!ok) return;
     }
     setFormData(prev => ({ ...prev, enunciado: patronSeleccionado.promt }));
+    const navegarAEnunciado = () => {
+      const seccion = document.getElementById('seccion-enunciado') ?? document.getElementById('req-enunciado');
+      seccion?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      document.getElementById('req-enunciado')?.focus({ preventScroll: true });
+    };
+    requestAnimationFrame(navegarAEnunciado);
+    setTimeout(navegarAEnunciado, 60);
   };
 
   // Guardar Requerimiento (Crear o Editar)
@@ -2239,8 +2246,8 @@ export default function RequerimientosPage() {
         }
         description={
           esMasivo
-            ? 'Elige el modelo y el tipo, describe qué parte del sistema especificar y revisa lo que propone la IA.'
-            : 'Elige el modelo y el tipo, genera con IA o redacta respetando la estructura del patrón.'
+            ? 'Elige el tipo y el modelo, describe qué parte del sistema especificar y revisa lo que propone la IA.'
+            : 'Elige el tipo y el modelo, genera con IA o redacta respetando la estructura del patrón.'
         }
         // Más ancho al revisar varias propuestas: el texto completo cabe sin tantos saltos de línea
         size={esMasivo ? '3xl' : 'xl'}
@@ -2259,8 +2266,23 @@ export default function RequerimientosPage() {
               </div>
             )}
 
-            {/* Modelo, patrón y tipo: lo primero que se elige; la IA los respeta al redactar */}
+            {/* Tipo, modelo y patrón: lo primero que se elige; la IA los respeta al redactar */}
             <div className="space-y-4">
+              <div>
+                <label htmlFor="req-tipo" className={etiqueta}>Tipo de requerimiento</label>
+                <select
+                  id="req-tipo"
+                  value={formData.id_tipo_requerimiento}
+                  onChange={(e) => setFormData({ ...formData, id_tipo_requerimiento: e.target.value })}
+                  className={campo}
+                >
+                  <option value="">{esMasivo ? 'Todos (la IA los clasifica)' : 'Sin tipo'}</option>
+                  {tiposReq.map((t) => (
+                    <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="req-modelo" className={etiqueta}>Modelo de Requisitos</label>
@@ -2311,21 +2333,6 @@ export default function RequerimientosPage() {
                   )}
                 </div>
               )}
-
-              <div>
-                <label htmlFor="req-tipo" className={etiqueta}>Tipo de requerimiento</label>
-                <select
-                  id="req-tipo"
-                  value={formData.id_tipo_requerimiento}
-                  onChange={(e) => setFormData({ ...formData, id_tipo_requerimiento: e.target.value })}
-                  className={campo}
-                >
-                  <option value="">{esMasivo ? 'Todos (la IA los clasifica)' : 'Sin tipo'}</option>
-                  {tiposReq.map((t) => (
-                    <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
-                  ))}
-                </select>
-              </div>
             </div>
 
             {/* Prompt para la IA */}
@@ -2380,6 +2387,42 @@ export default function RequerimientosPage() {
                   </div>
                 )}
 
+                {/* Profundidad y alcance de la generación de varios requerimientos (KAN-40): van antes del botón de generar para mantener un flujo lineal */}
+                {esMasivo && (
+                  <div className="px-3.5 py-2.5 border-t border-line bg-sunken/40 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-muted">
+                    <label className="inline-flex items-center gap-2">
+                      Generación
+                      <select
+                        value={profundidad}
+                        onChange={(e) => setProfundidad(e.target.value as Profundidad)}
+                        disabled={gen.ocupado || isAILoading}
+                        className="px-2 min-h-8 border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text"
+                      >
+                        <option value="completa">Completa (por áreas, hasta cubrirlo todo)</option>
+                        <option value="rapida">Rápida (una sola pasada)</option>
+                      </select>
+                    </label>
+                    {profundidad === 'completa' && (
+                      <label className="inline-flex items-center gap-2">
+                        Alcance
+                        <select
+                          value={alcanceIA}
+                          onChange={(e) => setAlcanceIA(e.target.value as AlcanceGeneracion | 'auto')}
+                          disabled={gen.ocupado}
+                          className="px-2 min-h-8 border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text"
+                        >
+                          <option value="auto">Lo decide la IA según el pedido</option>
+                          <option value="sistema">Sistema completo</option>
+                          <option value="modulo">Solo el módulo pedido</option>
+                        </select>
+                      </label>
+                    )}
+                    <span className="text-ink-subtle">
+                      La estrictez decide cuánto infiere: Baja añade lo habitual del dominio; Máxima, solo lo literal.
+                    </span>
+                  </div>
+                )}
+
                 {/* Barra inferior: modo masivo a la izquierda; estrictez y generar a la derecha */}
                 <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-t border-line">
                   {masivoDisponible ? (
@@ -2430,42 +2473,6 @@ export default function RequerimientosPage() {
                   </div>
                 </div>
               </div>
-
-              {/* Profundidad y alcance de la generación de varios requerimientos (KAN-40) */}
-              {esMasivo && (
-                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-muted">
-                  <label className="inline-flex items-center gap-2">
-                    Generación
-                    <select
-                      value={profundidad}
-                      onChange={(e) => setProfundidad(e.target.value as Profundidad)}
-                      disabled={gen.ocupado || isAILoading}
-                      className="px-2 min-h-8 border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text"
-                    >
-                      <option value="completa">Completa (por áreas, hasta cubrirlo todo)</option>
-                      <option value="rapida">Rápida (una sola pasada)</option>
-                    </select>
-                  </label>
-                  {profundidad === 'completa' && (
-                    <label className="inline-flex items-center gap-2">
-                      Alcance
-                      <select
-                        value={alcanceIA}
-                        onChange={(e) => setAlcanceIA(e.target.value as AlcanceGeneracion | 'auto')}
-                        disabled={gen.ocupado}
-                        className="px-2 min-h-8 border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text"
-                      >
-                        <option value="auto">Lo decide la IA según el pedido</option>
-                        <option value="sistema">Sistema completo</option>
-                        <option value="modulo">Solo el módulo pedido</option>
-                      </select>
-                    </label>
-                  )}
-                  <span className="text-ink-subtle">
-                    La estrictez decide cuánto infiere: Baja añade lo habitual del dominio; Máxima, solo lo literal.
-                  </span>
-                </div>
-              )}
 
               {/* Ejemplos (few-shot) */}
 
@@ -2521,7 +2528,7 @@ export default function RequerimientosPage() {
               </div>
             ) : (
               /* 4. Enunciado */
-              <div>
+              <div id="seccion-enunciado" className="scroll-mt-4">
                 <label htmlFor="req-enunciado" className={etiqueta}>
                   Enunciado del Requerimiento <span className="text-danger">*</span>
                 </label>

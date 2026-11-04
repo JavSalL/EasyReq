@@ -32,10 +32,17 @@ export const MODALIDAD_GENERADO_IA = 'Generado con IA';
 // SEEDING DE CATÁLOGOS BASE
 // (Replica el contenido original de supabase_migration_v3.sql)
 // ==========================================
+let seedingInProgress = false;
+
 export async function seedCatalogsIfEmpty() {
+  if (seedingInProgress) return;
+  seedingInProgress = true;
   try {
-    const profSnap = await getDocs(query(collection(db, 'profesiones'), limit(1)));
-    if (!profSnap.empty) return;
+    const [profSnap, modeloSnap] = await Promise.all([
+      getDocs(query(collection(db, 'profesiones'), limit(1))),
+      getDocs(query(collection(db, 'modelo'), limit(1)))
+    ]);
+    if (!profSnap.empty || !modeloSnap.empty) return;
 
     console.log('Sembrando catálogos iniciales en Firestore...');
 
@@ -177,6 +184,8 @@ export async function seedCatalogsIfEmpty() {
     console.log('Catálogos sembrados exitosamente.');
   } catch (error) {
     console.error('Error al inicializar catálogos en Firestore:', error);
+  } finally {
+    seedingInProgress = false;
   }
 }
 
@@ -244,7 +253,16 @@ export async function asegurarCatalogosAprobacion(): Promise<void> {
 export async function getProfesiones(): Promise<Profesion[]> {
   try {
     const snap = await getDocs(collection(db, 'profesiones'));
-    return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    const vistos = new Set<string>();
+    const unicos: Profesion[] = [];
+    for (const d of snap.docs) {
+      const data = d.data();
+      const nombre = (data.nombre || '').trim().toLowerCase();
+      if (!nombre || vistos.has(nombre)) continue;
+      vistos.add(nombre);
+      unicos.push({ id: d.id, nombre: (data.nombre as string) || '' });
+    }
+    return unicos;
   } catch (e) {
     console.error('Error fetching profesiones:', e);
     return [];
@@ -254,7 +272,16 @@ export async function getProfesiones(): Promise<Profesion[]> {
 export async function getTiposSistema(): Promise<TipoSistema[]> {
   try {
     const snap = await getDocs(collection(db, 'tipos_sistema'));
-    return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    const vistos = new Set<string>();
+    const unicos: TipoSistema[] = [];
+    for (const d of snap.docs) {
+      const data = d.data();
+      const nombre = (data.nombre || '').trim().toLowerCase();
+      if (!nombre || vistos.has(nombre)) continue;
+      vistos.add(nombre);
+      unicos.push({ id: d.id, nombre: (data.nombre as string) || '' });
+    }
+    return unicos;
   } catch (e) {
     console.error('Error fetching tipos_sistema:', e);
     return [];
@@ -264,7 +291,16 @@ export async function getTiposSistema(): Promise<TipoSistema[]> {
 export async function getRoles(): Promise<Rol[]> {
   try {
     const snap = await getDocs(collection(db, 'roles'));
-    return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    const vistos = new Set<string>();
+    const unicos: Rol[] = [];
+    for (const d of snap.docs) {
+      const data = d.data();
+      const nombre = (data.nombre_rol || '').trim().toLowerCase();
+      if (!nombre || vistos.has(nombre)) continue;
+      vistos.add(nombre);
+      unicos.push({ id: d.id, nombre_rol: (data.nombre_rol as string) || '' });
+    }
+    return unicos;
   } catch (e) {
     console.error('Error fetching roles:', e);
     return [];
@@ -274,7 +310,16 @@ export async function getRoles(): Promise<Rol[]> {
 export async function getEstados(): Promise<Estado[]> {
   try {
     const snap = await getDocs(collection(db, 'estados'));
-    return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    const vistos = new Set<string>();
+    const unicos: Estado[] = [];
+    for (const d of snap.docs) {
+      const data = d.data();
+      const nombre = (data.nombre_estado || '').trim().toLowerCase();
+      if (!nombre || vistos.has(nombre)) continue;
+      vistos.add(nombre);
+      unicos.push({ id: d.id, nombre_estado: (data.nombre_estado as string) || '' });
+    }
+    return unicos;
   } catch (e) {
     console.error('Error fetching estados:', e);
     return [];
@@ -284,7 +329,16 @@ export async function getEstados(): Promise<Estado[]> {
 export async function getModalidades(): Promise<Modalidad[]> {
   try {
     const snap = await getDocs(collection(db, 'modalidades'));
-    return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    const vistos = new Set<string>();
+    const unicos: Modalidad[] = [];
+    for (const d of snap.docs) {
+      const data = d.data();
+      const nombre = (data.nombre_modalidad || '').trim().toLowerCase();
+      if (!nombre || vistos.has(nombre)) continue;
+      vistos.add(nombre);
+      unicos.push({ id: d.id, nombre_modalidad: (data.nombre_modalidad as string) || '' });
+    }
+    return unicos;
   } catch (e) {
     console.error('Error fetching modalidades:', e);
     return [];
@@ -294,7 +348,16 @@ export async function getModalidades(): Promise<Modalidad[]> {
 export async function getTiposRequerimientos(): Promise<TipoRequerimiento[]> {
   try {
     const snap = await getDocs(collection(db, 'tipos_requerimientos'));
-    return snap.docs.map(d => ({ tipo_req: d.id, ...(d.data() as any) }));
+    const vistos = new Set<string>();
+    const unicos: TipoRequerimiento[] = [];
+    for (const d of snap.docs) {
+      const data = d.data();
+      const nombre = (data.nombre || '').trim().toLowerCase();
+      if (!nombre || vistos.has(nombre)) continue;
+      vistos.add(nombre);
+      unicos.push({ tipo_req: d.id, nombre: (data.nombre as string) || '' });
+    }
+    return unicos;
   } catch (e) {
     console.error('Error fetching tipos_requerimientos:', e);
     return [];
@@ -304,9 +367,52 @@ export async function getTiposRequerimientos(): Promise<TipoRequerimiento[]> {
 export async function getModelos(): Promise<Modelo[]> {
   try {
     const snap = await getDocs(collection(db, 'modelo'));
-    return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    const vistos = new Set<string>();
+    const unicos: Modelo[] = [];
+    for (const d of snap.docs) {
+      const data = d.data();
+      const nombre = (data.nombre || '').trim().toLowerCase();
+      if (!nombre || vistos.has(nombre)) continue;
+      vistos.add(nombre);
+      unicos.push({
+        id: d.id,
+        nombre: (data.nombre as string) || '',
+        ...(typeof data.descripcion === 'string' ? { descripcion: data.descripcion } : {})
+      });
+    }
+    return unicos;
   } catch (e) {
     console.error('Error fetching modelos:', e);
     return [];
+  }
+}
+
+/**
+ * Devuelve un mapa con todos los IDs de documentos en `modelo` apuntando a su
+ * objeto `Modelo` canónico (desduplicado por nombre). Permite que cualquier ID
+ * duplicado en la base de datos se resuelva al modelo correspondiente.
+ */
+export async function getMapaModelosCanonicos(): Promise<Map<string, Modelo>> {
+  try {
+    const snap = await getDocs(collection(db, 'modelo'));
+    const canonicosPorNombre = new Map<string, Modelo>();
+    const mapaIdACanonico = new Map<string, Modelo>();
+
+    for (const d of snap.docs) {
+      const data = d.data();
+      const nombre = (data.nombre || '').trim().toLowerCase();
+      if (!canonicosPorNombre.has(nombre)) {
+        canonicosPorNombre.set(nombre, {
+          id: d.id,
+          nombre: (data.nombre as string) || '',
+          ...(typeof data.descripcion === 'string' ? { descripcion: data.descripcion } : {})
+        });
+      }
+      mapaIdACanonico.set(d.id, canonicosPorNombre.get(nombre)!);
+    }
+    return mapaIdACanonico;
+  } catch (e) {
+    console.error('Error fetching mapa modelos canónicos:', e);
+    return new Map();
   }
 }

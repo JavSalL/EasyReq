@@ -99,7 +99,7 @@ export function Modal({ open, onClose, title, description, size = 'md', cerrarCo
         aria-modal="true"
         aria-labelledby={`${id}-titulo`}
         tabIndex={-1}
-        className={`bg-surface border border-line rounded-ui w-full ${ANCHOS[size]} max-h-[calc(100dvh-1rem)] sm:max-h-[90dvh] flex flex-col overflow-hidden outline-none animate-in zoom-in`}
+        className={`bg-surface border border-line rounded-ui w-full ${ANCHOS[size]} transition-[max-width] duration-400 ease-in-out max-h-[calc(100dvh-1rem)] sm:max-h-[90dvh] flex flex-col overflow-hidden outline-none animate-in zoom-in`}
       >
         <div className="px-5 sm:px-6 py-4 border-b border-line flex items-start justify-between gap-4 shrink-0">
           <div className="min-w-0">
