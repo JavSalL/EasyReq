@@ -29,6 +29,20 @@ import {
   estadoSeleccion,
   todasSeleccionadas
 } from '@/lib/seleccion-propuestas';
+import type { ElementoSintactico } from '@/lib/database.types';
+import {
+  construirLeyendaSintaxis,
+  segmentarTextoSintaxis,
+  type TonoSintaxis
+} from '@/lib/sintaxis-requerimiento';
+import {
+  BarraSintaxis,
+  BotonDesgloseSintaxis,
+  DesgloseSintaxis,
+  TextoConSintaxis,
+  useFocoSintaxis
+} from '@/components/requerimientos/SintaxisRequerimiento';
+import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { btnPrimario, btnSecundario, btnSecundarioCompacto, btnIconoPeligro, campo } from '@/components/ui/estilos';
 
 // ==========================================
@@ -138,6 +152,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
   const [progreso, setProgreso] = useState<ProgresoGeneracion | null>(null);
   const [propuestas, setPropuestas] = useState<PropuestaRevisable[] | null>(null);
   const [resultado, setResultado] = useState<{ estado: ResultadoIterativo['estado'] | 'rapida'; motivo?: string } | null>(null);
+  const [patronUsado, setPatronUsado] = useState<string | undefined>(undefined);
   // Datos de la última corrida iniciada: se guardan para poder reanudar tras una recarga sin
   // volver a pedir el plan ni gastar otro uso diario.
   const promptRef = useRef<string>('');
@@ -277,6 +292,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
     setProgreso(estadoNormalizado.progreso);
     setPropuestas(estadoNormalizado.propuestas);
     setResultado(estadoNormalizado.resultado);
+    setPatronUsado(estadoNormalizado.opciones.pattern);
     ordenAreasRef.current = estadoNormalizado.areasPlan.map(a => a.nombre);
     promptRef.current = estadoNormalizado.userPrompt;
     opcionesRef.current = estadoNormalizado.opciones;
@@ -296,6 +312,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
       pattern: opciones.pattern, tipo: opciones.tipo, estrictez: opciones.estrictez,
       ejemplos: opciones.ejemplos, contexto: opciones.contexto, alcance: opciones.alcance ?? 'auto'
     };
+    setPatronUsado(opciones.pattern);
     controladorRef.current?.abort();
     const controlador = new AbortController();
     controladorRef.current = controlador;
@@ -349,6 +366,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
     promptRef.current = userPrompt;
     creadoEnRef.current = Date.now();
     opcionesRef.current = { ...opciones, alcance: 'auto' };
+    setPatronUsado(opciones.pattern);
     setFase('generando');
     setPlan(null);
     setProgreso(null);
@@ -429,6 +447,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
       pattern: opciones.pattern, tipo: opciones.tipo, estrictez: opciones.estrictez,
       ejemplos: opciones.ejemplos, contexto: opciones.contexto, alcance: opciones.alcance
     };
+    setPatronUsado(opciones.pattern);
     ordenAreasRef.current = areasPlanActual.map(a => a.nombre);
     setPlan(planActual);
     setAreasPlan(areasPlanActual);
@@ -445,6 +464,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
         type_furps: p.type_furps,
         ai_evaluation: p.ai_evaluation,
         ai_observations: p.ai_observations,
+        elementos_sintaxis: p.elementos_sintaxis,
         origen: p.origen ?? 'explicito',
         prioridad: p.prioridad ?? 'Must',
         justificacion: p.justificacion ?? '',
@@ -531,6 +551,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
       setProgreso(null);
       setPropuestas(null);
       setResultado(null);
+      setPatronUsado(undefined);
     }
   }, [limpiarGuardado]);
 
@@ -551,6 +572,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
     setProgreso(null);
     setPropuestas(null);
     setResultado(null);
+    setPatronUsado(undefined);
   }, [limpiarGuardado]);
 
   /** Quita de la revisión las propuestas ya registradas. */
@@ -566,6 +588,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
 
   return {
     fase, ocupado, plan, areasPlan, setAreasPlan, progreso, propuestas, setPropuestas, resultado,
+    patronUsado,
     guardado, hayGuardado, aplicarGuardado, limpiarGuardado,
     iniciar, iniciarRapida, continuar, confirmarPlan, cancelarPlan, detener, reiniciar, quitar
   };
@@ -578,10 +601,13 @@ export type GeneracionIterativa = ReturnType<typeof useGeneracionIterativa>;
 // ==========================================
 
 /** Textarea que crece con su contenido: el enunciado se lee entero, sin scroll interno. */
-function TextareaAutoajustable({ value, onChange, disabled, ...rest }: {
+function TextareaAutoajustable({ value, onChange, disabled, autoFocus, onBlur, onKeyDown, ...rest }: {
   value: string;
   onChange: (valor: string) => void;
   disabled?: boolean;
+  autoFocus?: boolean;
+  onBlur?: () => void;
+  onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement>;
   'aria-label': string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -592,6 +618,13 @@ function TextareaAutoajustable({ value, onChange, disabled, ...rest }: {
     el.style.height = `${el.scrollHeight}px`;
   }, []);
   useLayoutEffect(ajustar, [value, ajustar]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!autoFocus || !el) return;
+    el.focus();
+    const len = el.value.length;
+    el.setSelectionRange(len, len);
+  }, [autoFocus]);
   // Al cambiar el ancho (girar el móvil, redimensionar) el texto ocupa otras líneas
   useEffect(() => {
     const el = ref.current;
@@ -613,9 +646,84 @@ function TextareaAutoajustable({ value, onChange, disabled, ...rest }: {
       value={value}
       disabled={disabled}
       onChange={e => onChange(e.target.value)}
+      onBlur={onBlur}
+      onKeyDown={onKeyDown}
       {...rest}
       className="block w-full px-2 py-1 bg-transparent border border-transparent hover:border-line focus:border-brand-text rounded-ui text-sm text-ink leading-relaxed resize-none overflow-hidden focus:outline-none"
     />
+  );
+}
+
+/**
+ * Muestra el enunciado con resaltado sintáctico en modo lectura y conmuta sin fricción al
+ * textarea editable al hacer clic o recibir foco por teclado, realineando al salir.
+ */
+function CampoEnunciadoPropuesta({
+  value,
+  onChange,
+  disabled,
+  mostrarSintaxis,
+  elementos,
+  mapaTonos,
+  claveEnfocada,
+}: {
+  value: string;
+  onChange: (valor: string) => void;
+  disabled?: boolean;
+  mostrarSintaxis: boolean;
+  elementos?: ReadonlyArray<ElementoSintactico> | null;
+  mapaTonos: ReadonlyMap<string, TonoSintaxis>;
+  claveEnfocada: string | null;
+}) {
+  const [editando, setEditando] = useState(false);
+
+  const tieneResaltado = useMemo(
+    () =>
+      mostrarSintaxis &&
+      !!value.trim() &&
+      !!elementos?.length &&
+      segmentarTextoSintaxis(value, elementos, mapaTonos).some(s => s.tipo === 'elemento'),
+    [mostrarSintaxis, value, elementos, mapaTonos]
+  );
+
+  if (!tieneResaltado || editando) {
+    return (
+      <TextareaAutoajustable
+        value={value}
+        disabled={disabled}
+        autoFocus={editando}
+        onBlur={() => setEditando(false)}
+        onKeyDown={e => {
+          if (e.key === 'Escape' && editando) {
+            e.stopPropagation();
+            e.currentTarget.blur();
+          }
+        }}
+        onChange={onChange}
+        aria-label="Texto de la propuesta"
+      />
+    );
+  }
+
+  return (
+    <div
+      role={disabled ? undefined : 'textbox'}
+      aria-multiline={disabled ? undefined : true}
+      aria-label="Texto de la propuesta (haz clic para editar)"
+      tabIndex={disabled ? -1 : 0}
+      onClick={() => { if (!disabled) setEditando(true); }}
+      onFocus={() => { if (!disabled) setEditando(true); }}
+      className={`block w-full px-2 py-1 bg-transparent border border-transparent rounded-ui text-sm text-ink leading-relaxed whitespace-pre-wrap break-words ${
+        disabled ? '' : 'hover:border-line cursor-text'
+      }`}
+    >
+      <TextoConSintaxis
+        texto={value}
+        elementos={elementos}
+        mapaTonos={mapaTonos}
+        claveEnfocada={claveEnfocada}
+      />
+    </div>
   );
 }
 
@@ -651,8 +759,25 @@ interface PanelProps {
 }
 
 export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, bloqueado }: PanelProps) {
-  const { fase, plan, areasPlan, setAreasPlan, progreso, propuestas, setPropuestas, resultado } = gen;
+  const { fase, plan, areasPlan, setAreasPlan, progreso, propuestas, setPropuestas, resultado, patronUsado } = gen;
   const [filtros, setFiltros] = useState<FiltrosPropuestas>(FILTROS_VACIOS);
+  const [mostrarSintaxis, setMostrarSintaxis] = useEstadoSesion('easyreq:sintaxis:visible', true);
+  const focoSintaxis = useFocoSintaxis();
+  const [desglosesAbiertos, setDesglosesAbiertos] = useState<Set<string>>(() => new Set());
+
+  const alternarDesglose = useCallback((clave: string) => {
+    setDesglosesAbiertos(prev => {
+      const copia = new Set(prev);
+      if (copia.has(clave)) copia.delete(clave);
+      else copia.add(clave);
+      return copia;
+    });
+  }, []);
+
+  const { items: leyendaSintaxis, mapaTonos: mapaTonosSintaxis } = useMemo(
+    () => construirLeyendaSintaxis((propuestas ?? []).map(p => p.elementos_sintaxis), patronUsado),
+    [propuestas, patronUsado]
+  );
 
   const contenedorRef = useRef<HTMLDivElement>(null);
   const seccionPlanificandoRef = useRef<HTMLElement>(null);
@@ -1088,6 +1213,13 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
             )}
           </div>
 
+          <BarraSintaxis
+            activo={mostrarSintaxis}
+            onCambiarActivo={setMostrarSintaxis}
+            items={leyendaSintaxis}
+            foco={focoSintaxis}
+          />
+
           {grupos.length === 0 ? (
             <p className="text-sm text-ink-subtle py-6 text-center border border-line rounded-ui">Ninguna propuesta coincide con los filtros.</p>
           ) : (
@@ -1146,11 +1278,14 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                               className="mt-2 size-4 accent-brand-text shrink-0 cursor-pointer disabled:cursor-not-allowed"
                             />
                             <div className="flex-1 min-w-0 space-y-1">
-                              <TextareaAutoajustable
+                              <CampoEnunciadoPropuesta
                                 value={p.texto}
                                 disabled={bloqueado}
                                 onChange={texto => actualizar(p.clave, { texto })}
-                                aria-label="Texto de la propuesta"
+                                mostrarSintaxis={mostrarSintaxis}
+                                elementos={p.elementos_sintaxis}
+                                mapaTonos={mapaTonosSintaxis}
+                                claveEnfocada={mostrarSintaxis ? focoSintaxis.claveActiva : null}
                               />
                               {!disponible && (
                                 <p className="text-[11px] text-warning">
@@ -1184,7 +1319,22 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                                     Revisa: {p.cifras_sin_respaldo.join(', ')}
                                   </span>
                                 ) : null}
+                                {p.elementos_sintaxis?.length ? (
+                                  <BotonDesgloseSintaxis
+                                    abierto={desglosesAbiertos.has(p.clave)}
+                                    onAlternar={() => alternarDesglose(p.clave)}
+                                    cantidad={p.elementos_sintaxis.length}
+                                  />
+                                ) : null}
                               </div>
+                              {desglosesAbiertos.has(p.clave) && p.elementos_sintaxis?.length ? (
+                                <DesgloseSintaxis
+                                  texto={p.texto}
+                                  elementos={p.elementos_sintaxis}
+                                  patron={patronUsado}
+                                  mapaTonos={mapaTonosSintaxis}
+                                />
+                              ) : null}
                               {p.posibleDuplicado?.texto && (
                                 <p className="text-xs text-ink-muted leading-snug border-l-2 border-warning-line pl-2">
                                   <span className="font-semibold">{p.posibleDuplicado.etiqueta}:</span> {p.posibleDuplicado.texto}

@@ -125,6 +125,16 @@ export interface Patron {
 export type OrigenIA = 'explicito' | 'inferido';
 export type PrioridadMoSCoW = 'Must' | 'Should' | 'Could' | 'Wont';
 
+/**
+ * Componente sintáctico identificado en el enunciado según el patrón usado al redactar.
+ * `elemento` conserva el nombre del componente del patrón (p. ej. "Actor", "trigger") y
+ * `fragmento` el tramo exacto que le corresponde dentro del enunciado.
+ */
+export interface ElementoSintactico {
+  elemento: string;
+  fragmento: string;
+}
+
 export interface Requerimiento {
   id: UUID;
   enunciado: string;
@@ -180,6 +190,8 @@ export interface Requerimiento {
   origen_ia?: OrigenIA | null;
   /** Prioridad MoSCoW propuesta. */
   prioridad?: PrioridadMoSCoW | null;
+  /** Elementos sintácticos identificados según el patrón usado al generar el requerimiento. */
+  elementos_sintaxis?: ElementoSintactico[] | null;
   created_at?: string;
 
   // Joins relacionales

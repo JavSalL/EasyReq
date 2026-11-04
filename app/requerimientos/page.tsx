@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,7 +19,7 @@ import {
 import type {
   Proyecto, Requerimiento, TipoRequerimiento, Estado,
   Modalidad, Modelo, Patron, PerfilUsuario, LogRequerimiento, Equipo, ArchivoContexto,
-  Comentario
+  Comentario, ElementoSintactico
 } from '@/lib/database.types';
 import {
   getProyectoById,
@@ -77,6 +77,15 @@ import PanelGeneracionIterativa, {
   type Profundidad,
   type PropuestaRevisable
 } from '@/components/requerimientos/GeneracionIterativa';
+import {
+  BarraSintaxis,
+  BotonDesgloseSintaxis,
+  DesgloseSintaxis,
+  TextoConSintaxis,
+  VistaPreviaSintaxis,
+  useFocoSintaxis
+} from '@/components/requerimientos/SintaxisRequerimiento';
+import { construirLeyendaSintaxis, filtrarElementosPresentes } from '@/lib/sintaxis-requerimiento';
 import type { AlcanceGeneracion } from '@/lib/ai-actions';
 import { prepararRegistro } from '@/lib/seleccion-propuestas';
 import { irA, leerNavegacion, suscribirNavegacion, type VistaProyecto } from '@/lib/navegacion-proyecto';
@@ -258,8 +267,25 @@ export default function RequerimientosPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingReq, setEditingReq] = useState<Requerimiento | null>(null);
   const [formData, setFormData] = useState(FORM_VACIO);
+  const [elementosSintaxisForm, setElementosSintaxisForm] = useState<ElementoSintactico[] | null>(null);
   const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Resaltado sintáctico en la lista principal del proyecto
+  const [mostrarSintaxisLista, setMostrarSintaxisLista] = useEstadoSesion(
+    urlLeida ? 'easyreq:sintaxis:visible' : null,
+    true
+  );
+  const focoSintaxisLista = useFocoSintaxis();
+  const [desglosesListaAbiertos, setDesglosesListaAbiertos] = useState<Set<string>>(() => new Set());
+  const alternarDesgloseLista = useCallback((id: string) => {
+    setDesglosesListaAbiertos(prev => {
+      const copia = new Set(prev);
+      if (copia.has(id)) copia.delete(id);
+      else copia.add(id);
+      return copia;
+    });
+  }, []);
 
   // Modal de Historial / Logs
   const [currentReqForLogs, setCurrentReqForLogs] = useState<Requerimiento | null>(null);
@@ -661,6 +687,7 @@ export default function RequerimientosPage() {
 
     setEditingReq(null);
     setInsertarDespuesDe(null);
+    setElementosSintaxisForm(null);
     setModoMasivo(true);
     setAiPrompt(datos.userPrompt);
     setProfundidad(datos.resultado?.estado === 'rapida' ? 'rapida' : 'completa');
@@ -727,6 +754,7 @@ export default function RequerimientosPage() {
     const codigoBase = despuesDe ? codigoDe(despuesDe) : null;
     setInsertarDespuesDe(despuesDe && codigoBase && despuesDe.numero != null ? { numero: despuesDe.numero, codigo: codigoBase } : null);
     setFormData(construirFormInicial());
+    setElementosSintaxisForm(null);
     setAiPrompt('');
     gen.reiniciar();
     setIsModalOpen(true);
@@ -765,6 +793,7 @@ export default function RequerimientosPage() {
       id_patron_seleccionado: req.id_patron || patrones.find(p => p.id_modelo === req.id_modelo)?.patron_id || '',
       id_equipo: req.id_equipo || ''
     });
+    setElementosSintaxisForm(req.elementos_sintaxis ?? null);
     setAiPrompt('');
     gen.reiniciar();
     setIsModalOpen(true);
@@ -778,6 +807,7 @@ export default function RequerimientosPage() {
       id_modelo: nuevoModeloId,
       id_patron_seleccionado: primerP?.patron_id || ''
     });
+    setElementosSintaxisForm(null);
   };
 
   // Copia la estructura del patrón al enunciado para completarla
@@ -792,6 +822,7 @@ export default function RequerimientosPage() {
       if (!ok) return;
     }
     setFormData(prev => ({ ...prev, enunciado: patronSeleccionado.promt }));
+    setElementosSintaxisForm(null);
   };
 
   // Guardar Requerimiento (Crear o Editar)
@@ -836,6 +867,10 @@ export default function RequerimientosPage() {
     // autor lo pone el servicio y el aprobador solo lo escribe quien aprueba. Si se
     // mandaran aquí, `datosDeAlta` los sobrescribiría igualmente y el historial
     // describiría un cambio que no ocurrió.
+    const elementosVigentes = formData.id_patron_seleccionado
+      ? filtrarElementosPresentes(formData.enunciado.trim(), elementosSintaxisForm)
+      : null;
+
     const datos = {
       enunciado: formData.enunciado.trim(),
       id_tipo_requerimiento: formData.id_tipo_requerimiento || null,
@@ -845,7 +880,8 @@ export default function RequerimientosPage() {
       // para que la especificación exportada la muestre. Las reglas la admiten
       // en el alta (`isValidRequerimientoCreate`) y no la prohíben al editar.
       id_patron: formData.id_patron_seleccionado || null,
-      id_equipo: formData.id_equipo
+      id_equipo: formData.id_equipo,
+      ...(elementosVigentes ? { elementos_sintaxis: elementosVigentes } : {})
     };
 
     setSaving(true);
@@ -855,8 +891,10 @@ export default function RequerimientosPage() {
         const camposModificados = CAMPOS_EDITABLES.filter(
           ([campoReq]) => (editingReq[campoReq] || null) !== datos[campoReq]
         );
+        const cambioSintaxis =
+          JSON.stringify(editingReq.elementos_sintaxis ?? null) !== JSON.stringify(elementosVigentes);
         const cambios = camposModificados.map(([, nombre]) => nombre);
-        if (cambios.length === 0) {
+        if (cambios.length === 0 && !cambioSintaxis) {
           toast('No hay cambios que guardar');
           setIsModalOpen(false);
           return;
@@ -904,8 +942,9 @@ export default function RequerimientosPage() {
           id_tipo_requerimiento: datos.id_tipo_requerimiento,
           id_modalidad: datos.id_modalidad,
           id_modelo: datos.id_modelo,
-          id_patron: datos.id_patron
-        }, uid!, cambios, cambiosClasificacion);
+          id_patron: datos.id_patron,
+          elementos_sintaxis: elementosVigentes
+        }, uid!, cambios.length > 0 ? cambios : ['sintaxis'], cambiosClasificacion);
         toast.success('Requerimiento actualizado');
       } else {
         let newReq: Requerimiento;
@@ -958,6 +997,7 @@ export default function RequerimientosPage() {
       if (crearOtro && !editingReq) {
         // Se queda abierto con la misma clasificación para redactar el siguiente
         setFormData(prev => ({ ...prev, enunciado: '' }));
+        setElementosSintaxisForm(null);
         setAiPrompt('');
         if (siguientePosicion) setInsertarDespuesDe(siguientePosicion);
         requestAnimationFrame(() => document.getElementById('req-enunciado')?.focus());
@@ -1040,6 +1080,7 @@ export default function RequerimientosPage() {
           // Sin tipo elegido, se usa el que la IA le asignó
           id_tipo_requerimiento: prev.id_tipo_requerimiento || tipoDesdeFurps(generated.type_furps) || ''
         }));
+        setElementosSintaxisForm(generated.elementos_sintaxis ?? null);
         toast.success(
           idIA
             ? "Requerimiento generado. Revísalo antes de guardar."
@@ -1145,17 +1186,24 @@ export default function RequerimientosPage() {
     try {
       const { creados, error, logsFallidos } = await crearRequerimientosEnLote(
         proyectoId!,
-        elegidas.map(p => ({
-          enunciado: p.texto.trim(),
-          id_tipo_requerimiento: formData.id_tipo_requerimiento || tipoDesdeFurps(p.type_furps),
-          id_modalidad: idIA ?? (formData.id_modalidad || null),
-          id_modelo: formData.id_modelo || null,
-          id_patron: formData.id_patron_seleccionado || null,
-          id_equipo: formData.id_equipo,
-          modulo: moduloDe(p),
-          origen_ia: p.origen ?? null,
-          prioridad: p.prioridad ?? null
-        })),
+        elegidas.map(p => {
+          const enunciadoLimpio = p.texto.trim();
+          const sintaxis = formData.id_patron_seleccionado
+            ? filtrarElementosPresentes(enunciadoLimpio, p.elementos_sintaxis)
+            : null;
+          return {
+            enunciado: enunciadoLimpio,
+            id_tipo_requerimiento: formData.id_tipo_requerimiento || tipoDesdeFurps(p.type_furps),
+            id_modalidad: idIA ?? (formData.id_modalidad || null),
+            id_modelo: formData.id_modelo || null,
+            id_patron: formData.id_patron_seleccionado || null,
+            id_equipo: formData.id_equipo,
+            modulo: moduloDe(p),
+            origen_ia: p.origen ?? null,
+            prioridad: p.prioridad ?? null,
+            ...(sintaxis ? { elementos_sintaxis: sintaxis } : {})
+          };
+        }),
         uid,
         { inicio: 'Generación masiva con IA' },
         (hechos, total) => setRegistrandoMasivo({ hechos, total })
@@ -1686,6 +1734,26 @@ export default function RequerimientosPage() {
     ].filter(g => g.items.length > 0);
   })();
 
+  const patronFiltroUnico = useMemo(() => {
+    const idsPatron = new Set(
+      filteredRequerimientos
+        .filter(r => r.elementos_sintaxis?.length && r.id_patron)
+        .map(r => r.id_patron!)
+    );
+    if (idsPatron.size !== 1) return null;
+    const unicoId = [...idsPatron][0];
+    return patrones.find(p => p.patron_id === unicoId)?.promt ?? null;
+  }, [filteredRequerimientos, patrones]);
+
+  const { items: leyendaLista, mapaTonos: mapaTonosLista } = useMemo(
+    () =>
+      construirLeyendaSintaxis(
+        filteredRequerimientos.map(r => r.elementos_sintaxis),
+        patronFiltroUnico
+      ),
+    [filteredRequerimientos, patronFiltroUnico]
+  );
+
   if (urlLeida && !proyectoId) {
     return (
       <div className="p-8 text-center bg-surface rounded-ui border border-line">
@@ -1776,13 +1844,38 @@ export default function RequerimientosPage() {
                       {req.modalidad.nombre_modalidad}
                     </span>
                   )}
+                  {req.elementos_sintaxis?.length ? (
+                    <BotonDesgloseSintaxis
+                      abierto={desglosesListaAbiertos.has(req.id)}
+                      onAlternar={() => alternarDesgloseLista(req.id)}
+                      cantidad={req.elementos_sintaxis.length}
+                    />
+                  ) : null}
                 </div>
 
                 <div className="border-l-2 border-line-strong pl-3 py-0.5">
                   <p className="text-ink font-mono text-sm leading-relaxed whitespace-pre-wrap break-words">
-                    {req.enunciado}
+                    {mostrarSintaxisLista && req.elementos_sintaxis?.length ? (
+                      <TextoConSintaxis
+                        texto={req.enunciado}
+                        elementos={req.elementos_sintaxis}
+                        mapaTonos={mapaTonosLista}
+                        claveEnfocada={focoSintaxisLista.claveActiva}
+                      />
+                    ) : (
+                      req.enunciado
+                    )}
                   </p>
                 </div>
+
+                {desglosesListaAbiertos.has(req.id) && req.elementos_sintaxis?.length ? (
+                  <DesgloseSintaxis
+                    texto={req.enunciado}
+                    elementos={req.elementos_sintaxis}
+                    patron={req.patron?.promt}
+                    mapaTonos={mapaTonosLista}
+                  />
+                ) : null}
 
                 <div className="flex flex-wrap items-center gap-3 text-xs text-ink-subtle pt-1">
                   {req.autor && (
@@ -2137,6 +2230,14 @@ export default function RequerimientosPage() {
             </div>
           </div>
         )}
+        {!loading && leyendaLista.length > 0 && (
+          <BarraSintaxis
+            activo={mostrarSintaxisLista}
+            onCambiarActivo={setMostrarSintaxisLista}
+            items={leyendaLista}
+            foco={focoSintaxisLista}
+          />
+        )}
       </div>
 
       {/* Lista de Requerimientos */}
@@ -2255,7 +2356,10 @@ export default function RequerimientosPage() {
                   <select
                     id="req-patron"
                     value={formData.id_patron_seleccionado}
-                    onChange={(e) => setFormData({ ...formData, id_patron_seleccionado: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, id_patron_seleccionado: e.target.value });
+                      setElementosSintaxisForm(null);
+                    }}
                     disabled={patronesFiltrados.length === 0}
                     className={campo}
                   >
@@ -2507,6 +2611,13 @@ export default function RequerimientosPage() {
                   className={`${campo} font-mono leading-relaxed`}
                 />
                 <p className="text-xs text-ink-subtle mt-1">Ctrl + Enter para guardar.</p>
+                {elementosSintaxisForm && elementosSintaxisForm.length > 0 && formData.enunciado.trim() && (
+                  <VistaPreviaSintaxis
+                    texto={formData.enunciado}
+                    elementos={elementosSintaxisForm}
+                    patron={patronSeleccionado?.promt}
+                  />
+                )}
               </div>
             )}
 

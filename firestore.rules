@@ -337,9 +337,24 @@ service cloud.firestore {
           'enunciado', 'id_tipo_requerimiento', 'id_proyecto', 'id_equipo',
           'id_autor', 'id_aprobador', 'id_modalidad', 'id_estado', 'id_modelo',
           'id_patron', 'numero', 'codigo', 'created_at',
-          'modulo', 'origen_ia', 'prioridad'
+          'modulo', 'origen_ia', 'prioridad', 'elementos_sintaxis'
         ]) &&
         sonValidosCamposIA(data);
+    }
+
+    function esElementoSintaxisValido(item) {
+      return item is map &&
+        item.keys().hasOnly(['elemento', 'fragmento']) &&
+        item.elemento is string && item.elemento.size() > 0 && item.elemento.size() <= 80 &&
+        item.fragmento is string && item.fragmento.size() > 0 && item.fragmento.size() <= 1000;
+    }
+
+    function esValidaSintaxisIA(lista) {
+      return lista == null || (
+        lista is list &&
+        lista.size() <= 12 &&
+        (lista.size() == 0 || esElementoSintaxisValido(lista[0]))
+      );
     }
 
     // Campos opcionales de la generación con IA (KAN-40). Ausentes o null valen siempre (los
@@ -350,7 +365,8 @@ service cloud.firestore {
           (data.modulo is string && data.modulo.size() <= 120)
         ) &&
         (data.get('origen_ia', null) == null || data.origen_ia in ['explicito', 'inferido']) &&
-        (data.get('prioridad', null) == null || data.prioridad in ['Must', 'Should', 'Could', 'Wont']);
+        (data.get('prioridad', null) == null || data.prioridad in ['Must', 'Should', 'Could', 'Wont']) &&
+        esValidaSintaxisIA(data.get('elementos_sintaxis', null));
     }
 
     // Un requerimiento se actualiza por UNA de estas cinco situaciones. Se
