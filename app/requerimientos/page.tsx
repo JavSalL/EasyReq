@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Clock, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, Copy, ListPlus, ListOrdered,
-  Check, XCircle, Send, Download, Folder, X, Layers, MessageSquare, Map as MapaIcono
+  Check, XCircle, Send, Download, Folder, X, Layers, MessageSquare, Map as MapaIcono,
+  Handshake, GraduationCap
 } from 'lucide-react';
 import {
   generateSingleRequirement,
@@ -68,7 +69,6 @@ import PageHeader from '@/components/ui/PageHeader';
 import ModalHistorialLogs from '@/components/requerimientos/ModalHistorialLogs';
 import ModalComentarios from '@/components/requerimientos/ModalComentarios';
 import EquiposDelProyecto from '@/components/equipos/EquiposDelProyecto';
-import MiembrosDelProyecto from '@/components/proyectos/MiembrosDelProyecto';
 import ContextoDelProyecto from '@/components/proyectos/ContextoDelProyecto';
 import ControlEstrictez from '@/components/requerimientos/ControlEstrictez';
 import PanelGeneracionIterativa, {
@@ -323,20 +323,14 @@ export default function RequerimientosPage() {
   }, []);
   // Cantidad de equipos del proyecto, para la pestaña (la lista la carga EquiposDelProyecto)
   const [cantidadEquipos, setCantidadEquipos] = useState<number | null>(null);
-  // Cantidad de miembros: la pestaña la ajusta al cargar (suma a quienes entraron por un equipo)
-  const [cantidadMiembros, setCantidadMiembros] = useState<number | null>(null);
 
-  // Control de acceso (KAN-18). Lectura total para cualquiera con sesión; escribir
-  // requiere ser miembro del proyecto.
-  const esMiembroProyecto = esMiembroDelProyecto(proyecto, uid);
-  // KAN-27: para el hilo de comentarios cuenta además quien llega por un equipo
-  // vinculado. Se mantiene aparte de `esMiembroProyecto` a propósito: las reglas de
-  // requerimientos, historial e invitaciones siguen usando la membresía directa, y
-  // la interfaz no debe ofrecer ahí botones que el backend va a denegar.
+  // Control de acceso: lectura total para cualquiera con sesión; escribir
+  // requiere ser creador del proyecto o miembro activo de algún equipo activo vinculado.
+  const esMiembroDirecto = esMiembroDelProyecto(proyecto, uid);
   const [esMiembroPorEquipo, setEsMiembroPorEquipo] = useState(false);
   useEffect(() => {
     let activo = true;
-    if (!esMiembroProyecto && uid && proyecto?.proyecto_id) {
+    if (uid && proyecto?.proyecto_id) {
       esMiembroPorEquipoVinculado(proyecto.proyecto_id, uid)
         .then((res) => { if (activo) setEsMiembroPorEquipo(res); })
         .catch(() => { if (activo) setEsMiembroPorEquipo(false); });
@@ -344,30 +338,31 @@ export default function RequerimientosPage() {
       setEsMiembroPorEquipo(false);
     }
     return () => { activo = false; };
-  }, [esMiembroProyecto, uid, proyecto?.proyecto_id]);
-  const esMiembroDelHilo = esMiembroProyecto || esMiembroPorEquipo;
+  }, [uid, proyecto?.proyecto_id, cantidadEquipos]);
+  const esMiembroProyecto = esMiembroDirecto || esMiembroPorEquipo;
+  const esMiembroDelHilo = esMiembroProyecto;
   // KAN-27: el creador del proyecto puede borrar comentarios ajenos en el hilo.
   const esCreadorProyecto = esCreadorDelProyecto(proyecto, uid);
   // KAN-27: comentar es cosa de miembros del proyecto, y no depende del estado de
   // aprobación del requerimiento: discutirlo no lo mueve.
   const puedeComentar = puedeComentarRequerimiento(esMiembroDelHilo);
 
-  // KAN-18: los equipos donde el usuario es líder, que son los únicos que puede
-  // aprobar. Se piden una sola vez por sesión, y en paralelo al resto de la carga.
+  // KAN-18: los equipos donde el usuario es líder (global o local en este proyecto), que son los únicos que puede
+  // aprobar.
   useEffect(() => {
     let activo = true;
     if (!uid) {
       setEquiposLiderados([]);
       return;
     }
-    getEquiposLideradosPor(uid)
+    getEquiposLideradosPor(uid, proyectoId ?? undefined)
       .then(ids => { if (activo) setEquiposLiderados(ids); })
       .catch(e => {
         console.error('No se pudieron cargar los equipos liderados:', e);
         if (activo) setEquiposLiderados([]);
       });
     return () => { activo = false; };
-  }, [uid]);
+  }, [uid, proyectoId, cantidadEquipos]);
 
   // AI Generation State
   const [isAILoading, setIsAILoading] = useState(false);
@@ -488,13 +483,6 @@ export default function RequerimientosPage() {
   useEffect(() => {
     cargarTodo();
   }, [cargarTodo]);
-
-  // Recarga solo el proyecto (p. ej. tras agregar o quitar miembros)
-  const recargarProyecto = useCallback(async () => {
-    if (!proyectoId) return;
-    const actualizado = await getProyectoById(proyectoId);
-    if (actualizado) setProyecto(actualizado);
-  }, [proyectoId]);
 
   // Contexto del proyecto para la IA. Se relee al abrir el modal para usar lo último que se subió.
   const cargarContexto = useCallback(async () => {
@@ -1115,6 +1103,9 @@ export default function RequerimientosPage() {
           id_tipo_requerimiento: prev.id_tipo_requerimiento || tipoDesdeFurps(generated.type_furps) || ''
         }));
         setElementosSintaxisForm(generated.elementos_sintaxis ?? null);
+        requestAnimationFrame(() => {
+          document.getElementById('vista-previa-sintaxis-form')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
         toast.success(
           idIA
             ? "Requerimiento generado. Revísalo antes de guardar."
@@ -2054,13 +2045,34 @@ export default function RequerimientosPage() {
         }
         title={
           proyecto ? (
-            <span className="flex flex-wrap items-center gap-3">
+            <span className="flex flex-wrap items-center gap-2.5">
               {proyecto.nombre}
+              {proyecto.estado_proyecto?.nombre_estado && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-subtle text-brand-text border border-brand-line">
+                  {proyecto.estado_proyecto.nombre_estado}
+                </span>
+              )}
               {proyecto.tipos_sistema?.nombre && (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-sunken text-ink-muted border border-line">
                   {proyecto.tipos_sistema.nombre}
                 </span>
               )}
+              {proyecto.naturaleza_proyecto?.nombre_naturaleza && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sunken text-ink-muted border border-line">
+                  <GraduationCap size={12} aria-hidden />
+                  {proyecto.naturaleza_proyecto.nombre_naturaleza}
+                </span>
+              )}
+              {(proyecto.colaboraciones ?? []).map(c => (
+                <span
+                  key={c.id}
+                  title={`Campaña de colaboración: ${c.nombre}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-subtle text-brand-text border border-brand-line"
+                >
+                  <Handshake size={12} aria-hidden />
+                  {c.nombre}
+                </span>
+              ))}
             </span>
           ) : (
             <span className="block h-8 w-64 max-w-full bg-sunken-strong rounded-ui animate-pulse" />
@@ -2094,11 +2106,6 @@ export default function RequerimientosPage() {
         <nav aria-label="Secciones del proyecto" className="flex gap-1 border-b border-line overflow-x-auto overflow-y-hidden custom-scrollbar">
           {[
             { id: 'requerimientos' as const, nombre: 'Requerimientos', cantidad: loading ? null : requerimientos.length },
-            {
-              id: 'miembros' as const,
-              nombre: 'Miembros',
-              cantidad: cantidadMiembros ?? new Set([proyecto.id_creador, ...(proyecto.ids_miembros ?? [])].filter(Boolean)).size
-            },
             { id: 'equipos' as const, nombre: 'Equipos', cantidad: cantidadEquipos },
             { id: 'contexto' as const, nombre: 'Contexto', cantidad: cantidadContexto }
           ].map((p) => {
@@ -2121,15 +2128,13 @@ export default function RequerimientosPage() {
         </nav>
       )}
 
-      {vista === 'equipos' || vista === 'miembros' || vista === 'contexto' ? (
+      {vista === 'equipos' || vista === 'contexto' ? (
         !proyecto ? (
           <div role="status" aria-label="Cargando" className="h-40 bg-sunken rounded-ui animate-pulse" />
         ) : vista === 'equipos' ? (
           <EquiposDelProyecto proyecto={proyecto} onCantidad={setCantidadEquipos} />
-        ) : vista === 'contexto' ? (
-          <ContextoDelProyecto proyecto={proyecto} onCantidad={setCantidadContexto} />
         ) : (
-          <MiembrosDelProyecto proyecto={proyecto} onCambio={recargarProyecto} onCantidad={setCantidadMiembros} />
+          <ContextoDelProyecto proyecto={proyecto} onCantidad={setCantidadContexto} />
         )
       ) : (
       <>
@@ -2646,11 +2651,13 @@ export default function RequerimientosPage() {
                 />
                 <p className="text-xs text-ink-subtle mt-1">Ctrl + Enter para guardar.</p>
                 {elementosSintaxisForm && elementosSintaxisForm.length > 0 && formData.enunciado.trim() && (
-                  <VistaPreviaSintaxis
-                    texto={formData.enunciado}
-                    elementos={elementosSintaxisForm}
-                    patron={patronSeleccionado?.promt}
-                  />
+                  <div id="vista-previa-sintaxis-form">
+                    <VistaPreviaSintaxis
+                      texto={formData.enunciado}
+                      elementos={elementosSintaxisForm}
+                      patron={patronSeleccionado?.promt}
+                    />
+                  </div>
                 )}
               </div>
             )}

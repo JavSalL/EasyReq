@@ -743,6 +743,8 @@ function esquemaElementosSintaxis(pattern?: string): Record<string, unknown> {
 }
 
 export function esquemaUnico(pattern?: string): Record<string, unknown> {
+  const req = ['valido'];
+  if (pattern) req.push('elementos_sintaxis');
   return {
     type: 'OBJECT',
     properties: {
@@ -753,7 +755,7 @@ export function esquemaUnico(pattern?: string): Record<string, unknown> {
       ai_evaluation: PROPIEDADES_REQUERIMIENTO.ai_evaluation,
       ...(pattern ? { elementos_sintaxis: esquemaElementosSintaxis(pattern) } : {}),
     },
-    required: ['valido'],
+    required: req,
   };
 }
 

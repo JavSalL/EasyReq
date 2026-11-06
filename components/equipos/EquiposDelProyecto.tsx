@@ -3,9 +3,36 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Users, Plus, ChevronRight, ChevronLeft, Save, Edit2, Trash2, Crown, UserPlus, Check, Lock, Send
+  Users,
+  Plus,
+  ChevronRight,
+  ChevronLeft,
+  Save,
+  Edit2,
+  Trash2,
+  Crown,
+  UserPlus,
+  Check,
+  Lock,
+  History,
+  Link2,
+  Unlink,
+  RefreshCw,
+  UserCheck,
+  UserX,
+  Globe,
+  Layers,
 } from 'lucide-react';
-import type { Equipo, PerfilUsuario, Proyecto, Rol } from '@/lib/database.types';
+import type {
+  Equipo,
+  EstadoEquipoProyecto,
+  EstadoMiembroProyecto,
+  MiembroProyectoEquipo,
+  PerfilUsuario,
+  Proyecto,
+  Rol,
+  SolicitudProyectoEquipo,
+} from '@/lib/database.types';
 import {
   getEquipos,
   createEquipoEnProyecto,
@@ -13,58 +40,83 @@ import {
   deleteEquipo,
   getAllUsers,
   getRoles,
-  getProyectoEquipos,
+  getVinculosEquiposDeProyecto,
   getMiembrosEquipo,
-  actualizarRolesMiembro,
-  removeMiembroEquipo,
+  getMiembrosProyectoEquipo,
+  asignarEquipoAProyecto,
+  cambiarEstadoEquipoEnProyecto,
+  crearSolicitudProyectoEquipo,
+  getSolicitudesProyectoEquipoEnviadas,
+  sincronizarPlantillaEquipoEnProyecto,
+  agregarMiembroLocalProyectoEquipo,
+  actualizarRolesMiembroLocal,
+  cambiarEstadoMiembroLocal,
   getEquiposLideradosPor,
   esRolLider,
-  crearInvitacionEquipo
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
-import { esMiembroDelProyecto, puedeCrearEquipos } from '@/lib/equipos-proyecto';
-import { EVENTO_EQUIPOS_CAMBIARON, irA, leerNavegacion, suscribirNavegacion } from '@/lib/navegacion-proyecto';
+import { esCreadorDelProyecto } from '@/lib/equipos-proyecto';
+import {
+  EVENTO_EQUIPOS_CAMBIARON,
+  irA,
+  leerNavegacion,
+  suscribirNavegacion,
+} from '@/lib/navegacion-proyecto';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import {
-  btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, campo, etiqueta, tarjeta
+  btnPrimario,
+  btnSecundario,
+  btnSecundarioCompacto,
+  btnIcono,
+  btnIconoPeligro,
+  campo,
+  etiqueta,
+  tarjeta,
 } from '@/components/ui/estilos';
 import ModalFormEquipo from '@/components/equipos/ModalFormEquipo';
+import { HistorialMiembrosModal } from '@/components/equipos/HistorialMiembrosModal';
 import BuscadorPersonas from '@/components/proyectos/BuscadorPersonas';
 
-interface MiembroDetallado {
+interface MiembroLocalDetallado {
   usuario: PerfilUsuario;
   roles: Rol[];
   esLider: boolean;
+  estado: EstadoMiembroProyecto;
+  esLocal: boolean;
 }
 
-interface EquipoDetallado extends Equipo {
-  miembros: MiembroDetallado[];
+interface EquipoEnProyectoDetallado extends Equipo {
+  estadoEnProyecto: EstadoEquipoProyecto;
+  miembros: MiembroLocalDetallado[];
 }
 
 const nombreDe = (u: PerfilUsuario) => u.nombre || u.correo;
 const iniciales = (u: PerfilUsuario) => nombreDe(u).slice(0, 2).toUpperCase();
 
 interface FormularioDatosEquipoProps {
-  equipo: EquipoDetallado;
+  equipo: EquipoEnProyectoDetallado;
   guardando: boolean;
   onGuardar: (datos: { nombre: string; descripcion: string }) => void;
   onEliminar: () => void;
 }
 
-/**
- * Datos del equipo (nombre y descripción) editables en la misma pantalla que sus miembros.
- * Se monta con `key` ligada a los datos guardados, así el formulario siempre parte de lo último.
- */
-function FormularioDatosEquipo({ equipo, guardando, onGuardar, onEliminar }: FormularioDatosEquipoProps) {
+function FormularioDatosEquipo({
+  equipo,
+  guardando,
+  onGuardar,
+  onEliminar,
+}: FormularioDatosEquipoProps) {
   const [nombre, setNombre] = useState(equipo.nombre);
   const [descripcion, setDescripcion] = useState(equipo.descripcion ?? '');
-  const hayCambios = nombre.trim() !== equipo.nombre || descripcion.trim() !== (equipo.descripcion ?? '');
+  const hayCambios =
+    nombre.trim() !== equipo.nombre || descripcion.trim() !== (equipo.descripcion ?? '');
 
   return (
     <form
-      onSubmit={(e) => {
+      onSubmit={e => {
         e.preventDefault();
         onGuardar({ nombre, descripcion });
       }}
@@ -82,7 +134,7 @@ function FormularioDatosEquipo({ equipo, guardando, onGuardar, onEliminar }: For
             type="text"
             maxLength={80}
             value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
+            onChange={e => setNombre(e.target.value)}
             className={campo}
           />
         </div>
@@ -94,7 +146,7 @@ function FormularioDatosEquipo({ equipo, guardando, onGuardar, onEliminar }: For
             id="equipo-descripcion"
             type="text"
             value={descripcion}
-            onChange={(e) => setDescripcion(e.target.value)}
+            onChange={e => setDescripcion(e.target.value)}
             className={campo}
           />
         </div>
@@ -102,7 +154,7 @@ function FormularioDatosEquipo({ equipo, guardando, onGuardar, onEliminar }: For
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <button type="button" onClick={onEliminar} className={btnSecundario}>
           <Trash2 size={16} />
-          Eliminar equipo
+          Eliminar equipo global
         </button>
         <button type="submit" disabled={guardando || !hayCambios} className={btnPrimario}>
           <Save size={16} />
@@ -115,52 +167,64 @@ function FormularioDatosEquipo({ equipo, guardando, onGuardar, onEliminar }: For
 
 interface EquiposDelProyectoProps {
   proyecto: Proyecto;
-  /** Se avisa con la cantidad de equipos cada vez que se cargan (para el contador de la pestaña). */
+  /** Se avisa con la cantidad de equipos activos cada vez que se cargan (para el contador de la pestaña). */
   onCantidad?: (cantidad: number) => void;
 }
 
-/**
- * Equipos de un proyecto (KAN-24): reemplaza a la pantalla global de equipos. Lista los
- * equipos del proyecto, deja crear equipos a quien el proyecto autorice, y abre cada equipo
- * para ver sus miembros, invitar gente y cambiar roles. Todo equipo pertenece al proyecto.
- */
 export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelProyectoProps) {
   const confirmar = useConfirm();
   const { user } = useAuth();
   const uid = user?.uid ?? null;
   const proyectoId = proyecto.proyecto_id;
+  const esCreador = esCreadorDelProyecto(proyecto, uid);
 
-  const [equipos, setEquipos] = useState<EquipoDetallado[]>([]);
+  const [equipos, setEquipos] = useState<EquipoEnProyectoDetallado[]>([]);
+  const [todosEquiposGlobales, setTodosEquiposGlobales] = useState<Equipo[]>([]);
+  const [solicitudesEnviadas, setSolicitudesEnviadas] = useState<SolicitudProyectoEquipo[]>([]);
   const [usuarios, setUsuarios] = useState<PerfilUsuario[]>([]);
   const [roles, setRoles] = useState<Rol[]>([]);
   const [loading, setLoading] = useState(true);
-  const puedeCrear = puedeCrearEquipos(proyecto, uid);
+  const [mostrarDesvinculados, setMostrarDesvinculados] = useState(false);
 
-  // Solo el líder de cada equipo lo edita y gestiona sus miembros
   const [equiposLiderados, setEquiposLiderados] = useState<string[]>([]);
   const cargarLiderazgo = useCallback(async () => {
     try {
-      setEquiposLiderados(uid ? await getEquiposLideradosPor(uid) : []);
+      setEquiposLiderados(uid ? await getEquiposLideradosPor(uid, proyectoId) : []);
     } catch (err) {
       console.error('Error al cargar liderazgo de equipos:', err);
       setEquiposLiderados([]);
     }
-  }, [uid]);
+  }, [uid, proyectoId]);
+
   useEffect(() => {
     void cargarLiderazgo();
   }, [cargarLiderazgo]);
-  const puedeGestionarEquipo = (equipoId: string) => equiposLiderados.includes(equipoId);
 
-  // Modal crear / editar equipo
+  const esLiderEquipo = (equipoId: string) => equiposLiderados.includes(equipoId);
+  const puedeGestionarLocalmente = (equipoId: string) => esLiderEquipo(equipoId) || esCreador;
+
+  // Modal crear nuevo equipo global y vincularlo
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ nombre: '', descripcion: '' });
   const [saving, setSaving] = useState(false);
-  const { hayCambios, intentarCerrar } = useCierreSeguro(isModalOpen, formData, () => setIsModalOpen(false));
+  const { hayCambios, intentarCerrar } = useCierreSeguro(isModalOpen, formData, () =>
+    setIsModalOpen(false)
+  );
 
-  // Equipo abierto (se refleja en la URL para que "atrás" regrese a la lista)
+  // Modal vincular equipo global existente
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [equipoAVincularId, setEquipoAVincularId] = useState('');
+  const [vinculando, setVinculando] = useState(false);
+
+  // Equipo abierto e historial
   const [equipoAbiertoId, setEquipoAbiertoId] = useState<string | null>(null);
+  const [historialOpen, setHistorialOpen] = useState(false);
+  const [sincronizandoPlantilla, setSincronizandoPlantilla] = useState(false);
+  const [mostrarMiembrosInactivos, setMostrarMiembrosInactivos] = useState(true);
+
   const [memberForm, setMemberForm] = useState({ id_usuario: '', id_roles: [] as string[] });
   const [guardandoMiembro, setGuardandoMiembro] = useState(false);
+  const [guardandoDatos, setGuardandoDatos] = useState(false);
 
   useEffect(() => {
     const leerUrl = () => {
@@ -173,39 +237,117 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
 
   const fetchData = useCallback(async () => {
     try {
-      const [usersData, rolesData, equiposData, vinculos, miembrosData] = await Promise.all([
+      const [
+        usersData,
+        rolesData,
+        equiposGlobales,
+        vinculosProyecto,
+        miembrosLocalesProyecto,
+        miembrosGlobales,
+        solEnviadas,
+      ] = await Promise.all([
         getAllUsers(),
         getRoles(),
         getEquipos(),
-        getProyectoEquipos(),
-        getMiembrosEquipo()
+        getVinculosEquiposDeProyecto(proyectoId, true),
+        getMiembrosProyectoEquipo(proyectoId, undefined, true),
+        getMiembrosEquipo(),
+        uid ? getSolicitudesProyectoEquipoEnviadas(uid, proyectoId) : Promise.resolve([]),
       ]);
+
       setUsuarios([...usersData].sort((a, b) => nombreDe(a).localeCompare(nombreDe(b))));
       setRoles(rolesData);
+      setTodosEquiposGlobales(equiposGlobales);
+      setSolicitudesEnviadas(solEnviadas);
 
-      // Equipos de este proyecto: los creados en él y los vinculados antes de que existiera esta vista
-      const vinculados = new Set(vinculos.filter(v => v.id_proyecto === proyectoId).map(v => v.id_equipo));
-      const delProyecto = equiposData.filter(e => e.id_proyecto === proyectoId || vinculados.has(e.equipo_id));
+      // Agrupar miembros locales por equipo
+      const localesPorEquipo = new Map<string, MiembroProyectoEquipo[]>();
+      for (const m of miembrosLocalesProyecto) {
+        const lista = localesPorEquipo.get(m.id_equipo) ?? [];
+        lista.push(m);
+        localesPorEquipo.set(m.id_equipo, lista);
+      }
 
-      const detallados: EquipoDetallado[] = delProyecto.map(eq => {
-        const miembros = miembrosData
-          .filter(m => m.id_equipo === eq.equipo_id && m.usuario)
-          .map(m => {
-            const rolesMiembro = m.roles ?? [];
-            return { usuario: m.usuario!, roles: rolesMiembro, esLider: rolesMiembro.some(r => esRolLider(r.nombre_rol)) };
-          })
-          .sort((a, b) => Number(b.esLider) - Number(a.esLider) || nombreDe(a.usuario).localeCompare(nombreDe(b.usuario)));
-        return { ...eq, miembros };
-      });
-      setEquipos(detallados.sort((a, b) => a.nombre.localeCompare(b.nombre)));
-      onCantidad?.(detallados.length);
+      // Agrupar miembros globales por equipo (respaldo si aún no se ha clonado la plantilla)
+      const globalesPorEquipo = new Map<string, typeof miembrosGlobales>();
+      for (const m of miembrosGlobales) {
+        const lista = globalesPorEquipo.get(m.id_equipo) ?? [];
+        lista.push(m);
+        globalesPorEquipo.set(m.id_equipo, lista);
+      }
+
+      const vinculosMap = new Map<string, EstadoEquipoProyecto>();
+      for (const v of vinculosProyecto) {
+        vinculosMap.set(v.id_equipo, v.estado ?? 'activo');
+      }
+      // Soporte legacy para equipos con `id_proyecto === proyectoId` sin documento en `proyecto_equipos`
+      for (const eq of equiposGlobales) {
+        if (eq.id_proyecto === proyectoId && !vinculosMap.has(eq.equipo_id)) {
+          vinculosMap.set(eq.equipo_id, 'activo');
+        }
+      }
+
+      const detallados: EquipoEnProyectoDetallado[] = equiposGlobales
+        .filter(eq => vinculosMap.has(eq.equipo_id))
+        .map(eq => {
+          const estadoEnProyecto = vinculosMap.get(eq.equipo_id) ?? 'activo';
+          const locales = localesPorEquipo.get(eq.equipo_id) ?? [];
+
+          let miembros: MiembroLocalDetallado[];
+          if (locales.length > 0) {
+            miembros = locales
+              .filter(m => Boolean(m.usuario))
+              .map(m => {
+                const rolesMiembro = m.roles ?? [];
+                return {
+                  usuario: m.usuario!,
+                  roles: rolesMiembro,
+                  esLider: rolesMiembro.some(r => esRolLider(r.nombre_rol)),
+                  estado: m.estado ?? 'activo',
+                  esLocal: Boolean(m.es_local),
+                };
+              });
+          } else {
+            const plantilla = globalesPorEquipo.get(eq.equipo_id) ?? [];
+            miembros = plantilla
+              .filter(m => Boolean(m.usuario))
+              .map(m => {
+                const rolesMiembro = m.roles ?? [];
+                return {
+                  usuario: m.usuario!,
+                  roles: rolesMiembro,
+                  esLider: rolesMiembro.some(r => esRolLider(r.nombre_rol)),
+                  estado: 'activo' as EstadoMiembroProyecto,
+                  esLocal: false,
+                };
+              });
+          }
+
+          miembros.sort(
+            (a, b) =>
+              Number(a.estado === 'inactivo') - Number(b.estado === 'inactivo') ||
+              Number(b.esLider) - Number(a.esLider) ||
+              nombreDe(a.usuario).localeCompare(nombreDe(b.usuario))
+          );
+
+          return {
+            ...eq,
+            estadoEnProyecto,
+            miembros,
+          };
+        })
+        .sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+      setEquipos(detallados);
+      const cantidadActivos = detallados.filter(e => e.estadoEnProyecto === 'activo').length;
+      onCantidad?.(cantidadActivos);
     } catch (err) {
       console.error(err);
-      toast.error(mensajeError(err, 'No se pudieron cargar los equipos'));
+      toast.error(mensajeError(err, 'No se pudieron cargar los equipos del proyecto'));
     } finally {
       setLoading(false);
     }
-  }, [proyectoId, onCantidad]);
+  }, [proyectoId, uid, onCantidad]);
 
   useEffect(() => {
     void fetchData();
@@ -215,7 +357,6 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
     await Promise.all([fetchData(), cargarLiderazgo()]);
   }, [fetchData, cargarLiderazgo]);
 
-  // Al aceptar una invitación desde la campana, la lista se actualiza sola
   useEffect(() => {
     const alCambiar = () => void recargar();
     window.addEventListener(EVENTO_EQUIPOS_CAMBIARON, alCambiar);
@@ -224,48 +365,19 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
 
   const equipoAbierto = equipos.find(e => e.equipo_id === equipoAbiertoId) ?? null;
 
-  const abrirEquipo = (team: EquipoDetallado) => {
+  const abrirEquipo = (team: EquipoEnProyectoDetallado) => {
     irA(proyectoId, 'equipos', team.equipo_id);
     window.scrollTo({ top: 0 });
   };
   const cerrarEquipo = () => irA(proyectoId, 'equipos');
 
-  // Crear un equipo (editar se hace en la pantalla del equipo, junto con sus miembros)
-  const openModal = () => {
-    if (!puedeCrear) {
-      toast.error('No tienes permiso para crear equipos en este proyecto');
+  const openCreateModal = () => {
+    if (!esCreador) {
+      toast.error('Solo el creador del proyecto puede crear o vincular equipos');
       return;
     }
     setFormData({ nombre: '', descripcion: '' });
     setIsModalOpen(true);
-  };
-
-  // Guardar los datos de un equipo existente (nombre y descripción)
-  const [guardandoDatos, setGuardandoDatos] = useState(false);
-  const guardarDatosEquipo = async (team: EquipoDetallado, datos: { nombre: string; descripcion: string }) => {
-    if (!puedeGestionarEquipo(team.equipo_id)) {
-      toast.error('Solo el líder del equipo puede editarlo');
-      return;
-    }
-    if (!datos.nombre.trim()) {
-      toast.error('El nombre del equipo es obligatorio');
-      return;
-    }
-    if (!datos.descripcion.trim()) {
-      toast.error('La descripción del equipo es obligatoria');
-      return;
-    }
-    setGuardandoDatos(true);
-    try {
-      await updateEquipo(team.equipo_id, { nombre: datos.nombre.trim(), descripcion: datos.descripcion.trim() });
-      toast.success('Equipo actualizado');
-      await recargar();
-    } catch (err) {
-      console.error(err);
-      toast.error(mensajeError(err, 'No se pudo guardar el equipo'));
-    } finally {
-      setGuardandoDatos(false);
-    }
   };
 
   const handleSaveTeam = async (e: React.FormEvent) => {
@@ -278,55 +390,159 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
       toast.error('La descripción del equipo es obligatoria');
       return;
     }
+    if (!uid) {
+      toast.error('Debes iniciar sesión para crear un equipo');
+      return;
+    }
+
+    const rolLider = roles.find(r => esRolLider(r.nombre_rol));
+    if (!rolLider) {
+      toast.error('No está configurado el rol de líder; no se puede crear el equipo');
+      return;
+    }
 
     setSaving(true);
     try {
-      if (!uid) {
-        toast.error('Debes iniciar sesión para crear un equipo');
-        return;
-      }
-      // Quien lo crea queda como líder inicial para poder gestionarlo
-      const rolLider = roles.find(r => esRolLider(r.nombre_rol));
-      if (!rolLider) {
-        toast.error('No está configurado el rol de líder; no se puede crear el equipo');
-        return;
-      }
       const nuevo = await createEquipoEnProyecto({
         nombre: formData.nombre.trim(),
         descripcion: formData.descripcion.trim(),
         id_proyecto: proyectoId,
         id_creador: uid,
-        id_rol_lider: rolLider.id
+        id_rol_lider: rolLider.id,
       });
-      toast.success('Equipo creado. Eres su líder: agrega a sus miembros.');
+      toast.success('Equipo global creado y vinculado al proyecto.');
       setIsModalOpen(false);
       await recargar();
-      // Se abre el equipo para seguir con sus miembros
       irA(proyectoId, 'equipos', nuevo.equipo_id);
       window.scrollTo({ top: 0 });
     } catch (err) {
       console.error(err);
-      toast.error(mensajeError(err, 'No se pudo guardar el equipo'));
+      toast.error(mensajeError(err, 'No se pudo crear el equipo'));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteTeam = async (team: EquipoDetallado) => {
-    if (!puedeGestionarEquipo(team.equipo_id)) {
+  // Vincular equipo global existente
+  const handleVincularEquipoExistente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uid || !equipoAVincularId) {
+      toast.error('Selecciona un equipo para vincular');
+      return;
+    }
+    setVinculando(true);
+    try {
+      if (esLiderEquipo(equipoAVincularId)) {
+        // Asignación directa porque el creador del proyecto también es líder del equipo
+        await asignarEquipoAProyecto(proyectoId, equipoAVincularId, uid);
+        toast.success('Equipo asignado al proyecto y plantilla de miembros sincronizada');
+      } else {
+        // Enviar solicitud al líder del equipo
+        await crearSolicitudProyectoEquipo(proyectoId, equipoAVincularId, uid, 'vincular');
+        toast.success('Solicitud de vinculación enviada al líder del equipo');
+      }
+      setIsLinkModalOpen(false);
+      setEquipoAVincularId('');
+      await recargar();
+    } catch (err) {
+      console.error(err);
+      toast.error(mensajeError(err, 'No se pudo vincular el equipo'));
+    } finally {
+      setVinculando(false);
+    }
+  };
+
+  // Cambiar estado del equipo en el proyecto ('activo' | 'desvinculado')
+  const handleToggleEstadoEquipo = async (team: EquipoEnProyectoDetallado) => {
+    if (!uid) return;
+    const nuevoEstado: EstadoEquipoProyecto =
+      team.estadoEnProyecto === 'activo' ? 'desvinculado' : 'activo';
+
+    if (nuevoEstado === 'desvinculado') {
+      const ok = await confirmar({
+        titulo: '¿Desvincular equipo del proyecto?',
+        mensaje: (
+          <>
+            El equipo <strong className="text-ink">{team.nombre}</strong> pasará a estado{' '}
+            <strong className="text-ink">Desvinculado</strong> en este proyecto. Se conservará el
+            historial local de sus miembros por si deseas reactivarlo después.
+          </>
+        ),
+        textoConfirmar: 'Desvincular',
+        peligro: true,
+      });
+      if (!ok) return;
+    }
+
+    try {
+      if (esCreador && esLiderEquipo(team.equipo_id)) {
+        await cambiarEstadoEquipoEnProyecto(proyectoId, team.equipo_id, nuevoEstado, uid);
+        toast.success(
+          nuevoEstado === 'activo'
+            ? 'Equipo reactivado en el proyecto'
+            : 'Equipo desvinculado del proyecto'
+        );
+      } else if (esCreador || esLiderEquipo(team.equipo_id)) {
+        // Si es creador o líder (según firestore.rules, update en proyecto_equipos permite creador o líder)
+        await cambiarEstadoEquipoEnProyecto(proyectoId, team.equipo_id, nuevoEstado, uid);
+        toast.success(
+          nuevoEstado === 'activo'
+            ? 'Equipo reactivado en el proyecto'
+            : 'Equipo desvinculado del proyecto'
+        );
+      } else {
+        toast.error('Solo el creador del proyecto o el líder del equipo pueden cambiar su estado');
+        return;
+      }
+      await recargar();
+    } catch (err) {
+      toast.error(mensajeError(err, 'No se pudo cambiar el estado del equipo en el proyecto'));
+    }
+  };
+
+  const guardarDatosEquipo = async (
+    team: EquipoEnProyectoDetallado,
+    datos: { nombre: string; descripcion: string }
+  ) => {
+    if (!esLiderEquipo(team.equipo_id)) {
+      toast.error('Solo el líder del equipo puede editar sus datos globales');
+      return;
+    }
+    if (!datos.nombre.trim() || !datos.descripcion.trim()) {
+      toast.error('El nombre y la descripción son obligatorios');
+      return;
+    }
+    setGuardandoDatos(true);
+    try {
+      await updateEquipo(team.equipo_id, {
+        nombre: datos.nombre.trim(),
+        descripcion: datos.descripcion.trim(),
+      });
+      toast.success('Equipo actualizado');
+      await recargar();
+    } catch (err) {
+      toast.error(mensajeError(err, 'No se pudo guardar el equipo'));
+    } finally {
+      setGuardandoDatos(false);
+    }
+  };
+
+  const handleDeleteTeam = async (team: EquipoEnProyectoDetallado) => {
+    if (!esLiderEquipo(team.equipo_id)) {
       toast.error('Solo el líder del equipo puede eliminarlo');
       return;
     }
     const ok = await confirmar({
-      titulo: '¿Eliminar equipo?',
+      titulo: '¿Eliminar equipo global?',
       mensaje: (
         <>
-          Se eliminará <strong className="text-ink">{team.nombre}</strong> con sus miembros e invitaciones. Sus
-          miembros podrían perder el permiso de editar este proyecto.
+          Se eliminará <strong className="text-ink">{team.nombre}</strong> de manera global con sus
+          miembros e invitaciones. Si solo deseas retirarlo de este proyecto, usa el botón{' '}
+          <strong className="text-ink">Desvincular del proyecto</strong>.
         </>
       ),
-      textoConfirmar: 'Eliminar',
-      peligro: true
+      textoConfirmar: 'Eliminar globalmente',
+      peligro: true,
     });
     if (!ok) return;
     try {
@@ -339,96 +555,171 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
     }
   };
 
+  const handleSincronizarPlantilla = async () => {
+    if (!equipoAbierto || !uid) return;
+    setSincronizandoPlantilla(true);
+    try {
+      await sincronizarPlantillaEquipoEnProyecto(
+        proyectoId,
+        equipoAbierto.equipo_id,
+        uid,
+        true
+      );
+      toast.success('Plantilla global sincronizada con este proyecto');
+      await recargar();
+    } catch (err) {
+      toast.error(mensajeError(err, 'No se pudo sincronizar la plantilla'));
+    } finally {
+      setSincronizandoPlantilla(false);
+    }
+  };
+
   const miembrosActuales = () => equipoAbierto?.miembros ?? [];
   const esIdRolLider = (id: string) => esRolLider(roles.find(r => r.id === id)?.nombre_rol);
 
-  // Un equipo con líder no puede quedarse sin ninguno: nadie podría gestionarlo
-  const quedariaSinLider = (userId: string, nuevosIdRoles: string[]) => {
+  const quedariaSinLiderActivo = (userId: string, nuevosIdRoles: string[]) => {
     const tieneLider = (ids: string[]) => ids.some(esIdRolLider);
-    const miembros = miembrosActuales();
-    const habiaLider = miembros.some(m => m.esLider);
-    const quedaLider = miembros.some(m => tieneLider(m.usuario.id === userId ? nuevosIdRoles : m.roles.map(r => r.id)));
+    const activos = miembrosActuales().filter(m => m.estado === 'activo');
+    const habiaLider = activos.some(m => m.esLider);
+    const quedaLider = activos.some(m =>
+      tieneLider(m.usuario.id === userId ? nuevosIdRoles : m.roles.map(r => r.id))
+    );
     return habiaLider && !quedaLider;
   };
 
-  const handleGuardarMiembro = async (e: React.FormEvent) => {
+  const handleGuardarMiembroLocal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!equipoAbierto || !uid) return;
     if (!memberForm.id_usuario) {
       toast.error('Selecciona un usuario');
       return;
     }
-    if (!puedeGestionarEquipo(equipoAbierto.equipo_id)) {
-      toast.error('Solo el líder del equipo puede invitar miembros o cambiar roles');
+    if (!puedeGestionarLocalmente(equipoAbierto.equipo_id)) {
+      toast.error(
+        'Solo el líder del equipo o el creador del proyecto pueden gestionar miembros locales'
+      );
       return;
     }
-    const esMiembroExistente = miembrosActuales().some(m => m.usuario.id === memberForm.id_usuario);
-    if (esMiembroExistente && quedariaSinLider(memberForm.id_usuario, memberForm.id_roles)) {
-      toast.error('El equipo debe conservar al menos un líder');
+
+    const miembroExistente = miembrosActuales().find(
+      m => m.usuario.id === memberForm.id_usuario
+    );
+    if (
+      miembroExistente &&
+      miembroExistente.estado === 'activo' &&
+      quedariaSinLiderActivo(memberForm.id_usuario, memberForm.id_roles)
+    ) {
+      toast.error('El equipo debe conservar al menos un líder activo en este proyecto');
       return;
     }
 
     setGuardandoMiembro(true);
     try {
-      if (esMiembroExistente) {
-        await actualizarRolesMiembro(equipoAbierto.equipo_id, memberForm.id_usuario, memberForm.id_roles);
-        toast.success('Roles actualizados');
-        await recargar();
+      if (miembroExistente && miembroExistente.estado === 'activo') {
+        await actualizarRolesMiembroLocal({
+          id_proyecto: proyectoId,
+          id_equipo: equipoAbierto.equipo_id,
+          id_usuario: memberForm.id_usuario,
+          id_roles: memberForm.id_roles,
+          id_autor: uid,
+        });
+        toast.success('Roles locales actualizados para este proyecto');
       } else {
-        // La membresía se crea cuando el usuario acepta la invitación
-        await crearInvitacionEquipo(equipoAbierto.equipo_id, uid, memberForm.id_usuario, memberForm.id_roles);
-        toast.success('Invitación enviada. El usuario se unirá cuando la acepte.');
+        await agregarMiembroLocalProyectoEquipo({
+          id_proyecto: proyectoId,
+          id_equipo: equipoAbierto.equipo_id,
+          id_usuario: memberForm.id_usuario,
+          id_roles: memberForm.id_roles,
+          id_autor: uid,
+        });
+        toast.success(
+          miembroExistente
+            ? 'Integrante reactivado en este proyecto'
+            : 'Integrante agregado localmente a este proyecto'
+        );
       }
       setMemberForm({ id_usuario: '', id_roles: [] });
+      await recargar();
     } catch (err) {
-      console.error('Error al guardar miembro del equipo:', err);
-      toast.error(mensajeError(err, esMiembroExistente ? 'No se pudieron actualizar los roles' : 'No se pudo enviar la invitación'));
+      console.error('Error al guardar miembro local:', err);
+      toast.error(mensajeError(err, 'No se pudo guardar el integrante en el proyecto'));
     } finally {
       setGuardandoMiembro(false);
     }
   };
 
-  const handleRemoveMember = async (miembro: MiembroDetallado) => {
-    if (!equipoAbierto) return;
-    if (!puedeGestionarEquipo(equipoAbierto.equipo_id)) {
-      toast.error('Solo el líder del equipo puede remover miembros');
+  const handleToggleEstadoMiembroLocal = async (miembro: MiembroLocalDetallado) => {
+    if (!equipoAbierto || !uid) return;
+    if (!puedeGestionarLocalmente(equipoAbierto.equipo_id)) {
+      toast.error('No tienes permiso para cambiar el estado de los miembros');
       return;
     }
-    if (miembro.usuario.id === uid) {
-      toast.error('No puedes removerte a ti mismo del equipo');
-      return;
+    const nuevoEstado: EstadoMiembroProyecto =
+      miembro.estado === 'activo' ? 'inactivo' : 'activo';
+
+    if (nuevoEstado === 'inactivo') {
+      const ok = await confirmar({
+        titulo: '¿Desactivar miembro en este proyecto?',
+        mensaje: (
+          <>
+            <strong className="text-ink">{nombreDe(miembro.usuario)}</strong> pasará a estado{' '}
+            <strong className="text-ink">Inactivo</strong> dentro de este proyecto, sin afectar su
+            participación en otros proyectos ni en la plantilla global del equipo.
+          </>
+        ),
+        textoConfirmar: 'Desactivar en el proyecto',
+        peligro: true,
+      });
+      if (!ok) return;
     }
-    const ok = await confirmar({
-      titulo: '¿Remover miembro?',
-      mensaje: <><strong className="text-ink">{nombreDe(miembro.usuario)}</strong> dejará de ser miembro de {equipoAbierto.nombre}.</>,
-      textoConfirmar: 'Remover',
-      peligro: true
-    });
-    if (!ok) return;
+
     try {
-      await removeMiembroEquipo(equipoAbierto.equipo_id, miembro.usuario.id);
-      toast.success('Miembro removido');
-      if (memberForm.id_usuario === miembro.usuario.id) setMemberForm({ id_usuario: '', id_roles: [] });
+      await cambiarEstadoMiembroLocal({
+        id_proyecto: proyectoId,
+        id_equipo: equipoAbierto.equipo_id,
+        id_usuario: miembro.usuario.id,
+        estado: nuevoEstado,
+        id_autor: uid,
+      });
+      toast.success(
+        nuevoEstado === 'activo'
+          ? 'Integrante reactivado en el proyecto'
+          : 'Integrante desactivado en el proyecto'
+      );
       await recargar();
     } catch (err) {
-      toast.error(mensajeError(err, 'No se pudo remover al miembro'));
+      toast.error(mensajeError(err, 'No se pudo cambiar el estado del miembro'));
     }
   };
 
-  // Al elegir un usuario que ya es miembro, se precargan sus roles para editarlos
   const seleccionarUsuarioMiembro = (userId: string) => {
     const existente = miembrosActuales().find(m => m.usuario.id === userId);
-    setMemberForm({ id_usuario: userId, id_roles: existente ? existente.roles.map(r => r.id) : [] });
+    setMemberForm({
+      id_usuario: userId,
+      id_roles: existente ? existente.roles.map(r => r.id) : [],
+    });
   };
 
   const toggleRolMiembro = (rolId: string) => {
     setMemberForm(prev => ({
       ...prev,
-      id_roles: prev.id_roles.includes(rolId) ? prev.id_roles.filter(id => id !== rolId) : [...prev.id_roles, rolId]
+      id_roles: prev.id_roles.includes(rolId)
+        ? prev.id_roles.filter(id => id !== rolId)
+        : [...prev.id_roles, rolId],
     }));
   };
 
-  const esMiembro = (team: EquipoDetallado) => team.miembros.some(m => m.usuario.id === uid);
+  const esMiembroActivo = (team: EquipoEnProyectoDetallado) =>
+    team.miembros.some(m => m.usuario.id === uid && m.estado === 'activo');
+
+  // Equipos globales disponibles para vincular (que no estén ya activos en este proyecto)
+  const idsActivosEnProyecto = new Set(
+    equipos.filter(e => e.estadoEnProyecto === 'activo').map(e => e.equipo_id)
+  );
+  const idsConSolicitudPendiente = new Set(solicitudesEnviadas.map(s => s.id_equipo));
+  const equiposDisponiblesParaVincular = todosEquiposGlobales.filter(
+    eq => !idsActivosEnProyecto.has(eq.equipo_id)
+  );
 
   const modalEquipo = (
     <ModalFormEquipo
@@ -443,8 +734,76 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
     />
   );
 
+  const modalVincularExistente = (
+    <Modal
+      open={isLinkModalOpen}
+      onClose={() => setIsLinkModalOpen(false)}
+      title="Vincular equipo global al proyecto"
+      description="Selecciona un equipo existente. Si eres su líder se asignará de inmediato; de lo contrario, se enviará una solicitud a su líder."
+    >
+      <form onSubmit={handleVincularEquipoExistente} noValidate className="flex flex-col flex-1 min-h-0">
+        <ModalBody className="space-y-4">
+          {equiposDisponiblesParaVincular.length === 0 ? (
+            <p className="text-sm text-ink-subtle py-4 text-center">
+              Todos los equipos globales registrados ya están vinculados y activos en este proyecto.
+            </p>
+          ) : (
+            <div>
+              <label htmlFor="select-equipo-vincular" className={etiqueta}>
+                Equipo global <span className="text-danger">*</span>
+              </label>
+              <select
+                id="select-equipo-vincular"
+                value={equipoAVincularId}
+                onChange={e => setEquipoAVincularId(e.target.value)}
+                className={campo}
+              >
+                <option value="">Selecciona un equipo...</option>
+                {equiposDisponiblesParaVincular.map(eq => {
+                  const soyLider = esLiderEquipo(eq.equipo_id);
+                  const pendiente = idsConSolicitudPendiente.has(eq.equipo_id);
+                  return (
+                    <option key={eq.equipo_id} value={eq.equipo_id} disabled={pendiente}>
+                      {eq.nombre}{' '}
+                      {pendiente
+                        ? '(Solicitud pendiente)'
+                        : soyLider
+                          ? '(Asignación directa — Eres líder)'
+                          : '(Requiere aprobación de su líder)'}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={() => setIsLinkModalOpen(false)}
+            className={btnSecundario}
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={vinculando || !equipoAVincularId}
+            className={btnPrimario}
+          >
+            <Link2 size={15} />
+            {vinculando
+              ? 'Procesando...'
+              : equipoAVincularId && esLiderEquipo(equipoAVincularId)
+                ? 'Asignar al proyecto'
+                : 'Enviar solicitud'}
+          </button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+
   // ==========================================
-  // DETALLE DE UN EQUIPO
+  // DETALLE DE UN EQUIPO EN EL PROYECTO
   // ==========================================
   if (equipoAbiertoId && (equipoAbierto || loading)) {
     if (!equipoAbierto) {
@@ -456,82 +815,158 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
       );
     }
 
-    const puedeGestionar = puedeGestionarEquipo(equipoAbierto.equipo_id);
-    const editandoMiembro = equipoAbierto.miembros.some(m => m.usuario.id === memberForm.id_usuario);
-    const idsMiembros = new Set(equipoAbierto.miembros.map(m => m.usuario.id));
+    const puedeGestionarLocal = puedeGestionarLocalmente(equipoAbierto.equipo_id);
+    const puedeEditarGlobal = esLiderEquipo(equipoAbierto.equipo_id);
+    const miembroSeleccionado = equipoAbierto.miembros.find(
+      m => m.usuario.id === memberForm.id_usuario
+    );
+    const editandoMiembroActivo = Boolean(
+      miembroSeleccionado && miembroSeleccionado.estado === 'activo'
+    );
+
+    const miembrosVisibles = mostrarMiembrosInactivos
+      ? equipoAbierto.miembros
+      : equipoAbierto.miembros.filter(m => m.estado === 'activo');
 
     return (
       <div className="space-y-6 animate-in fade-in">
-        <div>
-          <button
-            onClick={cerrarEquipo}
-            className="inline-flex items-center text-sm font-medium text-ink-subtle hover:text-ink transition-colors group cursor-pointer mb-4"
-          >
-            <ChevronLeft size={16} className="mr-1 group-hover:-translate-x-0.5 transition-transform" />
-            Equipos del proyecto
-          </button>
-          <h2 className="text-2xl font-semibold text-ink">{equipoAbierto.nombre}</h2>
-          {!puedeGestionar && (
-            <p className="text-base text-ink-muted mt-2 max-w-prose">{equipoAbierto.descripcion || 'Sin descripción.'}</p>
-          )}
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div>
+            <button
+              onClick={cerrarEquipo}
+              className="inline-flex items-center text-sm font-medium text-ink-subtle hover:text-ink transition-colors group cursor-pointer mb-3"
+            >
+              <ChevronLeft
+                size={16}
+                className="mr-1 group-hover:-translate-x-0.5 transition-transform"
+              />
+              Equipos del proyecto
+            </button>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="text-2xl font-semibold text-ink">{equipoAbierto.nombre}</h2>
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                  equipoAbierto.estadoEnProyecto === 'activo'
+                    ? 'bg-success-subtle text-success border-success-line'
+                    : 'bg-warning-subtle text-warning border-warning-line'
+                }`}
+              >
+                {equipoAbierto.estadoEnProyecto === 'activo'
+                  ? 'Activo en este proyecto'
+                  : 'Desvinculado del proyecto'}
+              </span>
+            </div>
+            {!puedeEditarGlobal && (
+              <p className="text-base text-ink-muted mt-1 max-w-prose">
+                {equipoAbierto.descripcion || 'Sin descripción.'}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setHistorialOpen(true)}
+              className={btnSecundario}
+            >
+              <History size={16} />
+              Historial de miembros
+            </button>
+            {puedeGestionarLocal && (
+              <button
+                type="button"
+                disabled={sincronizandoPlantilla}
+                onClick={handleSincronizarPlantilla}
+                title="Trae nuevos integrantes desde la plantilla global del equipo sin sobrescribir cambios locales"
+                className={btnSecundario}
+              >
+                <RefreshCw
+                  size={16}
+                  className={sincronizandoPlantilla ? 'animate-spin' : ''}
+                />
+                Sincronizar plantilla
+              </button>
+            )}
+            {(esCreador || puedeEditarGlobal) && (
+              <button
+                type="button"
+                onClick={() => handleToggleEstadoEquipo(equipoAbierto)}
+                className={btnSecundario}
+              >
+                {equipoAbierto.estadoEnProyecto === 'activo' ? (
+                  <>
+                    <Unlink size={16} />
+                    Desvincular del proyecto
+                  </>
+                ) : (
+                  <>
+                    <Link2 size={16} />
+                    Reactivar en el proyecto
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Datos del equipo (solo líder): se editan aquí, junto con los miembros */}
-        {puedeGestionar && (
+        {/* Datos globales del equipo (solo líder global) */}
+        {puedeEditarGlobal && (
           <FormularioDatosEquipo
-            key={`${equipoAbierto.equipo_id}|${equipoAbierto.nombre}|${equipoAbierto.descripcion ?? ''}`}
+            key={`${equipoAbierto.equipo_id}|${equipoAbierto.nombre}|${
+              equipoAbierto.descripcion ?? ''
+            }`}
             equipo={equipoAbierto}
             guardando={guardandoDatos}
-            onGuardar={(datos) => guardarDatosEquipo(equipoAbierto, datos)}
+            onGuardar={datos => guardarDatosEquipo(equipoAbierto, datos)}
             onEliminar={() => handleDeleteTeam(equipoAbierto)}
           />
         )}
 
-        {/* Invitar miembros o cambiar roles (solo líder) */}
-        {!puedeGestionar ? (
+        {/* Formulario para agregar miembro local o editar roles locales */}
+        {!puedeGestionarLocal ? (
           <div className="bg-warning-subtle border border-warning-line rounded-ui p-4 flex items-center gap-2.5 text-sm text-warning">
             <Lock size={16} className="shrink-0" />
-            <span>Solo los líderes de este equipo pueden invitar o remover miembros. Tienes acceso de lectura.</span>
+            <span>
+              Solo los líderes de este equipo o el creador del proyecto pueden modificar sus
+              integrantes locales.
+            </span>
           </div>
         ) : (
           <div className={`${tarjeta} p-5`}>
             <h3 className="text-base font-semibold text-ink mb-1 flex items-center gap-2">
               <UserPlus size={16} className="text-brand-text" />
-              {editandoMiembro ? 'Editar roles del miembro' : 'Invitar a un usuario'}
+              {editandoMiembroActivo
+                ? 'Editar roles locales en este proyecto'
+                : miembroSeleccionado
+                  ? 'Reactivar integrante en este proyecto'
+                  : 'Agregar miembro local al equipo en este proyecto'}
             </h3>
             <p className="text-sm text-ink-subtle mb-4">
-              {editandoMiembro
-                ? 'Los cambios se aplican de inmediato.'
-                : 'El usuario se unirá al equipo con estos roles cuando acepte la invitación.'}
+              {editandoMiembroActivo
+                ? 'Los cambios de rol aplican únicamente dentro de este proyecto, sin modificar la plantilla global del equipo.'
+                : 'Agrega un integrante exclusivo para este proyecto o selecciona uno existente para ajustar sus roles locales.'}
             </p>
-            <form onSubmit={handleGuardarMiembro} noValidate className="space-y-4">
-              <div>
-                <BuscadorPersonas
-                  id="miembro-usuario"
-                  titulo="Usuario *"
-                  multiple={false}
-                  valor={memberForm.id_usuario ? [memberForm.id_usuario] : []}
-                  onChange={(ids) => seleccionarUsuarioMiembro(ids[0] ?? '')}
-                  candidatos={usuarios
-                    // Uno mismo solo aparece si ya es miembro del equipo (para editar sus roles)
-                    .filter(u => u.id !== uid || idsMiembros.has(u.id))
-                    // Los equipos de un proyecto se arman con los miembros del proyecto
-                    .filter(u => idsMiembros.has(u.id) || !equipoAbierto.id_proyecto || esMiembroDelProyecto(proyecto, u.id))}
-                  ayuda={editandoMiembro ? 'Editando los roles de este miembro.' : 'Escribe al menos 2 letras del nombre o correo de la persona.'}
-                />
-                {equipoAbierto.id_proyecto && !editandoMiembro && (
-                  <p className="text-xs text-ink-subtle mt-1.5">
-                    Solo aparecen los miembros del proyecto. Para sumar a otra persona, agrégala antes en la pestaña Miembros.
-                  </p>
-                )}
-              </div>
+            <form onSubmit={handleGuardarMiembroLocal} noValidate className="space-y-4">
+              <BuscadorPersonas
+                id="miembro-local-usuario"
+                titulo="Usuario *"
+                multiple={false}
+                valor={memberForm.id_usuario ? [memberForm.id_usuario] : []}
+                onChange={ids => seleccionarUsuarioMiembro(ids[0] ?? '')}
+                candidatos={usuarios}
+                ayuda={
+                  editandoMiembroActivo
+                    ? 'Editando los roles locales de este integrante en el proyecto.'
+                    : 'Escribe al menos 2 letras del nombre o correo de la persona.'
+                }
+              />
 
               <div>
-                <span className={etiqueta}>Roles en el equipo</span>
+                <span className={etiqueta}>Roles locales en este proyecto</span>
                 {roles.length === 0 ? (
                   <p className="text-sm text-ink-subtle">No hay roles disponibles</p>
                 ) : (
-                  <div className="flex flex-wrap gap-2" role="group" aria-label="Roles en el equipo">
+                  <div className="flex flex-wrap gap-2" role="group" aria-label="Roles en el proyecto">
                     {roles.map(r => {
                       const seleccionado = memberForm.id_roles.includes(r.id);
                       return (
@@ -546,7 +981,11 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                               : 'bg-sunken border-line text-ink-muted hover:border-brand-text'
                           }`}
                         >
-                          {seleccionado ? <Check size={13} /> : esRolLider(r.nombre_rol) ? <Crown size={13} /> : null}
+                          {seleccionado ? (
+                            <Check size={13} />
+                          ) : esRolLider(r.nombre_rol) ? (
+                            <Crown size={13} />
+                          ) : null}
                           {r.nombre_rol}
                         </button>
                       );
@@ -557,98 +996,190 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
 
               <div className="flex justify-end gap-2">
                 {memberForm.id_usuario && (
-                  <button type="button" onClick={() => setMemberForm({ id_usuario: '', id_roles: [] })} className={btnSecundario}>
+                  <button
+                    type="button"
+                    onClick={() => setMemberForm({ id_usuario: '', id_roles: [] })}
+                    className={btnSecundario}
+                  >
                     Cancelar
                   </button>
                 )}
                 <button type="submit" disabled={guardandoMiembro} className={btnPrimario}>
-                  {editandoMiembro ? <Save size={16} /> : <Send size={16} />}
-                  {guardandoMiembro ? 'Guardando...' : editandoMiembro ? 'Guardar roles' : 'Enviar invitación'}
+                  <Save size={16} />
+                  {guardandoMiembro
+                    ? 'Guardando...'
+                    : editandoMiembroActivo
+                      ? 'Guardar roles locales'
+                      : miembroSeleccionado
+                        ? 'Reactivar integrante'
+                        : 'Agregar al proyecto'}
                 </button>
               </div>
             </form>
           </div>
         )}
 
-        {/* Integrantes */}
+        {/* Lista de integrantes locales del equipo en este proyecto */}
         <section>
-          <h3 className="text-lg font-semibold text-ink mb-3">
-            Integrantes
-            <span className="ml-2 text-sm font-normal text-ink-subtle">{equipoAbierto.miembros.length}</span>
-          </h3>
-          <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
-            {equipoAbierto.miembros.length === 0 ? (
-              <li className="p-8 text-center text-sm text-ink-subtle">Este equipo aún no tiene miembros.</li>
-            ) : (
-              equipoAbierto.miembros.map(m => (
-                <li
-                  key={m.usuario.id}
-                  className={`px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
-                    memberForm.id_usuario === m.usuario.id ? 'bg-brand-subtle' : 'hover:bg-sunken'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="relative size-9 shrink-0 rounded-full bg-brand-subtle text-brand-text flex items-center justify-center text-xs font-bold">
-                      {iniciales(m.usuario)}
-                      {m.esLider && (
-                        <span className="absolute -top-1 -right-1 size-4 rounded-full bg-warning text-canvas flex items-center justify-center" title="Líder">
-                          <Crown size={9} />
-                        </span>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-ink truncate">
-                        {m.usuario.nombre || 'Usuario'}
-                        {m.usuario.id === uid && <span className="font-normal text-ink-subtle"> (tú)</span>}
-                      </p>
-                      <p className="text-xs text-ink-subtle truncate">{m.usuario.correo}</p>
-                    </div>
-                  </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h3 className="text-lg font-semibold text-ink">
+              Integrantes en este proyecto
+              <span className="ml-2 text-sm font-normal text-ink-subtle">
+                {miembrosVisibles.length}
+              </span>
+            </h3>
+            {equipoAbierto.miembros.some(m => m.estado === 'inactivo') && (
+              <button
+                type="button"
+                onClick={() => setMostrarMiembrosInactivos(prev => !prev)}
+                className={btnSecundarioCompacto}
+              >
+                {mostrarMiembrosInactivos ? 'Ocultar inactivos' : 'Mostrar inactivos'}
+              </button>
+            )}
+          </div>
 
-                  <div className="flex items-center gap-2 sm:justify-end">
-                    <div className="flex flex-wrap gap-1 sm:justify-end">
-                      {m.roles.length === 0 ? (
-                        <span className="text-xs text-ink-subtle italic">Sin rol</span>
-                      ) : (
-                        m.roles.map(r => (
-                          <span key={r.id} className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-subtle text-brand-text border border-brand-line">
-                            {r.nombre_rol}
+          <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+            {miembrosVisibles.length === 0 ? (
+              <li className="p-8 text-center text-sm text-ink-subtle">
+                Este equipo no tiene integrantes activos en el proyecto.
+              </li>
+            ) : (
+              miembrosVisibles.map(m => {
+                const inactivo = m.estado === 'inactivo';
+                return (
+                  <li
+                    key={m.usuario.id}
+                    className={`px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                      memberForm.id_usuario === m.usuario.id
+                        ? 'bg-brand-subtle'
+                        : inactivo
+                          ? 'bg-sunken opacity-75'
+                          : 'hover:bg-sunken'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative size-9 shrink-0 rounded-full bg-brand-subtle text-brand-text flex items-center justify-center text-xs font-bold">
+                        {iniciales(m.usuario)}
+                        {m.esLider && !inactivo && (
+                          <span
+                            className="absolute -top-1 -right-1 size-4 rounded-full bg-warning text-canvas flex items-center justify-center"
+                            title="Líder"
+                          >
+                            <Crown size={9} />
                           </span>
-                        ))
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-ink truncate">
+                            {m.usuario.nombre || 'Usuario'}
+                            {m.usuario.id === uid && (
+                              <span className="font-normal text-ink-subtle"> (tú)</span>
+                            )}
+                          </p>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                              m.esLocal
+                                ? 'bg-brand-subtle text-brand-text border-brand-line'
+                                : 'bg-sunken text-ink-subtle border-line'
+                            }`}
+                          >
+                            {m.esLocal ? (
+                              <>
+                                <Layers size={10} aria-hidden />
+                                Local del proyecto
+                              </>
+                            ) : (
+                              <>
+                                <Globe size={10} aria-hidden />
+                                Plantilla global
+                              </>
+                            )}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                              inactivo
+                                ? 'bg-danger-subtle text-danger border-danger-line'
+                                : 'bg-success-subtle text-success border-success-line'
+                            }`}
+                          >
+                            {inactivo ? 'Inactivo en proyecto' : 'Activo'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-ink-subtle truncate mt-0.5">
+                          {m.usuario.correo}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 sm:justify-end">
+                      <div className="flex flex-wrap gap-1 sm:justify-end">
+                        {m.roles.length === 0 ? (
+                          <span className="text-xs text-ink-subtle italic">Sin rol</span>
+                        ) : (
+                          m.roles.map(r => (
+                            <span
+                              key={r.id}
+                              className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-subtle text-brand-text border border-brand-line"
+                            >
+                              {r.nombre_rol}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                      {puedeGestionarLocal && (
+                        <div className="flex items-center shrink-0">
+                          {!inactivo && (
+                            <button
+                              onClick={() => {
+                                seleccionarUsuarioMiembro(m.usuario.id);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                              className={btnIcono}
+                              title="Editar roles locales en este proyecto"
+                              aria-label={`Editar roles locales de ${nombreDe(m.usuario)}`}
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleToggleEstadoMiembroLocal(m)}
+                            className={inactivo ? btnIcono : btnIconoPeligro}
+                            title={
+                              inactivo
+                                ? 'Reactivar integrante en este proyecto'
+                                : 'Desactivar integrante en este proyecto'
+                            }
+                            aria-label={
+                              inactivo
+                                ? `Reactivar a ${nombreDe(m.usuario)}`
+                                : `Desactivar a ${nombreDe(m.usuario)}`
+                            }
+                          >
+                            {inactivo ? <UserCheck size={16} /> : <UserX size={16} />}
+                          </button>
+                        </div>
                       )}
                     </div>
-                    {puedeGestionar && (
-                      <div className="flex items-center shrink-0">
-                        <button
-                          onClick={() => {
-                            seleccionarUsuarioMiembro(m.usuario.id);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                          className={btnIcono}
-                          title="Editar roles"
-                          aria-label={`Editar roles de ${nombreDe(m.usuario)}`}
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleRemoveMember(m)}
-                          disabled={m.usuario.id === uid}
-                          className={btnIconoPeligro}
-                          title={m.usuario.id === uid ? 'No puedes removerte a ti mismo' : 'Remover miembro'}
-                          aria-label={`Remover a ${nombreDe(m.usuario)}`}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </li>
-              ))
+                  </li>
+                );
+              })
             )}
           </ul>
         </section>
 
+        <HistorialMiembrosModal
+          open={historialOpen}
+          onClose={() => setHistorialOpen(false)}
+          equipoId={equipoAbierto.equipo_id}
+          equipoNombre={equipoAbierto.nombre}
+          proyectoId={proyectoId}
+          proyectoNombre={proyecto.nombre}
+        />
+
         {modalEquipo}
+        {modalVincularExistente}
       </div>
     );
   }
@@ -656,86 +1187,161 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
   // ==========================================
   // LISTA DE EQUIPOS DEL PROYECTO
   // ==========================================
+  const hayDesvinculados = equipos.some(e => e.estadoEnProyecto === 'desvinculado');
+  const equiposMostrados = mostrarDesvinculados
+    ? equipos
+    : equipos.filter(e => e.estadoEnProyecto === 'activo');
+
   return (
     <div className="space-y-6 animate-in fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <p className="text-base text-ink-muted max-w-prose">
-          Equipos que trabajan en este proyecto, con sus integrantes y roles.
+          Equipos globales asignados a este proyecto, con sus integrantes locales, roles y estado.
         </p>
-        {puedeCrear && (
-          <button onClick={() => openModal()} className={`${btnPrimario} shrink-0`}>
-            <Plus size={16} />
-            Nuevo equipo
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {hayDesvinculados && (
+            <button
+              type="button"
+              onClick={() => setMostrarDesvinculados(prev => !prev)}
+              className={btnSecundario}
+            >
+              {mostrarDesvinculados ? 'Ocultar desvinculados' : 'Ver desvinculados'}
+            </button>
+          )}
+          {esCreador && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setEquipoAVincularId('');
+                  setIsLinkModalOpen(true);
+                }}
+                className={btnSecundario}
+              >
+                <Link2 size={16} />
+                Vincular equipo existente
+              </button>
+              <button onClick={openCreateModal} className={btnPrimario}>
+                <Plus size={16} />
+                Nuevo equipo
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
+      {solicitudesEnviadas.length > 0 && (
+        <div className="p-4 rounded-ui bg-sunken border border-line text-xs text-ink-muted flex flex-wrap items-center justify-between gap-2">
+          <span>
+            Solicitudes pendientes de respuesta por líderes de equipo:{' '}
+            <strong className="text-ink">
+              {solicitudesEnviadas.map(s => s.nombre_equipo).join(', ')}
+            </strong>
+          </span>
+        </div>
+      )}
+
       {loading ? (
-        <div role="status" aria-label="Cargando" className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+        <div
+          role="status"
+          aria-label="Cargando"
+          className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden"
+        >
           {[1, 2].map(i => (
             <div key={i} className="h-28 bg-sunken animate-pulse" />
           ))}
         </div>
-      ) : equipos.length === 0 ? (
+      ) : equiposMostrados.length === 0 ? (
         <div className="text-center py-20">
-          <h3 className="text-lg font-semibold text-ink">Este proyecto todavía no tiene equipos</h3>
-          <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
-            {puedeCrear
-              ? 'Crea el primer equipo para organizar a quienes trabajan en el proyecto.'
-              : 'Cuando se cree un equipo en este proyecto, aparecerá aquí.'}
+          <h3 className="text-lg font-semibold text-ink">
+            Este proyecto todavía no tiene equipos activos
+          </h3>
+          <p className="text-base text-ink-muted mt-2 max-w-md mx-auto">
+            {esCreador
+              ? 'Vincula un equipo global existente o crea uno nuevo para organizar a los integrantes del proyecto.'
+              : 'Cuando el creador del proyecto asigne un equipo, aparecerá aquí.'}
           </p>
-          {puedeCrear && (
-            <div className="mt-6 flex justify-center">
-              <button onClick={() => openModal()} className={btnPrimario}>
+          {esCreador && (
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEquipoAVincularId('');
+                  setIsLinkModalOpen(true);
+                }}
+                className={btnSecundario}
+              >
+                <Link2 size={16} />
+                Vincular equipo existente
+              </button>
+              <button onClick={openCreateModal} className={btnPrimario}>
                 <Plus size={16} />
-                Crear equipo
+                Crear nuevo equipo
               </button>
             </div>
           )}
         </div>
       ) : (
         <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
-          {equipos.map(team => {
-            const gestionable = puedeGestionarEquipo(team.equipo_id);
-            const lideres = team.miembros.filter(m => m.esLider);
+          {equiposMostrados.map(team => {
+            const gestionable = puedeGestionarLocalmente(team.equipo_id);
+            const miembrosActivos = team.miembros.filter(m => m.estado === 'activo');
+            const lideres = miembrosActivos.filter(m => m.esLider);
+            const desvinculado = team.estadoEnProyecto === 'desvinculado';
+
             return (
               <li key={team.equipo_id}>
                 <div
                   role="link"
                   tabIndex={0}
                   onClick={() => abrirEquipo(team)}
-                  onKeyDown={(e) => {
+                  onKeyDown={e => {
                     if (e.key === 'Enter' && e.target === e.currentTarget) abrirEquipo(team);
                   }}
-                  aria-label={`Ver miembros de ${team.nombre}`}
-                  className="group flex items-center gap-4 px-5 py-5 cursor-pointer hover:bg-sunken focus-visible:bg-sunken"
+                  aria-label={`Ver miembros locales de ${team.nombre}`}
+                  className={`group flex items-center gap-4 px-5 py-5 cursor-pointer hover:bg-sunken focus-visible:bg-sunken ${
+                    desvinculado ? 'opacity-70' : ''
+                  }`}
                 >
                   <span className="hidden sm:flex size-10 shrink-0 items-center justify-center rounded-ui bg-brand-solid text-on-solid">
                     <Users size={20} aria-hidden />
                   </span>
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                       <h3 className="text-base font-semibold text-ink">{team.nombre}</h3>
-                      {gestionable && (
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                          desvinculado
+                            ? 'bg-warning-subtle text-warning border-warning-line'
+                            : 'bg-success-subtle text-success border-success-line'
+                        }`}
+                      >
+                        {desvinculado ? 'Desvinculado' : 'Activo'}
+                      </span>
+                      {esLiderEquipo(team.equipo_id) && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning-subtle text-warning text-xs font-medium border border-warning-line">
                           <Crown size={12} aria-hidden />
                           Líder
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-ink-muted mt-1 line-clamp-1">{team.descripcion || 'Sin descripción.'}</p>
+                    <p className="text-sm text-ink-muted mt-1 line-clamp-1">
+                      {team.descripcion || 'Sin descripción.'}
+                    </p>
                     {lideres.length > 0 && (
                       <p className="mt-2 flex items-center gap-1 text-xs text-ink-subtle min-w-0">
                         <Crown size={12} aria-hidden className="text-warning shrink-0" />
-                        <span className="truncate">{lideres.map(l => nombreDe(l.usuario)).join(', ')}</span>
+                        <span className="truncate">
+                          {lideres.map(l => nombreDe(l.usuario)).join(', ')}
+                        </span>
                       </p>
                     )}
                   </div>
 
                   <div className="hidden md:flex items-center gap-3 shrink-0 text-sm text-ink-muted">
                     <div className="flex -space-x-1.5">
-                      {team.miembros.slice(0, 4).map(m => (
+                      {miembrosActivos.slice(0, 4).map(m => (
                         <span
                           key={m.usuario.id}
                           title={nombreDe(m.usuario)}
@@ -746,20 +1352,25 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                       ))}
                     </div>
                     <span>
-                      {team.miembros.length} {team.miembros.length === 1 ? 'integrante' : 'integrantes'}
+                      {miembrosActivos.length}{' '}
+                      {miembrosActivos.length === 1 ? 'activo' : 'activos'}
                     </span>
                   </div>
 
-                  {!gestionable && !esMiembro(team) && (
+                  {!gestionable && !esMiembroActivo(team) && (
                     <span
-                      title="Solo el líder del equipo puede editarlo"
+                      title="Solo el líder del equipo o el creador del proyecto pueden editarlo"
                       className="inline-flex items-center gap-1 px-2 text-xs font-medium text-ink-subtle shrink-0"
                     >
                       <Lock size={14} aria-hidden />
                       Solo lectura
                     </span>
                   )}
-                  <ChevronRight size={18} aria-hidden className="text-ink-muted group-hover:text-ink shrink-0" />
+                  <ChevronRight
+                    size={18}
+                    aria-hidden
+                    className="text-ink-muted group-hover:text-ink shrink-0"
+                  />
                 </div>
               </li>
             );
@@ -768,6 +1379,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
       )}
 
       {modalEquipo}
+      {modalVincularExistente}
     </div>
   );
 }

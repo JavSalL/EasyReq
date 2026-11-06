@@ -1,27 +1,43 @@
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
   where,
-  arrayUnion,
-  arrayRemove
+  writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { Proyecto, UUID, MiembroEquipo, QuienCreaEquipos, QuienAgregaMiembros } from '../database.types';
-import { getTiposSistema } from './catalogos-service';
-import { getProyectoEquipos, getMiembrosEquipo } from './equipos-service';
+import {
+  Proyecto,
+  UUID,
+  MiembroEquipo,
+  QuienCreaEquipos,
+  QuienAgregaMiembros,
+} from '../database.types';
+import {
+  getTiposSistema,
+  getEstadosProyecto,
+  getNaturalezasProyecto,
+  idCatalogoPorNombre,
+  ESTADO_PROYECTO_EN_PROGRESO,
+} from './catalogos-service';
+import {
+  getProyectoEquipos,
+  getMiembrosEquipo,
+  getMiembroProyectoEquipoDocId,
+} from './equipos-service';
+import { getColaboracionProyectoId } from './colaboraciones-service';
 import { eliminarContextoDeProyecto } from './contexto-service';
 import {
   asegurarAccesoComentariosProyecto,
   borrarAccesosComentariosProyecto,
   borrarComentariosDeRequerimiento,
   listarAccesosComentariosProyecto,
-  listarComentariosDeRequerimiento
+  listarComentariosDeRequerimiento,
 } from './comentarios-service';
 
 // ==========================================
@@ -29,28 +45,46 @@ import {
 // ==========================================
 export async function getProyectos(): Promise<Proyecto[]> {
   try {
-    const snap = await getDocs(collection(db, 'proyecto'));
+    const [snap, tipos, estadosProyecto, naturalezasProyecto] = await Promise.all([
+      getDocs(collection(db, 'proyecto')),
+      getTiposSistema(),
+      getEstadosProyecto(),
+      getNaturalezasProyecto(),
+    ]);
     const proyectos: Proyecto[] = [];
-    const tipos = await getTiposSistema();
     const tiposMap = new Map(tipos.map(t => [t.id, t]));
+    const estadosMap = new Map(estadosProyecto.map(e => [e.id, e]));
+    const naturalezasMap = new Map(naturalezasProyecto.map(n => [n.id, n]));
 
     for (const d of snap.docs) {
       const data = d.data();
+      const idEstadoProyecto = (data.id_estado_proyecto as string | null | undefined) ?? null;
+      const idNaturalezaProyecto = (data.id_naturaleza_proyecto as string | null | undefined) ?? null;
       proyectos.push({
         proyecto_id: d.id,
         nombre: data.nombre,
         descripcion: data.descripcion || '',
         id_tipo_sistema: data.id_tipo_sistema || null,
         tipos_sistema: data.id_tipo_sistema ? tiposMap.get(data.id_tipo_sistema) || null : null,
-        // Documentos legacy pueden no tener `id_creador`: se normaliza a null
-        // y se tratan como hoy (solo miembros vinculados editan).
+        id_estado_proyecto: idEstadoProyecto,
+        estado_proyecto: idEstadoProyecto ? estadosMap.get(idEstadoProyecto) || null : null,
+        id_naturaleza_proyecto: idNaturalezaProyecto,
+        naturaleza_proyecto: idNaturalezaProyecto
+          ? naturalezasMap.get(idNaturalezaProyecto) || null
+          : null,
+        en_colaboracion: Boolean(data.en_colaboracion),
         id_creador: (data.id_creador as string | null | undefined) ?? null,
         ids_miembros: Array.isArray(data.ids_miembros) ? data.ids_miembros : [],
         quien_crea_equipos: (data.quien_crea_equipos as QuienCreaEquipos | undefined) ?? 'creador',
-        ids_creadores_equipos: Array.isArray(data.ids_creadores_equipos) ? data.ids_creadores_equipos : [],
-        quien_agrega_miembros: (data.quien_agrega_miembros as QuienAgregaMiembros | undefined) ?? 'creador',
-        ids_gestores_miembros: Array.isArray(data.ids_gestores_miembros) ? data.ids_gestores_miembros : [],
-        created_at: data.created_at || new Date().toISOString()
+        ids_creadores_equipos: Array.isArray(data.ids_creadores_equipos)
+          ? data.ids_creadores_equipos
+          : [],
+        quien_agrega_miembros:
+          (data.quien_agrega_miembros as QuienAgregaMiembros | undefined) ?? 'creador',
+        ids_gestores_miembros: Array.isArray(data.ids_gestores_miembros)
+          ? data.ids_gestores_miembros
+          : [],
+        created_at: data.created_at || new Date().toISOString(),
       });
     }
     return proyectos;
@@ -65,22 +99,44 @@ export async function getProyectoById(id: string): Promise<Proyecto | null> {
     const snap = await getDoc(doc(db, 'proyecto', id));
     if (!snap.exists()) return null;
     const data = snap.data();
-    const tipos = data.id_tipo_sistema ? await getTiposSistema() : [];
+    const [tipos, estadosProyecto, naturalezasProyecto] = await Promise.all([
+      data.id_tipo_sistema ? getTiposSistema() : Promise.resolve([]),
+      data.id_estado_proyecto ? getEstadosProyecto() : Promise.resolve([]),
+      data.id_naturaleza_proyecto ? getNaturalezasProyecto() : Promise.resolve([]),
+    ]);
     const tipo = tipos.find(t => t.id === data.id_tipo_sistema) || null;
+    const idEstadoProyecto = (data.id_estado_proyecto as string | null | undefined) ?? null;
+    const idNaturalezaProyecto = (data.id_naturaleza_proyecto as string | null | undefined) ?? null;
+    const estadoProyecto = idEstadoProyecto
+      ? estadosProyecto.find(e => e.id === idEstadoProyecto) || null
+      : null;
+    const naturalezaProyecto = idNaturalezaProyecto
+      ? naturalezasProyecto.find(n => n.id === idNaturalezaProyecto) || null
+      : null;
+
     return {
       proyecto_id: snap.id,
       nombre: data.nombre,
       descripcion: data.descripcion || '',
       id_tipo_sistema: data.id_tipo_sistema || null,
       tipos_sistema: tipo,
-      // Documentos legacy sin `id_creador` se normalizan a null.
+      id_estado_proyecto: idEstadoProyecto,
+      estado_proyecto: estadoProyecto,
+      id_naturaleza_proyecto: idNaturalezaProyecto,
+      naturaleza_proyecto: naturalezaProyecto,
+      en_colaboracion: Boolean(data.en_colaboracion),
       id_creador: (data.id_creador as string | null | undefined) ?? null,
       ids_miembros: Array.isArray(data.ids_miembros) ? data.ids_miembros : [],
       quien_crea_equipos: (data.quien_crea_equipos as QuienCreaEquipos | undefined) ?? 'creador',
-      ids_creadores_equipos: Array.isArray(data.ids_creadores_equipos) ? data.ids_creadores_equipos : [],
-      quien_agrega_miembros: (data.quien_agrega_miembros as QuienAgregaMiembros | undefined) ?? 'creador',
-      ids_gestores_miembros: Array.isArray(data.ids_gestores_miembros) ? data.ids_gestores_miembros : [],
-      created_at: data.created_at || new Date().toISOString()
+      ids_creadores_equipos: Array.isArray(data.ids_creadores_equipos)
+        ? data.ids_creadores_equipos
+        : [],
+      quien_agrega_miembros:
+        (data.quien_agrega_miembros as QuienAgregaMiembros | undefined) ?? 'creador',
+      ids_gestores_miembros: Array.isArray(data.ids_gestores_miembros)
+        ? data.ids_gestores_miembros
+        : [],
+      created_at: data.created_at || new Date().toISOString(),
     };
   } catch (e) {
     console.error('Error fetching proyecto by id:', e);
@@ -92,46 +148,66 @@ export async function createProyecto(data: {
   nombre: string;
   descripcion?: string;
   id_tipo_sistema?: string | null;
+  id_estado_proyecto?: UUID | null;
+  id_naturaleza_proyecto?: UUID | null;
+  en_colaboracion?: boolean;
+  ids_colaboraciones?: UUID[];
   id_creador?: UUID | null;
+  /** @deprecated Legacy KAN-24 */
   quien_crea_equipos?: QuienCreaEquipos;
+  /** @deprecated Legacy KAN-24 */
   ids_creadores_equipos?: UUID[];
+  /** @deprecated Legacy KAN-24 */
   quien_agrega_miembros?: QuienAgregaMiembros;
+  /** @deprecated Legacy KAN-24 */
   ids_gestores_miembros?: UUID[];
-  // Miembros que entran al crear el proyecto (sin repetir y sin el creador, que siempre lo es)
+  /** @deprecated Legacy KAN-24 */
   ids_miembros?: UUID[];
 }): Promise<Proyecto> {
   const created_at = new Date().toISOString();
-  const ids_miembros = [...new Set(data.ids_miembros ?? [])].filter(id => id !== data.id_creador);
-  const quien_crea_equipos = data.quien_crea_equipos ?? 'creador';
-  const ids_creadores_equipos = quien_crea_equipos === 'seleccionados' ? data.ids_creadores_equipos ?? [] : [];
-  const quien_agrega_miembros = data.quien_agrega_miembros ?? 'creador';
-  const ids_gestores_miembros = quien_agrega_miembros === 'seleccionados' ? data.ids_gestores_miembros ?? [] : [];
+  const idEstado =
+    data.id_estado_proyecto !== undefined
+      ? data.id_estado_proyecto
+      : await idCatalogoPorNombre('estado_proyecto', 'nombre_estado', ESTADO_PROYECTO_EN_PROGRESO);
+  const idNaturaleza = data.id_naturaleza_proyecto ?? null;
+  const idsColaboraciones = [...new Set((data.ids_colaboraciones ?? []).filter(Boolean))];
+  const enColaboracion = Boolean(data.en_colaboracion || idsColaboraciones.length > 0);
+
   const docRef = await addDoc(collection(db, 'proyecto'), {
     nombre: data.nombre,
     descripcion: data.descripcion || '',
     id_tipo_sistema: data.id_tipo_sistema || null,
-    // UID del creador (política: cualquier autenticado puede crear; el
-    // creador siempre puede editar/eliminar). Null si no se provee.
+    id_estado_proyecto: idEstado || null,
+    id_naturaleza_proyecto: idNaturaleza,
+    en_colaboracion: enColaboracion,
     id_creador: data.id_creador ?? null,
-    ids_miembros,
-    quien_crea_equipos,
-    ids_creadores_equipos,
-    quien_agrega_miembros,
-    ids_gestores_miembros,
-    created_at
+    created_at,
   });
+
+  if (idsColaboraciones.length > 0) {
+    const batch = writeBatch(db);
+    for (const idColab of idsColaboraciones) {
+      const relId = getColaboracionProyectoId(idColab, docRef.id);
+      batch.set(doc(db, 'colaboracion_proyecto', relId), {
+        id_colaboracion: idColab,
+        id_proyecto: docRef.id,
+        id_autor: data.id_creador ?? auth.currentUser?.uid ?? null,
+        created_at,
+      });
+    }
+    await batch.commit();
+  }
+
   return {
     proyecto_id: docRef.id,
     nombre: data.nombre,
     descripcion: data.descripcion || '',
     id_tipo_sistema: data.id_tipo_sistema || null,
+    id_estado_proyecto: idEstado || null,
+    id_naturaleza_proyecto: idNaturaleza,
+    en_colaboracion: enColaboracion,
     id_creador: data.id_creador ?? null,
-    ids_miembros,
-    quien_crea_equipos,
-    ids_creadores_equipos,
-    quien_agrega_miembros,
-    ids_gestores_miembros,
-    created_at
+    created_at,
   };
 }
 
@@ -141,107 +217,102 @@ export async function updateProyecto(
     nombre: string;
     descripcion?: string;
     id_tipo_sistema?: string | null;
-    // Solo los envía el creador del proyecto: las reglas impiden que otros cambien los permisos
+    id_estado_proyecto?: UUID | null;
+    id_naturaleza_proyecto?: UUID | null;
+    en_colaboracion?: boolean;
+    /** @deprecated Legacy KAN-24 */
     quien_crea_equipos?: QuienCreaEquipos;
+    /** @deprecated Legacy KAN-24 */
     ids_creadores_equipos?: UUID[];
+    /** @deprecated Legacy KAN-24 */
     quien_agrega_miembros?: QuienAgregaMiembros;
+    /** @deprecated Legacy KAN-24 */
     ids_gestores_miembros?: UUID[];
   }
 ): Promise<void> {
   const docRef = doc(db, 'proyecto', id);
-  const cambios: Record<string, unknown> = { ...data };
-  if (data.quien_crea_equipos !== undefined) {
-    cambios.ids_creadores_equipos = data.quien_crea_equipos === 'seleccionados' ? data.ids_creadores_equipos ?? [] : [];
+  const cambios: Record<string, unknown> = {
+    nombre: data.nombre,
+  };
+  if (data.descripcion !== undefined) cambios.descripcion = data.descripcion;
+  if (data.id_tipo_sistema !== undefined) cambios.id_tipo_sistema = data.id_tipo_sistema;
+  if (data.id_estado_proyecto !== undefined) cambios.id_estado_proyecto = data.id_estado_proyecto;
+  if (data.id_naturaleza_proyecto !== undefined) {
+    cambios.id_naturaleza_proyecto = data.id_naturaleza_proyecto;
   }
-  if (data.quien_agrega_miembros !== undefined) {
-    cambios.ids_gestores_miembros = data.quien_agrega_miembros === 'seleccionados' ? data.ids_gestores_miembros ?? [] : [];
-  }
+  if (data.en_colaboracion !== undefined) cambios.en_colaboracion = data.en_colaboracion;
+
   await updateDoc(docRef, cambios);
 }
 
-/** Agrega miembros al proyecto directamente (sin invitación). Lo hacen el creador y quienes él autorizó. */
-export async function agregarMiembrosProyecto(id_proyecto: string, ids_usuarios: UUID[]): Promise<void> {
-  if (ids_usuarios.length === 0) return;
-  await updateDoc(doc(db, 'proyecto', id_proyecto), { ids_miembros: arrayUnion(...ids_usuarios) });
+/**
+ * @deprecated Los proyectos ya no admiten miembros sueltos sin equipo.
+ * Usa `agregarMiembroLocalProyectoEquipo` o vincula un equipo global mediante `asignarEquipoAProyecto`.
+ */
+export async function agregarMiembrosProyecto(
+  id_proyecto: string,
+  ids_usuarios: UUID[]
+): Promise<void> {
+  void id_proyecto;
+  void ids_usuarios;
+  throw new Error(
+    'Los miembros deben pertenecer a un equipo asignado al proyecto. Vincula un equipo o agrega al integrante dentro de un equipo del proyecto.'
+  );
 }
 
 /**
- * Quita a un miembro del proyecto: sale de la lista de miembros, de las listas de permisos que
- * lo nombraban y de los equipos del proyecto a los que pertenecía.
+ * @deprecated Los proyectos ya no admiten miembros sueltos sin equipo.
+ * Usa `cambiarEstadoMiembroLocal` para desactivar a un integrante dentro de un equipo del proyecto.
  */
-export async function quitarMiembroProyecto(id_proyecto: string, id_usuario: UUID): Promise<void> {
-  await updateDoc(doc(db, 'proyecto', id_proyecto), {
-    ids_miembros: arrayRemove(id_usuario),
-    ids_creadores_equipos: arrayRemove(id_usuario),
-    ids_gestores_miembros: arrayRemove(id_usuario)
-  });
-  const equipos = await getDocs(query(collection(db, 'equipo'), where('id_proyecto', '==', id_proyecto)));
-  for (const equipo of equipos.docs) {
-    await deleteDoc(doc(db, 'miembros_equipo', `${equipo.id}_${id_usuario}`));
-  }
+export async function quitarMiembroProyecto(
+  id_proyecto: string,
+  id_usuario: UUID
+): Promise<void> {
+  void id_proyecto;
+  void id_usuario;
+  throw new Error(
+    'Para dar de baja a un integrante en este proyecto, desactívalo dentro de su equipo en el proyecto.'
+  );
 }
 
 export async function deleteProyecto(id: string): Promise<void> {
   // El contexto va primero: sus reglas comprueban la membresía leyendo el proyecto, que aún debe existir
   await eliminarContextoDeProyecto(id);
 
-  // Un miembro que entra por un equipo necesita su puntero de comentarios para
-  // poder listar los hilos antes de borrarlos. Se asegura aquí para que el
-  // cascado no falle a mitad; si no es miembro, el listado de comentarios
-  // denegará y la operación se detendrá antes de borrar nada.
   const uid = auth.currentUser?.uid;
   if (uid) {
     await asegurarAccesoComentariosProyecto(id, uid);
   }
 
-  // Requerimientos e hilos se listan antes de borrar el proyecto. La lectura de
-  // comentarios resuelve la membresía leyendo el proyecto del requerimiento; si el
-  // proyecto ya no existe, la consulta se deniega y los hilos quedarían sin forma
-  // de enumerarse. El borrado posterior sí funciona por la rama huérfana.
-  const reqSnap = await getDocs(query(collection(db, 'requerimiento'), where('id_proyecto', '==', id)));
+  const reqSnap = await getDocs(
+    query(collection(db, 'requerimiento'), where('id_proyecto', '==', id))
+  );
   const hilos = await Promise.all(
     reqSnap.docs.map(d => listarComentariosDeRequerimiento(d.id))
   );
-  // Los punteros de acceso a comentarios también se listan antes: después de
-  // borrar el proyecto el `delete` funciona por la rama huérfana, pero el listado
-  // se hace aquí para no depender de una subcolección cuyo padre ya no existe.
   const accesos = await listarAccesosComentariosProyecto(id);
 
   await deleteDoc(doc(db, 'proyecto', id));
-  // Los equipos pertenecen al proyecto: se eliminan con él (las reglas lo permiten
-  // una vez que el proyecto ya no existe), junto con sus miembros e invitaciones.
-  const equiposSnap = await getDocs(query(collection(db, 'equipo'), where('id_proyecto', '==', id)));
-  for (const equipo of equiposSnap.docs) {
-    await deleteDoc(equipo.ref);
-    const miembros = await getDocs(query(collection(db, 'miembros_equipo'), where('id_equipo', '==', equipo.id)));
-    for (const d of miembros.docs) await deleteDoc(d.ref);
-    const invitaciones = await getDocs(query(collection(db, 'invitaciones_equipo'), where('id_equipo', '==', equipo.id)));
-    for (const d of invitaciones.docs) await deleteDoc(d.ref);
-  }
-  const peSnap = await getDocs(query(collection(db, 'proyecto_equipos'), where('id_proyecto', '==', id)));
-  for (const d of peSnap.docs) {
-    await deleteDoc(d.ref);
-  }
-  const requestsSnap = await getDocs(query(
-    collection(db, 'solicitudes_proyecto_equipo'),
-    where('id_proyecto', '==', id)
-  ));
-  for (const d of requestsSnap.docs) {
-    await deleteDoc(d.ref);
-  }
+
+  // Limpiar relaciones locales del proyecto (sin eliminar los equipos globales independientes)
+  const [peSnap, mpeSnap, colabSnap, requestsSnap] = await Promise.all([
+    getDocs(query(collection(db, 'proyecto_equipos'), where('id_proyecto', '==', id))),
+    getDocs(query(collection(db, 'miembros_proyecto_equipo'), where('id_proyecto', '==', id))),
+    getDocs(query(collection(db, 'colaboracion_proyecto'), where('id_proyecto', '==', id))),
+    getDocs(query(collection(db, 'solicitudes_proyecto_equipo'), where('id_proyecto', '==', id))),
+  ]);
+
+  for (const d of peSnap.docs) await deleteDoc(d.ref);
+  for (const d of mpeSnap.docs) await deleteDoc(d.ref);
+  for (const d of colabSnap.docs) await deleteDoc(d.ref);
+  for (const d of requestsSnap.docs) await deleteDoc(d.ref);
+
   for (const d of reqSnap.docs) {
     await deleteDoc(d.ref);
   }
-  // Los comentarios van DESPUÉS, no en el mismo bucle, y el orden no es casual:
-  // Firestore no hace cascada y sus reglas solo permiten borrar un comentario cuyo
-  // requerimiento ya no existe, porque sin él no hay cómo resolver a qué proyecto
-  // pertenece. El hilo ya se listó antes de borrar el proyecto; aquí solo se borran
-  // las referencias. El detalle está en `listarComentariosDeRequerimiento`.
   for (const hilo of hilos) {
     await borrarComentariosDeRequerimiento(hilo);
   }
-  // Los punteros ya no tienen proyecto al que apuntar; se borran por la rama
-  // huérfana de su regla, igual que los comentarios.
   await borrarAccesosComentariosProyecto(accesos);
 }
 
@@ -251,33 +322,53 @@ export async function deleteProyecto(id: string): Promise<void> {
 
 /**
  * IDs de proyectos relacionados al usuario: proyectos que creó
- * (`proyecto.id_creador == userId`) más aquellos donde es miembro de un
- * equipo vinculado vía `proyecto_equipos`. Sin N+1: 3 lecturas en
- * paralelo (vínculos + membresías con joins + creados propios).
+ * (`proyecto.id_creador == userId`) más aquellos donde es miembro activo de un
+ * equipo vinculado y activo en `proyecto_equipos`.
  */
 export async function getProyectosRelacionados(userId: string): Promise<UUID[]> {
   if (!userId) return [];
-  const [vinculos, membresias, creadosSnap, miembroSnap] = await Promise.all([
-    getProyectoEquipos(),
-    getMiembrosEquipo(),
-    getDocs(query(collection(db, 'proyecto'), where('id_creador', '==', userId))),
-    // Proyectos donde lo agregaron como miembro directo (KAN-24)
-    getDocs(query(collection(db, 'proyecto'), where('ids_miembros', 'array-contains', userId)))
-  ]);
-  const equiposDelUsuario = new Set(
-    membresias
+  const [vinculosActivos, membresiasGlobales, membresiasLocalesSnap, creadosSnap] =
+    await Promise.all([
+      getProyectoEquipos(true),
+      getMiembrosEquipo(),
+      getDocs(
+        query(collection(db, 'miembros_proyecto_equipo'), where('id_usuario', '==', userId))
+      ),
+      getDocs(query(collection(db, 'proyecto'), where('id_creador', '==', userId))),
+    ]);
+
+  const equiposGlobalesDelUsuario = new Set(
+    membresiasGlobales
       .filter((m: MiembroEquipo) => m.id_usuario === userId)
       .map((m: MiembroEquipo) => m.id_equipo)
   );
+
+  const activosLocales = new Set<string>();
+  const inactivosLocales = new Set<string>();
+  for (const d of membresiasLocalesSnap.docs) {
+    const data = d.data();
+    const idProyecto = data.id_proyecto as string | undefined;
+    const idEquipo = data.id_equipo as string | undefined;
+    if (!idProyecto || !idEquipo) continue;
+    if (d.id !== getMiembroProyectoEquipoDocId(idProyecto, idEquipo, userId)) continue;
+    const clave = `${idProyecto}_${idEquipo}`;
+    if ((data.estado ?? 'activo') === 'activo') {
+      activosLocales.add(clave);
+    } else {
+      inactivosLocales.add(clave);
+    }
+  }
+
   const proyectos = new Set<UUID>();
   for (const d of creadosSnap.docs) {
     proyectos.add(d.id);
   }
-  for (const d of miembroSnap.docs) {
-    proyectos.add(d.id);
-  }
-  for (const pe of vinculos) {
-    if (pe.id_proyecto && equiposDelUsuario.has(pe.id_equipo)) {
+  for (const pe of vinculosActivos) {
+    if (!pe.id_proyecto || !pe.id_equipo) continue;
+    const clave = `${pe.id_proyecto}_${pe.id_equipo}`;
+    if (activosLocales.has(clave)) {
+      proyectos.add(pe.id_proyecto);
+    } else if (!inactivosLocales.has(clave) && equiposGlobalesDelUsuario.has(pe.id_equipo)) {
       proyectos.add(pe.id_proyecto);
     }
   }
@@ -285,15 +376,14 @@ export async function getProyectosRelacionados(userId: string): Promise<UUID[]> 
 }
 
 /**
- * Indica si el usuario puede editar/eliminar el proyecto: true si es su
- * creador (`id_creador == userId`) o miembro de un equipo vinculado.
+ * Indica si el usuario puede editar/operar en el proyecto: true si es su
+ * creador (`id_creador == userId`) o miembro activo de un equipo activo vinculado.
  */
 export async function isUsuarioRelacionadoAProyecto(
   userId: string,
   proyectoId: string
 ): Promise<boolean> {
   if (!userId || !proyectoId) return false;
-  // Chequeo barato primero: creador del proyecto (1 lectura directa).
   try {
     const snap = await getDoc(doc(db, 'proyecto', proyectoId));
     if (snap.exists() && snap.data().id_creador === userId) return true;

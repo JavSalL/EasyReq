@@ -114,10 +114,7 @@ export async function asegurarAccesoComentariosProyecto(
   const proyectoSnap = await getDoc(doc(db, 'proyecto', id_proyecto));
   if (!proyectoSnap.exists()) return false;
   const datos = proyectoSnap.data();
-  const esMiembroDirecto =
-    datos.id_creador === uid ||
-    (Array.isArray(datos.ids_miembros) && datos.ids_miembros.includes(uid));
-  if (esMiembroDirecto) return true;
+  if (datos.id_creador === uid) return true;
 
   const accesoRef = doc(db, 'proyecto', id_proyecto, 'acceso_comentarios', uid);
   const accesoSnap = await getDoc(accesoRef);

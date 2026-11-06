@@ -5,6 +5,8 @@ import {
   TipoSistema, 
   Rol, 
   Estado, 
+  EstadoProyecto,
+  NaturalezaProyecto,
   Modalidad, 
   TipoRequerimiento, 
   Modelo 
@@ -27,6 +29,33 @@ export const ESTADO_APROBADO = 'Aprobado';
 export const ESTADO_RECHAZADO = 'Rechazado';
 /** Modalidad que el botón de generar con IA marca solo. */
 export const MODALIDAD_GENERADO_IA = 'Generado con IA';
+
+// ==========================================
+// CATÁLOGOS DE PROYECTO (`estado_proyecto` y `naturaleza_proyecto`)
+// ==========================================
+export const ESTADO_PROYECTO_EN_PROGRESO = 'En progreso';
+export const ESTADO_PROYECTO_PAUSADO = 'Pausado';
+export const ESTADO_PROYECTO_FINALIZADO = 'Finalizado';
+export const ESTADO_PROYECTO_CANCELADO = 'Cancelado';
+
+export const ESTADOS_PROYECTO_INICIALES = [
+  ESTADO_PROYECTO_EN_PROGRESO,
+  ESTADO_PROYECTO_PAUSADO,
+  ESTADO_PROYECTO_FINALIZADO,
+  ESTADO_PROYECTO_CANCELADO,
+] as const;
+
+export const NATURALEZA_PROYECTO_MATERIA = 'Materia';
+export const NATURALEZA_PROYECTO_AYUDANTIA = 'Ayudantía';
+export const NATURALEZA_PROYECTO_BECA = 'Beca';
+export const NATURALEZA_PROYECTO_INDEPENDIENTE = 'Independiente';
+
+export const NATURALEZAS_PROYECTO_INICIALES = [
+  NATURALEZA_PROYECTO_MATERIA,
+  NATURALEZA_PROYECTO_AYUDANTIA,
+  NATURALEZA_PROYECTO_BECA,
+  NATURALEZA_PROYECTO_INDEPENDIENTE,
+] as const;
 
 // ==========================================
 // SEEDING DE CATÁLOGOS BASE
@@ -181,6 +210,14 @@ export async function seedCatalogsIfEmpty() {
       id_modelo: reyesId
     });
 
+    for (const nombre_estado of ESTADOS_PROYECTO_INICIALES) {
+      await addDoc(collection(db, 'estado_proyecto'), { nombre_estado });
+    }
+
+    for (const nombre_naturaleza of NATURALEZAS_PROYECTO_INICIALES) {
+      await addDoc(collection(db, 'naturaleza_proyecto'), { nombre_naturaleza });
+    }
+
     console.log('Catálogos sembrados exitosamente.');
   } catch (error) {
     console.error('Error al inicializar catálogos en Firestore:', error);
@@ -199,8 +236,8 @@ export async function seedCatalogsIfEmpty() {
  * el texto del documento.
  */
 export async function idCatalogoPorNombre(
-  coleccion: 'estados' | 'modalidades',
-  campo: 'nombre_estado' | 'nombre_modalidad',
+  coleccion: 'estados' | 'modalidades' | 'estado_proyecto' | 'naturaleza_proyecto',
+  campo: 'nombre_estado' | 'nombre_modalidad' | 'nombre_naturaleza',
   nombre: string
 ): Promise<string | null> {
   try {
@@ -210,6 +247,37 @@ export async function idCatalogoPorNombre(
   } catch (e) {
     console.error(`Error buscando "${nombre}" en ${coleccion}:`, e);
     return null;
+  }
+}
+
+/**
+ * Siembra de forma idempotente los catálogos `estado_proyecto` y `naturaleza_proyecto`
+ * en entornos que ya estaban inicializados antes de agregar estas colecciones.
+ */
+export async function asegurarCatalogosProyecto(): Promise<void> {
+  const entradas: Array<[
+    'estado_proyecto' | 'naturaleza_proyecto',
+    'nombre_estado' | 'nombre_naturaleza',
+    string
+  ]> = [
+    ...ESTADOS_PROYECTO_INICIALES.map(
+      (nombre): ['estado_proyecto', 'nombre_estado', string] => ['estado_proyecto', 'nombre_estado', nombre]
+    ),
+    ...NATURALEZAS_PROYECTO_INICIALES.map(
+      (nombre): ['naturaleza_proyecto', 'nombre_naturaleza', string] => ['naturaleza_proyecto', 'nombre_naturaleza', nombre]
+    ),
+  ];
+
+  for (const [coleccion, campo, nombre] of entradas) {
+    try {
+      const id = await idCatalogoPorNombre(coleccion, campo, nombre);
+      if (!id) {
+        await addDoc(collection(db, coleccion), { [campo]: nombre });
+        console.log(`Catálogo ${coleccion}: añadido "${nombre}".`);
+      }
+    } catch (error) {
+      console.error(`No se pudo añadir "${nombre}" a ${coleccion}:`, error);
+    }
   }
 }
 
@@ -245,6 +313,8 @@ export async function asegurarCatalogosAprobacion(): Promise<void> {
       console.error(`No se pudo añadir "${nombre}" a ${coleccion}:`, error);
     }
   }
+
+  await asegurarCatalogosProyecto();
 }
 
 // ==========================================
@@ -383,6 +453,52 @@ export async function getModelos(): Promise<Modelo[]> {
     return unicos;
   } catch (e) {
     console.error('Error fetching modelos:', e);
+    return [];
+  }
+}
+
+export async function getEstadosProyecto(): Promise<EstadoProyecto[]> {
+  try {
+    let snap = await getDocs(collection(db, 'estado_proyecto'));
+    if (snap.empty) {
+      await asegurarCatalogosProyecto();
+      snap = await getDocs(collection(db, 'estado_proyecto'));
+    }
+    const vistos = new Set<string>();
+    const unicos: EstadoProyecto[] = [];
+    for (const d of snap.docs) {
+      const nombre = String(d.data().nombre_estado ?? '').trim();
+      const clave = nombre.toLowerCase();
+      if (!clave || vistos.has(clave)) continue;
+      vistos.add(clave);
+      unicos.push({ id: d.id, nombre_estado: nombre });
+    }
+    return unicos;
+  } catch (e) {
+    console.error('Error fetching estado_proyecto:', e);
+    return [];
+  }
+}
+
+export async function getNaturalezasProyecto(): Promise<NaturalezaProyecto[]> {
+  try {
+    let snap = await getDocs(collection(db, 'naturaleza_proyecto'));
+    if (snap.empty) {
+      await asegurarCatalogosProyecto();
+      snap = await getDocs(collection(db, 'naturaleza_proyecto'));
+    }
+    const vistos = new Set<string>();
+    const unicos: NaturalezaProyecto[] = [];
+    for (const d of snap.docs) {
+      const nombre = String(d.data().nombre_naturaleza ?? '').trim();
+      const clave = nombre.toLowerCase();
+      if (!clave || vistos.has(clave)) continue;
+      vistos.add(clave);
+      unicos.push({ id: d.id, nombre_naturaleza: nombre });
+    }
+    return unicos;
+  } catch (e) {
+    console.error('Error fetching naturaleza_proyecto:', e);
     return [];
   }
 }

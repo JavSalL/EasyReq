@@ -25,6 +25,18 @@ export interface Estado {
   nombre_estado: string;
 }
 
+/** Catálogo `estado_proyecto`: refleja el estado del ciclo de vida de un proyecto (En progreso, Pausado, Finalizado, etc.). */
+export interface EstadoProyecto {
+  id: UUID;
+  nombre_estado: string;
+}
+
+/** Catálogo `naturaleza_proyecto`: indica cómo nació el proyecto (Materia, Ayudantía, Beca, Independiente). */
+export interface NaturalezaProyecto {
+  id: UUID;
+  nombre_naturaleza: string;
+}
+
 export interface Modalidad {
   id: UUID;
   nombre_modalidad: string;
@@ -67,16 +79,40 @@ export interface Equipo {
   nombre: string;
   descripcion?: string;
   id_creador?: UUID | null;
-  // Proyecto al que pertenece el equipo (KAN-24). Null en equipos anteriores,
-  // que se relacionan con proyectos por los vínculos de `proyecto_equipos`.
+  /** @deprecated Legacy KAN-24. Los equipos vuelven a ser entidades globales independientes. */
   id_proyecto?: UUID | null;
   created_at?: string;
 }
 
-/** Quién puede crear equipos dentro de un proyecto. */
+/**
+ * Campaña o programa de colaboración a la que pueden pertenecer N proyectos (`colaboracion`).
+ */
+export interface Colaboracion {
+  id: UUID;
+  nombre: string;
+  descripcion?: string;
+  id_creador?: UUID | null;
+  activa?: boolean;
+  created_at?: string;
+}
+
+/**
+ * Relación N:M `colaboracion_proyecto` (ID determinista `${id_colaboracion}_${id_proyecto}`).
+ */
+export interface ColaboracionProyecto {
+  id?: UUID;
+  id_colaboracion: UUID;
+  id_proyecto: UUID;
+  id_autor?: UUID | null;
+  created_at?: string;
+  colaboracion?: Colaboracion | null;
+  proyecto?: Proyecto | null;
+}
+
+/** @deprecated Legacy KAN-24. */
 export type QuienCreaEquipos = 'creador' | 'seleccionados' | 'miembros';
 
-/** Quién puede agregar y quitar miembros de un proyecto. */
+/** @deprecated Legacy KAN-24. */
 export type QuienAgregaMiembros = 'creador' | 'seleccionados';
 
 export interface Proyecto {
@@ -85,18 +121,28 @@ export interface Proyecto {
   descripcion?: string;
   id_tipo_sistema: UUID | null;
   tipos_sistema?: TipoSistema | null;
+  /** Estado del ciclo de vida del proyecto (`estado_proyecto`: En progreso, Pausado, Finalizado, etc.). */
+  id_estado_proyecto?: UUID | null;
+  estado_proyecto?: EstadoProyecto | null;
+  /** Naturaleza de origen del proyecto (`naturaleza_proyecto`: Materia, Ayudantía, Beca, Independiente). */
+  id_naturaleza_proyecto?: UUID | null;
+  naturaleza_proyecto?: NaturalezaProyecto | null;
+  /** Indica si el proyecto forma parte de al menos una campaña en `colaboracion_proyecto`. */
+  en_colaboracion?: boolean;
+  colaboraciones?: Colaboracion[];
   // UID de Firebase Auth del usuario que creó el proyecto. Opcional (null
   // en documentos legacy creados antes de este campo): esos se tratan como
   // hoy, solo miembros de equipos vinculados pueden editarlos.
   id_creador?: UUID | null;
-  // Miembros del proyecto (KAN-24), además del creador, que siempre lo es. Se agregan directamente.
+  /** @deprecated Legacy KAN-24: se eliminan los miembros sin equipo dentro del proyecto. */
   ids_miembros?: UUID[];
-  // Permiso para crear equipos en el proyecto. Por defecto, solo el creador.
+  /** @deprecated Legacy KAN-24. */
   quien_crea_equipos?: QuienCreaEquipos;
-  // Miembros autorizados cuando `quien_crea_equipos` es 'seleccionados'.
+  /** @deprecated Legacy KAN-24. */
   ids_creadores_equipos?: UUID[];
-  // Miembros autorizados (además del creador) para agregar y quitar miembros.
+  /** @deprecated Legacy KAN-24. */
   quien_agrega_miembros?: QuienAgregaMiembros;
+  /** @deprecated Legacy KAN-24. */
   ids_gestores_miembros?: UUID[];
   created_at?: string;
 }
@@ -261,10 +307,17 @@ export interface ArchivoContexto {
 }
 
 // 3. Tablas Intermedias
+export type EstadoEquipoProyecto = 'activo' | 'desvinculado';
+export type EstadoMiembroProyecto = 'activo' | 'inactivo';
+
 export interface ProyectoEquipo {
   id_proyecto: UUID;
   id_equipo: UUID;
-  id_solicitud?: UUID;
+  /** Estado del equipo dentro del proyecto. Documentos legacy sin campo se consideran `'activo'`. */
+  estado?: EstadoEquipoProyecto;
+  id_solicitud?: UUID | null;
+  vinculado_at?: string;
+  desvinculado_at?: string | null;
   equipo?: Equipo;
   proyecto?: Proyecto;
 }
@@ -272,7 +325,34 @@ export interface ProyectoEquipo {
 export interface MiembroEquipo {
   id_equipo: UUID;
   id_usuario: UUID;
+  id_rol?: UUID | null;
   id_roles: UUID[];
+  joined_at?: string;
+  usuario?: PerfilUsuario;
+  roles?: Rol[];
+}
+
+/**
+ * Ficha local de un miembro de equipo dentro de un proyecto concreto
+ * (`miembros_proyecto_equipo/{id_proyecto}_{id_equipo}_{id_usuario}`).
+ *
+ * Se inicializa al vincular el equipo al proyecto copiando la plantilla global de
+ * `miembros_equipo` y permite hacer modificaciones locales (cambiar roles, activar o
+ * desactivar participación, o agregar un miembro exclusivo para ese proyecto) sin
+ * alterar el equipo global ni otros proyectos donde participe el mismo equipo.
+ */
+export interface MiembroProyectoEquipo {
+  id?: UUID;
+  id_proyecto: UUID;
+  id_equipo: UUID;
+  id_usuario: UUID;
+  /** Primer rol (el de líder, si lo tiene) usado por `firestore.rules`. */
+  id_rol: UUID | null;
+  id_roles: UUID[];
+  estado: EstadoMiembroProyecto;
+  /** `true` cuando el miembro fue agregado localmente solo para este proyecto. */
+  es_local: boolean;
+  updated_at: string;
   usuario?: PerfilUsuario;
   roles?: Rol[];
 }
@@ -352,15 +432,36 @@ export interface LogRequerimiento {
   lider?: PerfilUsuario | null;
 }
 
+export type AccionLogIntegrante =
+  | 'alta'
+  | 'baja'
+  | 'cambio_roles'
+  | 'cambio_estado'
+  | 'clonado_proyecto';
+
+export interface DetallesLogIntegrante {
+  roles_anteriores?: UUID[];
+  roles_nuevos?: UUID[];
+  nombres_roles_anteriores?: string[];
+  nombres_roles_nuevos?: string[];
+  estado_anterior?: EstadoMiembroProyecto | null;
+  estado_nuevo?: EstadoMiembroProyecto | null;
+  es_local?: boolean;
+  nota?: string;
+  [key: string]: unknown;
+}
+
 export interface LogIntegrante {
   id: UUID;
   id_equipo: UUID;
+  /** `null` cuando el movimiento es en el equipo global; UUID cuando es una modificación local en un proyecto. */
+  id_proyecto?: UUID | null;
   id_usuario_afectado: UUID | null;
-  accion: string;
+  accion: AccionLogIntegrante | string;
   id_autor: UUID | null;
   id_lider_en_momento: UUID | null;
   fecha_hora: string;
-  detalles?: Record<string, unknown> | null;
+  detalles?: DetallesLogIntegrante | null;
   usuario_afectado?: PerfilUsuario | null;
   autor?: PerfilUsuario | null;
   lider?: PerfilUsuario | null;
