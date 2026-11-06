@@ -12,10 +12,11 @@ import {
   buildPlanPrompt,
   buildSinglePrompt,
   entradaSinSentido,
-  ESQUEMA_COBERTURA,
-  ESQUEMA_LISTA_REQUERIMIENTOS,
-  ESQUEMA_LOTE_AREA,
+  esquemaCobertura,
+  esquemaListaRequerimientos,
+  esquemaLoteArea,
   ESQUEMA_PLAN,
+  esquemaUnico,
   ESTRICTEZ_POR_DEFECTO,
   interpretarCobertura,
   interpretarEvaluacion,
@@ -249,6 +250,7 @@ const handleGenerateSingle: Handler = (body) => {
   return async (env) => {
     const text = await runGemini(buildSinglePrompt(userPrompt, opciones), env, {
       temperature: TEMPERATURA_ESTRICTEZ[opciones.estrictez],
+      responseSchema: esquemaUnico(opciones.pattern),
     });
     return interpretarGeneracion(text, opciones.pattern);
   };
@@ -294,7 +296,7 @@ const handleGenerateBulk: Handler = (body) => {
           const otras = plan.areas.filter((a) => a !== area).map((a) => a.nombre);
           const text = await runGemini(buildAreaPrompt(userPrompt, area, otras, opciones), env, {
             temperature,
-            responseSchema: ESQUEMA_LISTA_REQUERIMIENTOS,
+            responseSchema: esquemaListaRequerimientos(opciones.pattern),
           });
           return interpretarGeneracionMasiva(text, opciones.pattern);
         } catch {
@@ -315,7 +317,7 @@ const handleGenerateBulk: Handler = (body) => {
         const text = await runGemini(
           buildCoberturaPrompt(userPrompt, requerimientos.map((r) => r.name), opciones, faltantes),
           env,
-          { temperature, responseSchema: ESQUEMA_LISTA_REQUERIMIENTOS }
+          { temperature, responseSchema: esquemaListaRequerimientos(opciones.pattern) }
         );
         agregar(interpretarGeneracionMasiva(text, opciones.pattern).slice(0, faltantes), 'Cobertura adicional');
       } catch {
@@ -406,7 +408,7 @@ const handleGenerationArea: Handler = (body) => {
     const resultado = await pedirSinTitulos(
       buildGenAreaPrompt(entrada, opciones),
       env,
-      { temperature: temperaturaIterativa(opciones.estrictez), responseSchema: ESQUEMA_LOTE_AREA, maxOutputTokens: TOKENS_LOTE },
+      { temperature: temperaturaIterativa(opciones.estrictez), responseSchema: esquemaLoteArea(opciones.pattern), maxOutputTokens: TOKENS_LOTE },
       (text) => interpretarLoteArea(text, opciones, fuenteDe(userPrompt, opciones.contexto, area.enfoque), lote),
       opciones.pattern
     );
@@ -435,7 +437,7 @@ const handleGenerationCobertura: Handler = (body) => {
     const { requerimientos: faltantes } = await pedirSinTitulos(
       buildGenCoberturaPrompt(entrada, opciones),
       env,
-      { temperature: temperaturaIterativa(opciones.estrictez), responseSchema: ESQUEMA_COBERTURA, maxOutputTokens: TOKENS_LOTE },
+      { temperature: temperaturaIterativa(opciones.estrictez), responseSchema: esquemaCobertura(opciones.pattern), maxOutputTokens: TOKENS_LOTE },
       (text) => ({ requerimientos: interpretarCobertura(text, opciones, fuenteDe(userPrompt, opciones.contexto), areas, maximo) }),
       opciones.pattern
     );

@@ -30,6 +30,7 @@ import {
 } from './catalogos-service';
 import { getAllUsers } from './usuarios-service';
 import { getPatrones } from './patrones-service';
+import { sanitizarElementosSintaxis } from '../sintaxis-requerimiento';
 
 // ==========================================
 // REQUERIMIENTOS
@@ -91,6 +92,7 @@ export async function getRequerimientos(id_proyecto?: string): Promise<Requerimi
         modulo: typeof data.modulo === 'string' && data.modulo.trim() ? data.modulo : null,
         origen_ia: data.origen_ia === 'explicito' || data.origen_ia === 'inferido' ? data.origen_ia : null,
         prioridad: ['Must', 'Should', 'Could', 'Wont'].includes(data.prioridad) ? data.prioridad : null,
+        elementos_sintaxis: sanitizarElementosSintaxis(data.elementos_sintaxis),
         reenviado_at: data.reenviado_at || null,
         created_at: data.created_at || new Date().toISOString(),
 
@@ -127,6 +129,19 @@ const CONTADOR_REQUERIMIENTOS = 'contador_requerimientos';
  * reglas lo comparan por su texto, así que sin él la escritura sería denegada y el
  * usuario vería un `permission-denied` sin causa aparente.
  */
+const esPermisoDenegado = (error: unknown): boolean =>
+  (error as { code?: string })?.code === 'permission-denied';
+
+function limpiarIndefinidos<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
+function sinElementosSintaxis<T extends Partial<Requerimiento>>(data: T): Partial<Requerimiento> {
+  const copia = { ...data };
+  delete copia.elementos_sintaxis;
+  return copia;
+}
+
 async function datosDeAlta(data: Partial<Requerimiento>, uid: string): Promise<Partial<Requerimiento>> {
   const idEstado = await idCatalogoPorNombre('estados', 'nombre_estado', ESTADO_PENDIENTE_APROBACION);
   if (!idEstado) {
@@ -135,7 +150,12 @@ async function datosDeAlta(data: Partial<Requerimiento>, uid: string): Promise<P
       'Pídeselo a quien administre el proyecto: sin él no se puede registrar ningún requerimiento.'
     );
   }
-  return { ...data, id_autor: uid, id_estado: idEstado, id_aprobador: null };
+  return {
+    ...limpiarIndefinidos(data as Record<string, unknown>),
+    id_autor: uid,
+    id_estado: idEstado,
+    id_aprobador: null
+  };
 }
 
 /**
@@ -155,22 +175,31 @@ export async function createRequerimiento(
   const reqRef = doc(collection(db, 'requerimiento'));
   const proyectoRef = data.id_proyecto ? doc(db, 'proyecto', data.id_proyecto) : null;
 
-  const numero = await runTransaction(db, async transaction => {
-    let siguiente: number | null = null;
-    if (proyectoRef) {
-      const proyecto = await transaction.get(proyectoRef);
-      if (proyecto.exists()) {
-        siguiente = ((proyecto.data()[CONTADOR_REQUERIMIENTOS] as number | undefined) ?? 0) + 1;
-        transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: siguiente });
+  let numero: number | null;
+  try {
+    numero = await runTransaction(db, async transaction => {
+      let siguiente: number | null = null;
+      if (proyectoRef) {
+        const proyecto = await transaction.get(proyectoRef);
+        if (proyecto.exists()) {
+          siguiente = ((proyecto.data()[CONTADOR_REQUERIMIENTOS] as number | undefined) ?? 0) + 1;
+          transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: siguiente });
+        }
       }
-    }
-    transaction.set(reqRef, {
-      ...alta,
-      ...(siguiente !== null ? { numero: siguiente, codigo: codigoRequerimiento(siguiente) } : {}),
-      created_at
+      transaction.set(reqRef, {
+        ...alta,
+        ...(siguiente !== null ? { numero: siguiente, codigo: codigoRequerimiento(siguiente) } : {}),
+        created_at
+      });
+      return siguiente;
     });
-    return siguiente;
-  });
+  } catch (error) {
+    // Respaldo limpio por si las reglas remotas aún no admiten `elementos_sintaxis`.
+    if (esPermisoDenegado(error) && 'elementos_sintaxis' in alta) {
+      return createRequerimiento(sinElementosSintaxis(data), uid);
+    }
+    throw error;
+  }
 
   return {
     ...(alta as Requerimiento),
@@ -271,11 +300,25 @@ export async function crearRequerimientosEnLote(
     };
   });
 
-  const { hechas, error } = await escribirEnLotes(
+  let { hechas, error } = await escribirEnLotes(
     nuevos.map(n => batch => batch.set(n.ref, n.datos)),
     MAX_POR_LOTE,
     hechas => onProgreso?.(hechas, items.length)
   );
+
+  // Si las reglas remotas aún no admiten `elementos_sintaxis`, reintenta reutilizando los números reservados.
+  if (hechas === 0 && esPermisoDenegado(error) && nuevos.some(n => 'elementos_sintaxis' in n.datos)) {
+    nuevos.forEach(n => {
+      delete (n.datos as Partial<Requerimiento>).elementos_sintaxis;
+    });
+    const reintento = await escribirEnLotes(
+      nuevos.map(n => batch => batch.set(n.ref, n.datos)),
+      MAX_POR_LOTE,
+      progreso => onProgreso?.(progreso, items.length)
+    );
+    hechas = reintento.hechas;
+    error = reintento.error;
+  }
 
   if (hechas < items.length) {
     // Libera los números que no se usaron, solo si el contador sigue donde se dejó.
@@ -348,22 +391,29 @@ export async function insertarRequerimientoDespuesDe(
   const reqRef = doc(collection(db, 'requerimiento'));
   const created_at = new Date().toISOString();
 
-  await runTransaction(db, async transaction => {
-    const actual = await transaction.get(proyectoRef);
-    if (!actual.exists() || ((actual.data()[CONTADOR_REQUERIMIENTOS] as number | undefined) ?? 0) !== contador) {
-      throw new Error(MENSAJE_CONFLICTO);
-    }
-    const snaps = await Promise.all(siguientes.map(s => transaction.get(s.ref)));
-    snaps.forEach((snap, i) => {
-      if (!snap.exists() || snap.data().numero !== siguientes[i].numero) throw new Error(MENSAJE_CONFLICTO);
-    });
+  try {
+    await runTransaction(db, async transaction => {
+      const actual = await transaction.get(proyectoRef);
+      if (!actual.exists() || ((actual.data()[CONTADOR_REQUERIMIENTOS] as number | undefined) ?? 0) !== contador) {
+        throw new Error(MENSAJE_CONFLICTO);
+      }
+      const snaps = await Promise.all(siguientes.map(s => transaction.get(s.ref)));
+      snaps.forEach((snap, i) => {
+        if (!snap.exists() || snap.data().numero !== siguientes[i].numero) throw new Error(MENSAJE_CONFLICTO);
+      });
 
-    siguientes.forEach(s => {
-      transaction.update(s.ref, { numero: s.numero + 1, codigo: codigoRequerimiento(s.numero + 1) });
+      siguientes.forEach(s => {
+        transaction.update(s.ref, { numero: s.numero + 1, codigo: codigoRequerimiento(s.numero + 1) });
+      });
+      transaction.set(reqRef, { ...alta, numero: nuevoNumero, codigo: codigoRequerimiento(nuevoNumero), created_at });
+      transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: contador + 1 });
     });
-    transaction.set(reqRef, { ...alta, numero: nuevoNumero, codigo: codigoRequerimiento(nuevoNumero), created_at });
-    transaction.update(proyectoRef, { [CONTADOR_REQUERIMIENTOS]: contador + 1 });
-  });
+  } catch (error) {
+    if (esPermisoDenegado(error) && 'elementos_sintaxis' in alta) {
+      return insertarRequerimientoDespuesDe(id_proyecto, despuesDeNumero, sinElementosSintaxis(data), autor);
+    }
+    throw error;
+  }
 
   // Auditoría de los renumerados (sin esperar: si falla alguno, el cambio ya quedó guardado)
   void (async () => {
@@ -452,39 +502,48 @@ export async function actualizarRequerimientoConHistorial(
   campos: string[],
   cambiosClasificacion?: NonNullable<LogRequerimiento['detalles']>['cambios_clasificacion']
 ): Promise<void> {
+  const datosLimpios = limpiarIndefinidos(data as Record<string, unknown>) as Partial<Requerimiento>;
   const requerimientoRef = doc(db, 'requerimiento', id);
   const logRef = doc(collection(db, 'logs_requerimientos'));
   const fecha_hora = new Date().toISOString();
 
-  await runTransaction(db, async transaction => {
-    const requerimiento = await transaction.get(requerimientoRef);
-    if (!requerimiento.exists()) {
-      throw new Error('No se encontró el requerimiento que intentas editar.');
-    }
+  try {
+    await runTransaction(db, async transaction => {
+      const requerimiento = await transaction.get(requerimientoRef);
+      if (!requerimiento.exists()) {
+        throw new Error('No se encontró el requerimiento que intentas editar.');
+      }
 
-    const enunciadoAnterior = requerimiento.data().enunciado;
-    const detalles: NonNullable<LogRequerimiento['detalles']> = { campos };
-    if (cambiosClasificacion?.length) {
-      detalles.cambios_clasificacion = cambiosClasificacion;
-    }
-    if (
-      typeof data.enunciado === 'string' &&
-      typeof enunciadoAnterior === 'string' &&
-      data.enunciado !== enunciadoAnterior
-    ) {
-      detalles.enunciado_anterior = enunciadoAnterior;
-      detalles.enunciado_nuevo = data.enunciado;
-    }
+      const enunciadoAnterior = requerimiento.data().enunciado;
+      const detalles: NonNullable<LogRequerimiento['detalles']> = { campos };
+      if (cambiosClasificacion?.length) {
+        detalles.cambios_clasificacion = cambiosClasificacion;
+      }
+      if (
+        typeof datosLimpios.enunciado === 'string' &&
+        typeof enunciadoAnterior === 'string' &&
+        datosLimpios.enunciado !== enunciadoAnterior
+      ) {
+        detalles.enunciado_anterior = enunciadoAnterior;
+        detalles.enunciado_nuevo = datosLimpios.enunciado;
+      }
 
-    transaction.update(requerimientoRef, data);
-    transaction.set(logRef, {
-      id_requerimiento: id,
-      accion: 'Edición de requerimiento',
-      id_autor,
-      fecha_hora,
-      detalles
+      transaction.update(requerimientoRef, datosLimpios);
+      transaction.set(logRef, {
+        id_requerimiento: id,
+        accion: 'Edición de requerimiento',
+        id_autor,
+        fecha_hora,
+        detalles
+      });
     });
-  });
+  } catch (error) {
+    const sinSintaxis = sinElementosSintaxis(datosLimpios);
+    if (esPermisoDenegado(error) && 'elementos_sintaxis' in datosLimpios && Object.keys(sinSintaxis).length > 0) {
+      return actualizarRequerimientoConHistorial(id, sinSintaxis, id_autor, campos, cambiosClasificacion);
+    }
+    throw error;
+  }
 }
 
 /**

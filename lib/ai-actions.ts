@@ -1,5 +1,8 @@
 import { auth } from "./firebase";
 import { IndiceDuplicados, clasificarDuplicado } from "./dedup-requerimientos";
+import type { ElementoSintactico } from "./database.types";
+
+export type { ElementoSintactico };
 
 // Las llamadas a Gemini se hacen en un Cloudflare Worker (workers/ai-proxy).
 // La key de Gemini vive allí como secreto; el navegador solo envía el ID token
@@ -20,6 +23,8 @@ export interface AIRequirement {
     resultado: boolean;
   };
   ai_observations?: string;
+  /** Segmentos sintácticos del patrón usado al redactar (presentes cuando se eligió un patrón). */
+  elementos_sintaxis?: ElementoSintactico[];
   /** false cuando la entrada no da base para un requerimiento; entonces `motivo` explica qué falta. */
   valido?: boolean;
   motivo?: string;

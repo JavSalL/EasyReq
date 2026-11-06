@@ -56,6 +56,31 @@
   --warning-subtle: #fef4e6;
   --warning-line: #f5d9ab;
 
+  /* Paleta semántica para elementos sintácticos de patrones de requerimientos */
+  --syntax-1: #1d4ed8;
+  --syntax-1-subtle: #eff6ff;
+  --syntax-1-line: #93c5fd;
+
+  --syntax-2: #047857;
+  --syntax-2-subtle: #ecfdf5;
+  --syntax-2-line: #6ee7b7;
+
+  --syntax-3: #b45309;
+  --syntax-3-subtle: #fffbeb;
+  --syntax-3-line: #fcd34d;
+
+  --syntax-4: #6d28d9;
+  --syntax-4-subtle: #f5f3ff;
+  --syntax-4-line: #c4b5fd;
+
+  --syntax-5: #0e7490;
+  --syntax-5-subtle: #ecfeff;
+  --syntax-5-line: #67e8f9;
+
+  --syntax-6: #be185d;
+  --syntax-6-subtle: #fdf2f8;
+  --syntax-6-line: #f9a8d4;
+
   --scrim: rgb(13 13 18 / 0.55);
   --scrollbar-thumb: #c4c4d0;
   --scrollbar-thumb-hover: #8e8ea0;
@@ -99,6 +124,30 @@
   --warning-subtle: #2b2010;
   --warning-line: #5c4318;
 
+  --syntax-1: #93c5fd;
+  --syntax-1-subtle: #132038;
+  --syntax-1-line: #254a85;
+
+  --syntax-2: #6ee7b7;
+  --syntax-2-subtle: #0f2920;
+  --syntax-2-line: #1f5c43;
+
+  --syntax-3: #fcd34d;
+  --syntax-3-subtle: #2b2110;
+  --syntax-3-line: #6b4e16;
+
+  --syntax-4: #c4b5fd;
+  --syntax-4-subtle: #211836;
+  --syntax-4-line: #4c357d;
+
+  --syntax-5: #67e8f9;
+  --syntax-5-subtle: #0e262d;
+  --syntax-5-line: #1d5666;
+
+  --syntax-6: #f9a8d4;
+  --syntax-6-subtle: #2d1422;
+  --syntax-6-line: #6e294d;
+
   --scrim: rgb(0 0 0 / 0.65);
   --scrollbar-thumb: #2a2a35;
   --scrollbar-thumb-hover: #40404f;
@@ -137,6 +186,30 @@
   --color-warning: var(--warning);
   --color-warning-subtle: var(--warning-subtle);
   --color-warning-line: var(--warning-line);
+
+  --color-syntax-1: var(--syntax-1);
+  --color-syntax-1-subtle: var(--syntax-1-subtle);
+  --color-syntax-1-line: var(--syntax-1-line);
+
+  --color-syntax-2: var(--syntax-2);
+  --color-syntax-2-subtle: var(--syntax-2-subtle);
+  --color-syntax-2-line: var(--syntax-2-line);
+
+  --color-syntax-3: var(--syntax-3);
+  --color-syntax-3-subtle: var(--syntax-3-subtle);
+  --color-syntax-3-line: var(--syntax-3-line);
+
+  --color-syntax-4: var(--syntax-4);
+  --color-syntax-4-subtle: var(--syntax-4-subtle);
+  --color-syntax-4-line: var(--syntax-4-line);
+
+  --color-syntax-5: var(--syntax-5);
+  --color-syntax-5-subtle: var(--syntax-5-subtle);
+  --color-syntax-5-line: var(--syntax-5-line);
+
+  --color-syntax-6: var(--syntax-6);
+  --color-syntax-6-subtle: var(--syntax-6-subtle);
+  --color-syntax-6-line: var(--syntax-6-line);
 
   --color-scrim: var(--scrim);
 

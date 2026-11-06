@@ -3,6 +3,11 @@
 // construyen aquí, en el servidor, para que el cliente solo envíe parámetros
 // y el Worker no pueda usarse como proxy genérico de Gemini.
 
+export interface ElementoSintactico {
+  elemento: string;
+  fragmento: string;
+}
+
 export interface AIRequirement {
   name: string;
   type_furps: 'Functionality' | 'Usability' | 'Reliability' | 'Performance' | 'Supportability';
@@ -14,6 +19,8 @@ export interface AIRequirement {
     resultado: boolean;
   };
   ai_observations?: string;
+  /** Componentes sintácticos del patrón identificados como tramos literales dentro de `name`. */
+  elementos_sintaxis?: ElementoSintactico[];
   /** false cuando la entrada no da base para un requerimiento; entonces `motivo` explica qué falta. */
   valido?: boolean;
   motivo?: string;
@@ -87,6 +94,52 @@ export function entradaSinSentido(texto: string): string | null {
 const SIN_EVALUACION = { actor: false, accion: false, objeto: false, datos_entrada: false, resultado: false };
 
 /**
+ * Extrae en orden de aparición los marcadores sintácticos (`<...>` o `[...]`) definidos en
+ * la plantilla de un patrón, sin duplicados.
+ */
+export function extraerElementosPatron(pattern?: string): string[] {
+  if (!pattern?.trim()) return [];
+  const vistos = new Set<string>();
+  const resultado: string[] = [];
+  const regex = /<([^<>]+)>|\[([^\[\]]+)\]/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(pattern)) !== null) {
+    const crudo = (match[1] ?? match[2] ?? '').trim();
+    const clave = crudo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!clave || vistos.has(clave)) continue;
+    vistos.add(clave);
+    resultado.push(crudo);
+  }
+  return resultado;
+}
+
+/**
+ * Limpia y normaliza la lista `elementos_sintaxis` devuelta por Gemini aplicando las mismas
+ * transformaciones de redacción y ortografía que recibe `name`.
+ */
+export function interpretarElementosSintaxis(
+  raw: unknown,
+  pattern?: string,
+  aplicarOrtografia = true
+): ElementoSintactico[] | undefined {
+  if (!pattern || !Array.isArray(raw)) return undefined;
+  const limpios: ElementoSintactico[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const reg = item as Record<string, unknown>;
+    if (typeof reg.elemento !== 'string' || typeof reg.fragmento !== 'string') continue;
+    const elemento = reg.elemento.trim().replace(/^[<\[]+|[>\]]+$/g, '').trim().slice(0, 80);
+    const limpio = limpiarRedaccion(reg.fragmento.trim(), pattern);
+    const corregido = aplicarOrtografia ? corregirOrtografia(limpio) : limpio;
+    const fragmento = corregido.replace(/^[«"'“”‘’\s]+|[»"'“”‘’\s.,;:]+$/g, '').trim();
+    if (!elemento || !fragmento) continue;
+    limpios.push({ elemento, fragmento: fragmento.slice(0, 1000) });
+    if (limpios.length >= 12) break;
+  }
+  return limpios.length > 0 ? limpios : undefined;
+}
+
+/**
  * Interpreta la respuesta del modelo al generar un requerimiento: si la IA rechazó la entrada
  * devuelve `valido: false` con el motivo (sin texto), y si no, limpia la redacción según el patrón.
  */
@@ -102,9 +155,13 @@ export function interpretarGeneracion(text: string, pattern?: string): AIRequire
       motivo: generado.motivo?.trim() || 'No se pudo identificar qué debe hacer el sistema.',
     };
   }
-  return typeof generado.name === 'string'
-    ? { ...generado, name: limpiarRedaccion(generado.name, pattern) }
-    : generado;
+  if (typeof generado.name !== 'string') return generado;
+  const elementos = interpretarElementosSintaxis(generado.elementos_sintaxis, pattern, false);
+  return {
+    ...generado,
+    name: limpiarRedaccion(generado.name, pattern),
+    ...(elementos ? { elementos_sintaxis: elementos } : { elementos_sintaxis: undefined }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -181,7 +238,14 @@ export function interpretarGeneracionMasiva(text: string, pattern?: string): AIR
   return Array.isArray(generados)
     ? generados
         .filter((r) => r && typeof r.name === 'string' && r.name.trim() !== '')
-        .map((r) => ({ ...r, name: corregirOrtografia(limpiarRedaccion(r.name, pattern)) }))
+        .map((r) => {
+          const elementos = interpretarElementosSintaxis(r.elementos_sintaxis, pattern, true);
+          return {
+            ...r,
+            name: corregirOrtografia(limpiarRedaccion(r.name, pattern)),
+            ...(elementos ? { elementos_sintaxis: elementos } : { elementos_sintaxis: undefined }),
+          };
+        })
     : [];
 }
 
@@ -282,9 +346,26 @@ CONTEXTO>>>`;
 }
 
 function bloquePatron(pattern?: string): string {
-  return pattern
-    ? `PATRÓN: debes usar estrictamente este patrón de redacción:\n"${pattern}"\n${REGLA_SEPARADORES}`
-    : 'PATRÓN: no hay un patrón fijo; redacta de forma clara, verificable y sin ambigüedades.';
+  if (!pattern) {
+    return 'PATRÓN: no hay un patrón fijo; redacta de forma clara, verificable y sin ambigüedades.';
+  }
+  const elementos = extraerElementosPatron(pattern);
+  const guiaSintaxis = elementos.length > 0
+    ? `IDENTIFICACIÓN SINTÁCTICA ("elementos_sintaxis"):
+- Los componentes del patrón son exactamente: ${elementos.map((e) => `"${e}"`).join(', ')}.
+- Por cada componente presente en el enunciado redactado ("name"), devuelve un objeto { "elemento": "...", "fragmento": "..." } en el orden en que aparece en "name".
+- "elemento" debe usar exactamente uno de esos nombres (${elementos.map((e) => `"${e}"`).join(', ')}).
+- "fragmento" debe copiar LITERALMENTE la subcadena exacta tal como quedó escrita dentro de "name" (incluyendo su palabra clave conectora si forma parte de la cláusula, p. ej. "Cuando ...", "Mientras ...", "Si ...", "debe ..."), sin solaparse con otro fragmento ni alterar ninguna palabra.`
+    : `IDENTIFICACIÓN SINTÁCTICA ("elementos_sintaxis"):
+- Identifica en "elementos_sintaxis" cada componente estructural que especifica el patrón dentro de "name", con { "elemento": "nombre del componente", "fragmento": "subcadena literal exacta dentro de name" }, sin solapamientos.`;
+
+  return `PATRÓN: debes usar estrictamente este patrón de redacción:\n"${pattern}"\n${REGLA_SEPARADORES}\n${guiaSintaxis}`;
+}
+
+function campoEjemploSintaxis(pattern?: string): string {
+  if (!pattern) return '';
+  const primero = extraerElementosPatron(pattern)[0] ?? 'Actor';
+  return `, "elementos_sintaxis": [{ "elemento": "${primero}", "fragmento": "..." }]`;
 }
 
 /**
@@ -312,7 +393,7 @@ export function buildSinglePrompt(userPrompt: string, opciones: OpcionesRedaccio
     IMPORTANTE:
     1. No generes observaciones ni notas IA (déjalas vacías o nulas).
     2. Responde con un objeto JSON válido:
-    { "valido": true, "motivo": "", "name": "...", "type_furps": "...", "ai_evaluation": { "actor": false, "accion": false, "objeto": false, "datos_entrada": false, "resultado": false } }
+    { "valido": true, "motivo": "", "name": "...", "type_furps": "...", "ai_evaluation": { "actor": false, "accion": false, "objeto": false, "datos_entrada": false, "resultado": false }${campoEjemploSintaxis(opciones.pattern)} }
      donde name es el texto del requerimiento, type_furps es exactamente uno de Functionality, Usability, Reliability, Performance o Supportability, y ai_evaluation debe ir con los valores por defecto.
     3. Si el texto no es válido, responde: { "valido": false, "motivo": "..." }
   `;
@@ -389,7 +470,7 @@ export function buildAreaPrompt(userPrompt: string, area: AreaPlan, otrasAreas: 
     Para cada requerimiento evalúa si cumple estos tags de redacción (true/false): actor, accion, objeto, datos_entrada, resultado.
 
     Responde con un array JSON válido (sin observaciones):
-    [{ "name": "...", "type_furps": "...", "ai_evaluation": { "actor": true, "accion": true, "objeto": true, "datos_entrada": false, "resultado": true } }]
+    [{ "name": "...", "type_furps": "...", "ai_evaluation": { "actor": true, "accion": true, "objeto": true, "datos_entrada": false, "resultado": true }${campoEjemploSintaxis(opciones.pattern)} }]
     donde type_furps es exactamente uno de Functionality, Usability, Reliability, Performance o Supportability.
   `;
 }
@@ -416,7 +497,7 @@ export function buildCoberturaPrompt(userPrompt: string, generados: string[], op
     ${bloqueEjemplos(opciones.ejemplos)}
 
     Responde con un array JSON válido con la misma estructura:
-    [{ "name": "...", "type_furps": "...", "ai_evaluation": { "actor": true, "accion": true, "objeto": true, "datos_entrada": false, "resultado": true } }]
+    [{ "name": "...", "type_furps": "...", "ai_evaluation": { "actor": true, "accion": true, "objeto": true, "datos_entrada": false, "resultado": true }${campoEjemploSintaxis(opciones.pattern)} }]
   `;
 }
 
@@ -646,7 +727,75 @@ export const ESQUEMA_COBERTURA = {
   required: ['requerimientos'],
 };
 
-/** Esquema de un array de requerimientos (pasos de la generación masiva de una sola petición). */
+function esquemaElementosSintaxis(pattern?: string): Record<string, unknown> {
+  const elementos = extraerElementosPatron(pattern);
+  return {
+    type: 'ARRAY',
+    items: {
+      type: 'OBJECT',
+      properties: {
+        elemento: elementos.length > 0 ? { type: 'STRING', enum: elementos } : { type: 'STRING' },
+        fragmento: { type: 'STRING' },
+      },
+      required: ['elemento', 'fragmento'],
+    },
+  };
+}
+
+export function esquemaUnico(pattern?: string): Record<string, unknown> {
+  return {
+    type: 'OBJECT',
+    properties: {
+      valido: { type: 'BOOLEAN' },
+      motivo: { type: 'STRING' },
+      name: PROPIEDADES_REQUERIMIENTO.name,
+      type_furps: PROPIEDADES_REQUERIMIENTO.type_furps,
+      ai_evaluation: PROPIEDADES_REQUERIMIENTO.ai_evaluation,
+      ...(pattern ? { elementos_sintaxis: esquemaElementosSintaxis(pattern) } : {}),
+    },
+    required: ['valido'],
+  };
+}
+
+export function esquemaLoteArea(pattern?: string): Record<string, unknown> {
+  if (!pattern) return ESQUEMA_LOTE_AREA;
+  return {
+    type: 'OBJECT',
+    properties: {
+      requerimientos: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: { ...PROPIEDADES_REQUERIMIENTO, elementos_sintaxis: esquemaElementosSintaxis(pattern) },
+          required: [...REQUERIDOS_REQUERIMIENTO, 'elementos_sintaxis'],
+        },
+      },
+      completo: { type: 'BOOLEAN' },
+      pendiente: { type: 'ARRAY', items: { type: 'STRING' } },
+    },
+    required: ['requerimientos', 'completo', 'pendiente'],
+  };
+}
+
+export function esquemaCobertura(pattern?: string): Record<string, unknown> {
+  if (!pattern) return ESQUEMA_COBERTURA;
+  return {
+    type: 'OBJECT',
+    properties: {
+      requerimientos: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: { ...PROPIEDADES_REQUERIMIENTO, area: { type: 'STRING' }, elementos_sintaxis: esquemaElementosSintaxis(pattern) },
+          required: [...REQUERIDOS_REQUERIMIENTO, 'area', 'elementos_sintaxis'],
+        },
+      },
+    },
+    required: ['requerimientos'],
+  };
+}
+
+/** Esquema JSON para la generación masiva por áreas (sin iteración por lotes). */
 export const ESQUEMA_LISTA_REQUERIMIENTOS = {
   type: 'ARRAY',
   items: {
@@ -659,6 +808,23 @@ export const ESQUEMA_LISTA_REQUERIMIENTOS = {
     required: ['name', 'type_furps'],
   },
 };
+
+export function esquemaListaRequerimientos(pattern?: string): Record<string, unknown> {
+  if (!pattern) return ESQUEMA_LISTA_REQUERIMIENTOS;
+  return {
+    type: 'ARRAY',
+    items: {
+      type: 'OBJECT',
+      properties: {
+        name: PROPIEDADES_REQUERIMIENTO.name,
+        type_furps: PROPIEDADES_REQUERIMIENTO.type_furps,
+        ai_evaluation: PROPIEDADES_REQUERIMIENTO.ai_evaluation,
+        elementos_sintaxis: esquemaElementosSintaxis(pattern),
+      },
+      required: ['name', 'type_furps', 'elementos_sintaxis'],
+    },
+  };
+}
 
 /**
  * Paso 1: el mapa de áreas. En alcance "sistema" se cubre todo el sistema (hasta `maxAreas`
@@ -777,7 +943,7 @@ export function buildGenAreaPrompt(entrada: EntradaLoteArea, opciones: OpcionesR
     Para cada requerimiento evalúa si cumple estos tags de redacción (true/false): actor, accion, objeto, datos_entrada, resultado.
 
     Responde con un objeto JSON válido:
-    { "requerimientos": [{ "name": "...", "type_furps": "...", "ai_evaluation": { "actor": true, "accion": true, "objeto": true, "datos_entrada": false, "resultado": true }, "origen": "explicito", "prioridad": "Must", "justificacion": "..." }], "completo": false, "pendiente": ["..."] }
+    { "requerimientos": [{ "name": "...", "type_furps": "...", "ai_evaluation": { "actor": true, "accion": true, "objeto": true, "datos_entrada": false, "resultado": true }, "origen": "explicito", "prioridad": "Must", "justificacion": "..."${campoEjemploSintaxis(opciones.pattern)} }], "completo": false, "pendiente": ["..."] }
     donde type_furps es exactamente uno de Functionality, Usability, Reliability, Performance o Supportability.
   `;
 }
@@ -822,7 +988,7 @@ export function buildGenCoberturaPrompt(entrada: EntradaCobertura, opciones: Opc
     TAREA: detecta necesidades importantes del pedido y del contexto (según el nivel de inferencia) que NO estén cubiertas ni por los existentes ni por los generados. Redacta solo esas, hasta ${entrada.maximo}, y asigna cada una a una de las áreas (en "area", con el nombre exacto; si no encaja en ninguna, usa "Otros"). Si todo está cubierto, responde { "requerimientos": [] }.
 
     Responde con un objeto JSON válido:
-    { "requerimientos": [{ "name": "...", "type_furps": "...", "ai_evaluation": { "actor": true, "accion": true, "objeto": true, "datos_entrada": false, "resultado": true }, "origen": "inferido", "prioridad": "Should", "justificacion": "...", "area": "..." }] }
+    { "requerimientos": [{ "name": "...", "type_furps": "...", "ai_evaluation": { "actor": true, "accion": true, "objeto": true, "datos_entrada": false, "resultado": true }, "origen": "inferido", "prioridad": "Should", "justificacion": "...", "area": "..."${campoEjemploSintaxis(opciones.pattern)} }] }
   `;
 }
 
@@ -904,6 +1070,7 @@ function interpretarRequerimientoIterativo(r: unknown, pattern: string | undefin
   const name = corregirOrtografia(limpiarRedaccion(x.name.trim(), pattern));
   const evaluacion = (x.ai_evaluation && typeof x.ai_evaluation === 'object' ? x.ai_evaluation : {}) as Record<string, unknown>;
   const cifras = cifrasSinRespaldo(name, fuente);
+  const elementos = interpretarElementosSintaxis(x.elementos_sintaxis, pattern, true);
   return {
     name,
     type_furps: FURPS.includes(x.type_furps as AIRequirement['type_furps']) ? (x.type_furps as AIRequirement['type_furps']) : 'Functionality',
@@ -920,6 +1087,7 @@ function interpretarRequerimientoIterativo(r: unknown, pattern: string | undefin
     justificacion: typeof x.justificacion === 'string' ? corregirOrtografia(x.justificacion.trim()).slice(0, 500) : '',
     ...(cifras.length ? { cifras_sin_respaldo: cifras } : {}),
     ...(typeof x.area === 'string' && x.area.trim() ? { area: x.area.trim().slice(0, 120) } : {}),
+    ...(elementos ? { elementos_sintaxis: elementos } : {}),
   };
 }
 
