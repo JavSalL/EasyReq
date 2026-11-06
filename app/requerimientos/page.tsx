@@ -20,7 +20,7 @@ import {
 import type {
   Proyecto, Requerimiento, TipoRequerimiento, Estado,
   Modalidad, Modelo, Patron, PerfilUsuario, LogRequerimiento, Equipo, ArchivoContexto,
-  Comentario, ElementoSintactico
+  Comentario, ElementoSintactico, PrioridadMoSCoW
 } from '@/lib/database.types';
 import {
   getProyectoById,
@@ -130,7 +130,9 @@ const FORM_VACIO = {
   id_modalidad: '',
   id_modelo: '',
   id_patron_seleccionado: '',
-  id_equipo: ''
+  id_equipo: '',
+  modulo: '',
+  prioridad: ''
 };
 
 // Nombres legibles de los campos, para describir qué cambió en el historial.
@@ -139,14 +141,22 @@ const FORM_VACIO = {
 // "campos modificados". El estado tiene su propio historial en el log.
 // `id_patron` (KAN-28) sí se edita: guarda la plantilla usada al redactar.
 const CAMPOS_EDITABLES: Array<[
-  'enunciado' | 'id_tipo_requerimiento' | 'id_modalidad' | 'id_modelo' | 'id_patron',
+  | 'enunciado'
+  | 'id_tipo_requerimiento'
+  | 'id_modalidad'
+  | 'id_modelo'
+  | 'id_patron'
+  | 'modulo'
+  | 'prioridad',
   string
 ]> = [
   ['enunciado', 'enunciado'],
   ['id_tipo_requerimiento', 'tipo'],
   ['id_modalidad', 'modalidad'],
   ['id_modelo', 'modelo'],
-  ['id_patron', 'patrón']
+  ['id_patron', 'patrón'],
+  ['modulo', 'módulo'],
+  ['prioridad', 'prioridad']
 ];
 
 /** Máximo de ejemplos (few-shot) que se le dan a la IA. */
@@ -268,6 +278,9 @@ export default function RequerimientosPage() {
   const [editingReq, setEditingReq] = useState<Requerimiento | null>(null);
   const [formData, setFormData] = useState(FORM_VACIO);
   const [elementosSintaxisForm, setElementosSintaxisForm] = useState<ElementoSintactico[] | null>(null);
+  // Cuando el usuario elige "Otro (escribir)" en el select de módulo se activa
+  // el input libre para escribir un módulo nuevo.
+  const [moduloModoLibre, setModuloModoLibre] = useState(false);
   const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -389,7 +402,7 @@ export default function RequerimientosPage() {
       propuestas: propuestas?.length ?? 0,
       generando: gen.ocupado,
       resto: editingReq
-        ? [formData.id_tipo_requerimiento, formData.id_modalidad, formData.id_modelo, formData.id_equipo]
+        ? [formData.id_tipo_requerimiento, formData.id_modalidad, formData.id_modelo, formData.id_equipo, formData.modulo, formData.prioridad]
         : null
     },
     () => setIsModalOpen(false)
@@ -779,7 +792,9 @@ export default function RequerimientosPage() {
       // Conserva el patrón guardado (KAN-28); solo como respaldo se infiere por
       // modelo, para documentos anteriores que no lo guardaban.
       id_patron_seleccionado: req.id_patron || patrones.find(p => p.id_modelo === req.id_modelo)?.patron_id || '',
-      id_equipo: req.id_equipo || ''
+      id_equipo: req.id_equipo || '',
+      modulo: req.modulo || '',
+      prioridad: req.prioridad || ''
     });
     setElementosSintaxisForm(req.elementos_sintaxis ?? null);
     setAiPrompt('');
@@ -811,6 +826,13 @@ export default function RequerimientosPage() {
     }
     setFormData(prev => ({ ...prev, enunciado: patronSeleccionado.promt }));
     setElementosSintaxisForm(null);
+    const navegarAEnunciado = () => {
+      const seccion = document.getElementById('seccion-enunciado') ?? document.getElementById('req-enunciado');
+      seccion?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      document.getElementById('req-enunciado')?.focus({ preventScroll: true });
+    };
+    requestAnimationFrame(navegarAEnunciado);
+    setTimeout(navegarAEnunciado, 60);
   };
 
   // Guardar Requerimiento (Crear o Editar)
@@ -869,6 +891,10 @@ export default function RequerimientosPage() {
       // en el alta (`isValidRequerimientoCreate`) y no la prohíben al editar.
       id_patron: formData.id_patron_seleccionado || null,
       id_equipo: formData.id_equipo,
+      // Módulo y prioridad (KAN-44): se ven y se editan tanto al crear como al
+      // editar. Los requerimientos antiguos los guardan en null y siguen igual.
+      modulo: formData.modulo.trim() || null,
+      prioridad: formData.prioridad ? (formData.prioridad as PrioridadMoSCoW) : null,
       ...(elementosVigentes ? { elementos_sintaxis: elementosVigentes } : {})
     };
 
@@ -906,6 +932,10 @@ export default function RequerimientosPage() {
               return modelos.find(modelo => modelo.id === id)?.nombre || 'Modelo no disponible';
             case 'patrón':
               return patrones.find(patron => patron.patron_id === id)?.nombre || 'Patrón no disponible';
+            case 'módulo':
+              return id || 'Sin módulo';
+            case 'prioridad':
+              return id === 'Wont' ? "Won't" : (id || 'Sin prioridad');
             default:
               return id;
           }
@@ -931,6 +961,8 @@ export default function RequerimientosPage() {
           id_modalidad: datos.id_modalidad,
           id_modelo: datos.id_modelo,
           id_patron: datos.id_patron,
+          modulo: datos.modulo,
+          prioridad: datos.prioridad,
           elementos_sintaxis: elementosVigentes
         }, uid!, cambios.length > 0 ? cambios : ['sintaxis'], cambiosClasificacion);
         toast.success('Requerimiento actualizado');
@@ -978,7 +1010,9 @@ export default function RequerimientosPage() {
           id_modalidad: formData.id_modalidad,
           id_modelo: formData.id_modelo,
           id_patron_seleccionado: formData.id_patron_seleccionado,
-          id_equipo: formData.id_equipo
+          id_equipo: formData.id_equipo,
+          modulo: formData.modulo,
+          prioridad: formData.prioridad
         };
       }
 
@@ -2318,8 +2352,8 @@ export default function RequerimientosPage() {
         }
         description={
           esMasivo
-            ? 'Elige el modelo y el tipo, describe qué parte del sistema especificar y revisa lo que propone la IA.'
-            : 'Elige el modelo y el tipo, genera con IA o redacta respetando la estructura del patrón.'
+            ? 'Elige el tipo y el modelo, describe qué parte del sistema especificar y revisa lo que propone la IA.'
+            : 'Elige el tipo y el modelo, genera con IA o redacta respetando la estructura del patrón.'
         }
         // Más ancho al revisar varias propuestas: el texto completo cabe sin tantos saltos de línea
         size={esMasivo ? '3xl' : 'xl'}
@@ -2338,8 +2372,23 @@ export default function RequerimientosPage() {
               </div>
             )}
 
-            {/* Modelo, patrón y tipo: lo primero que se elige; la IA los respeta al redactar */}
+            {/* Tipo, modelo y patrón: lo primero que se elige; la IA los respeta al redactar */}
             <div className="space-y-4">
+              <div>
+                <label htmlFor="req-tipo" className={etiqueta}>Tipo de requerimiento</label>
+                <select
+                  id="req-tipo"
+                  value={formData.id_tipo_requerimiento}
+                  onChange={(e) => setFormData({ ...formData, id_tipo_requerimiento: e.target.value })}
+                  className={campo}
+                >
+                  <option value="">{esMasivo ? 'Todos (la IA los clasifica)' : 'Sin tipo'}</option>
+                  {tiposReq.map((t) => (
+                    <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="req-modelo" className={etiqueta}>Modelo de Requisitos</label>
@@ -2393,21 +2442,6 @@ export default function RequerimientosPage() {
                   )}
                 </div>
               )}
-
-              <div>
-                <label htmlFor="req-tipo" className={etiqueta}>Tipo de requerimiento</label>
-                <select
-                  id="req-tipo"
-                  value={formData.id_tipo_requerimiento}
-                  onChange={(e) => setFormData({ ...formData, id_tipo_requerimiento: e.target.value })}
-                  className={campo}
-                >
-                  <option value="">{esMasivo ? 'Todos (la IA los clasifica)' : 'Sin tipo'}</option>
-                  {tiposReq.map((t) => (
-                    <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
-                  ))}
-                </select>
-              </div>
             </div>
 
             {/* Prompt para la IA */}
@@ -2462,6 +2496,42 @@ export default function RequerimientosPage() {
                   </div>
                 )}
 
+                {/* Profundidad y alcance de la generación de varios requerimientos (KAN-40): van antes del botón de generar para mantener un flujo lineal */}
+                {esMasivo && (
+                  <div className="px-3.5 py-2.5 border-t border-line bg-sunken/40 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-muted">
+                    <label className="inline-flex items-center gap-2">
+                      Generación
+                      <select
+                        value={profundidad}
+                        onChange={(e) => setProfundidad(e.target.value as Profundidad)}
+                        disabled={gen.ocupado || isAILoading}
+                        className="px-2 min-h-8 border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text"
+                      >
+                        <option value="completa">Completa (por áreas, hasta cubrirlo todo)</option>
+                        <option value="rapida">Rápida (una sola pasada)</option>
+                      </select>
+                    </label>
+                    {profundidad === 'completa' && (
+                      <label className="inline-flex items-center gap-2">
+                        Alcance
+                        <select
+                          value={alcanceIA}
+                          onChange={(e) => setAlcanceIA(e.target.value as AlcanceGeneracion | 'auto')}
+                          disabled={gen.ocupado}
+                          className="px-2 min-h-8 border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text"
+                        >
+                          <option value="auto">Lo decide la IA según el pedido</option>
+                          <option value="sistema">Sistema completo</option>
+                          <option value="modulo">Solo el módulo pedido</option>
+                        </select>
+                      </label>
+                    )}
+                    <span className="text-ink-subtle">
+                      La estrictez decide cuánto infiere: Baja añade lo habitual del dominio; Máxima, solo lo literal.
+                    </span>
+                  </div>
+                )}
+
                 {/* Barra inferior: modo masivo a la izquierda; estrictez y generar a la derecha */}
                 <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-t border-line">
                   {masivoDisponible ? (
@@ -2512,42 +2582,6 @@ export default function RequerimientosPage() {
                   </div>
                 </div>
               </div>
-
-              {/* Profundidad y alcance de la generación de varios requerimientos (KAN-40) */}
-              {esMasivo && (
-                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-muted">
-                  <label className="inline-flex items-center gap-2">
-                    Generación
-                    <select
-                      value={profundidad}
-                      onChange={(e) => setProfundidad(e.target.value as Profundidad)}
-                      disabled={gen.ocupado || isAILoading}
-                      className="px-2 min-h-8 border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text"
-                    >
-                      <option value="completa">Completa (por áreas, hasta cubrirlo todo)</option>
-                      <option value="rapida">Rápida (una sola pasada)</option>
-                    </select>
-                  </label>
-                  {profundidad === 'completa' && (
-                    <label className="inline-flex items-center gap-2">
-                      Alcance
-                      <select
-                        value={alcanceIA}
-                        onChange={(e) => setAlcanceIA(e.target.value as AlcanceGeneracion | 'auto')}
-                        disabled={gen.ocupado}
-                        className="px-2 min-h-8 border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text"
-                      >
-                        <option value="auto">Lo decide la IA según el pedido</option>
-                        <option value="sistema">Sistema completo</option>
-                        <option value="modulo">Solo el módulo pedido</option>
-                      </select>
-                    </label>
-                  )}
-                  <span className="text-ink-subtle">
-                    La estrictez decide cuánto infiere: Baja añade lo habitual del dominio; Máxima, solo lo literal.
-                  </span>
-                </div>
-              )}
 
               {/* Ejemplos (few-shot) */}
 
@@ -2603,7 +2637,7 @@ export default function RequerimientosPage() {
               </div>
             ) : (
               /* 4. Enunciado */
-              <div>
+              <div id="seccion-enunciado" className="scroll-mt-4">
                 <label htmlFor="req-enunciado" className={etiqueta}>
                   Enunciado del Requerimiento <span className="text-danger">*</span>
                 </label>
@@ -2672,6 +2706,92 @@ export default function RequerimientosPage() {
                   ? 'Su líder aprueba los requerimientos registrados. Se marcan como «Generado con IA».'
                   : 'Su líder es quien aprueba este requerimiento. No se puede cambiar después.'}
             </p>
+            </div>
+
+            {/* Módulo y prioridad (KAN-44): se ven y se editan tanto al crear como al editar.
+                El módulo sugiere los que ya usa el proyecto y permite escribir uno nuevo. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="req-modulo" className={etiqueta}>Módulo</label>
+                <div className="relative">
+                  <select
+                    id="req-modulo"
+                    value={formData.modulo || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const esOtro = val === '__otro__';
+                      setModuloModoLibre(esOtro);
+                      setFormData({
+                        ...formData,
+                        modulo: esOtro ? '' : val
+                      });
+                    }}
+                    className={campo}
+                  >
+                    <option value="">Sin módulo</option>
+                    {modulosProyecto.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                    <option value="__otro__">Otro (escribir)</option>
+                  </select>
+                  {(moduloModoLibre ||
+                    ((formData.modulo || '') !== '' &&
+                      !modulosProyecto.includes(formData.modulo))) && (
+                    <div className="flex items-center gap-1">
+                      <input
+                        id="req-modulo-libre"
+                        value={formData.modulo || ''}
+                        onChange={(e) =>
+                          setFormData({ ...formData, modulo: e.target.value })
+                        }
+                        placeholder="Escribe el módulo"
+                        maxLength={120}
+                        className={campo}
+                      />
+                      {formData.modulo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData({ ...formData, modulo: '' });
+                            setModuloModoLibre(false);
+                          }}
+                          aria-label="Borrar módulo"
+                          className="inline-flex items-center justify-center size-6 rounded-ui border border-line-strong bg-surface text-ink-muted hover:bg-sunken hover:text-ink transition-colors"
+                        >
+                          <X size={12} aria-hidden />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-ink-subtle mt-1">
+                  Sugerencias: los módulos que ya usa el proyecto (máx. 120 caracteres).
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="req-prioridad" className={etiqueta}>
+                  Prioridad (MoSCoW)
+                </label>
+                <select
+                  id="req-prioridad"
+                  value={formData.prioridad}
+                  onChange={(e) =>
+                    setFormData({ ...formData, prioridad: e.target.value })
+                  }
+                  className={campo}
+                >
+                  <option value="">Sin prioridad</option>
+                  <option value="Must">Must</option>
+                  <option value="Should">Should</option>
+                  <option value="Could">Could</option>
+                  <option value="Wont">Won&apos;t</option>
+                </select>
+                <p className="text-xs text-ink-subtle mt-1">
+                  MoSCoW: Must (imprescindible), Should (debería), Could (podría),
+                  Won&apos;t (no ahora).
+                </p>
+              </div>
             </div>
 
             {/* Estado, autor y aprobador: información de solo lectura.
