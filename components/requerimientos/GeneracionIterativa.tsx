@@ -157,7 +157,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
   // volver a pedir el plan ni gastar otro uso diario.
   const promptRef = useRef<string>('');
   const opcionesRef = useRef<OpcionesGuardadas>({ alcance: 'auto' });
-  const creadoEnRef = useRef<number>(Date.now());
+  const creadoEnRef = useRef<number>(0);
 
   const controladorRef = useRef<AbortController | null>(null);
   // La promesa que espera el orquestador mientras el usuario edita el mapa de áreas.
@@ -1223,7 +1223,7 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
           {grupos.length === 0 ? (
             <p className="text-sm text-ink-subtle py-6 text-center border border-line rounded-ui">Ninguna propuesta coincide con los filtros.</p>
           ) : (
-            <div className="sm:max-h-[28rem] sm:overflow-y-auto rounded-ui border border-line custom-scrollbar">
+            <div className="sm:max-h-112 sm:overflow-y-auto rounded-ui border border-line custom-scrollbar">
               {grupos.map(([area, lista]) => {
                 const delArea = propuestasPorArea.get(area) ?? lista;
                 const seleccionablesArea = delArea.filter(esSeleccionable);

@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Patron } from '../database.types';
-import { getModelos } from './catalogos-service';
+import { getMapaModelosCanonicos } from './catalogos-service';
 import { MENSAJE_SIN_PERMISOS, puedeEditarCatalogos } from '../permisos';
 
 // ==========================================
@@ -16,21 +16,37 @@ import { MENSAJE_SIN_PERMISOS, puedeEditarCatalogos } from '../permisos';
 // ==========================================
 export async function getPatrones(): Promise<Patron[]> {
   try {
-    const snap = await getDocs(collection(db, 'patron'));
-    const modelos = await getModelos();
-    const modelMap = new Map(modelos.map(m => [m.id, m]));
+    const [snap, modelMap] = await Promise.all([
+      getDocs(collection(db, 'patron')),
+      getMapaModelosCanonicos()
+    ]);
 
-    return snap.docs.map(d => {
+    const vistos = new Set<string>();
+    const unicos: Patron[] = [];
+
+    for (const d of snap.docs) {
       const data = d.data();
-      return {
+      const canonicalModel = data.id_modelo ? modelMap.get(data.id_modelo) || null : null;
+      const canonicalModelId = canonicalModel ? canonicalModel.id : (data.id_modelo || null);
+
+      const nombre = (data.nombre || '').trim().toLowerCase();
+      const promt = (data.promt || '').trim();
+      const clave = `${canonicalModelId || 'sin_modelo'}|${nombre}|${promt}`;
+
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+
+      unicos.push({
         patron_id: d.id,
         nombre: data.nombre,
         promt: data.promt || '',
-        id_modelo: data.id_modelo || null,
-        modelo: data.id_modelo ? modelMap.get(data.id_modelo) || null : null,
+        id_modelo: canonicalModelId,
+        modelo: canonicalModel,
         created_at: data.created_at || new Date().toISOString()
-      };
-    });
+      });
+    }
+
+    return unicos;
   } catch (e) {
     console.error('Error fetching patrones:', e);
     return [];
