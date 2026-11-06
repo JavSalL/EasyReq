@@ -3,7 +3,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 import toast from 'react-hot-toast';
-import type { Equipo, InvitacionEquipo, PerfilUsuario, Proyecto, Rol } from '@/lib/database.types';
+import type {
+  Equipo,
+  InvitacionEquipo,
+  PerfilUsuario,
+  Proyecto,
+  Rol,
+  SolicitudProyectoEquipo,
+} from '@/lib/database.types';
 import {
   aceptarInvitacionEquipo,
   getAllUsers,
@@ -11,7 +18,9 @@ import {
   getInvitacionesRecibidas,
   getProyectos,
   getRoles,
-  rechazarInvitacionEquipo
+  getSolicitudesProyectoEquipoRecibidas,
+  rechazarInvitacionEquipo,
+  responderSolicitudProyectoEquipo,
 } from '@/lib/firestore-service';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
@@ -28,13 +37,15 @@ interface DatosInvitaciones {
 const nombreDe = (u: PerfilUsuario) => u.nombre || u.correo;
 
 /**
- * Campana de la barra superior: invitaciones recibidas para unirse a un equipo.
+ * Campana de la barra superior: invitaciones recibidas para unirse a un equipo
+ * y solicitudes de vinculación/desvinculación de equipos con proyectos.
  * Visible en cualquier pantalla; el contador se actualiza al cargar y al volver a la pestaña.
  */
 export default function InvitacionesBell() {
   const { user } = useAuth();
   const uid = user?.uid ?? null;
   const [invitaciones, setInvitaciones] = useState<InvitacionEquipo[]>([]);
+  const [solicitudes, setSolicitudes] = useState<SolicitudProyectoEquipo[]>([]);
   const [datos, setDatos] = useState<DatosInvitaciones | null>(null);
   const [abierto, setAbierto] = useState(false);
   const [cargando, setCargando] = useState(false);
@@ -44,12 +55,18 @@ export default function InvitacionesBell() {
   const cargarInvitaciones = useCallback(async () => {
     if (!uid) {
       setInvitaciones([]);
+      setSolicitudes([]);
       return;
     }
     try {
-      setInvitaciones(await getInvitacionesRecibidas(uid));
+      const [invData, solData] = await Promise.all([
+        getInvitacionesRecibidas(uid),
+        getSolicitudesProyectoEquipoRecibidas(uid),
+      ]);
+      setInvitaciones(invData);
+      setSolicitudes(solData);
     } catch (err) {
-      console.error('Error al cargar invitaciones de equipos:', err);
+      console.error('Error al cargar notificaciones:', err);
     }
   }, [uid]);
 
@@ -93,8 +110,8 @@ export default function InvitacionesBell() {
       ]);
       setDatos({ equipos, usuarios, roles, proyectos });
     } catch (err) {
-      console.error('Error al cargar los datos de las invitaciones:', err);
-      toast.error(mensajeError(err, 'No se pudieron cargar tus invitaciones'));
+      console.error('Error al cargar los datos de las notificaciones:', err);
+      toast.error(mensajeError(err, 'No se pudieron cargar tus notificaciones'));
     } finally {
       setCargando(false);
     }
@@ -122,9 +139,34 @@ export default function InvitacionesBell() {
     }
   };
 
-  const etiqueta = invitaciones.length > 0
-    ? `Invitaciones a equipos (${invitaciones.length} pendientes)`
-    : 'Invitaciones a equipos';
+  const responderSolicitud = async (solicitud: SolicitudProyectoEquipo, aceptar: boolean) => {
+    if (!uid) return;
+    setEnProceso(solicitud.id);
+    try {
+      await responderSolicitudProyectoEquipo(solicitud.id, uid, aceptar);
+      if (aceptar) {
+        toast.success(
+          solicitud.tipo === 'vincular'
+            ? 'Equipo vinculado al proyecto'
+            : 'Equipo desvinculado del proyecto'
+        );
+        window.dispatchEvent(new Event(EVENTO_EQUIPOS_CAMBIARON));
+      } else {
+        toast.success('Solicitud rechazada');
+      }
+      await cargarInvitaciones();
+    } catch (err) {
+      console.error('Error al responder la solicitud proyecto-equipo:', err);
+      toast.error(mensajeError(err, 'No se pudo responder la solicitud'));
+    } finally {
+      setEnProceso(null);
+    }
+  };
+
+  const totalPendientes = invitaciones.length + solicitudes.length;
+  const etiqueta = totalPendientes > 0
+    ? `Notificaciones (${totalPendientes} pendientes)`
+    : 'Notificaciones';
 
   return (
     <div ref={contenedor} className="relative">
@@ -138,9 +180,9 @@ export default function InvitacionesBell() {
         className={`relative ${btnIcono}`}
       >
         <Bell size={18} aria-hidden />
-        {invitaciones.length > 0 && (
+        {totalPendientes > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-danger-solid text-white text-xs font-bold leading-none flex items-center justify-center">
-            {invitaciones.length}
+            {totalPendientes}
           </span>
         )}
       </button>
@@ -148,19 +190,19 @@ export default function InvitacionesBell() {
       {abierto && (
         <div
           role="dialog"
-          aria-label="Invitaciones a equipos"
+          aria-label="Notificaciones e invitaciones"
           className="absolute right-0 top-full mt-2 z-50 w-[min(24rem,calc(100vw-2rem))] bg-surface border border-line-strong rounded-ui overflow-hidden animate-in fade-in"
         >
           <div className="px-4 py-3 border-b border-line">
-            <h2 className="text-base font-semibold text-ink">Invitaciones a equipos</h2>
+            <h2 className="text-base font-semibold text-ink">Notificaciones</h2>
           </div>
-          <div className="max-h-[min(26rem,70vh)] overflow-y-auto custom-scrollbar">
+          <div className="max-h-[min(28rem,70vh)] overflow-y-auto custom-scrollbar">
             {cargando && !datos ? (
               <div role="status" aria-label="Cargando" className="p-6 flex justify-center">
                 <div className="size-5 border-2 border-brand-text border-t-transparent rounded-full animate-spin" />
               </div>
-            ) : invitaciones.length === 0 ? (
-              <p className="p-6 text-center text-sm text-ink-subtle">No tienes invitaciones pendientes.</p>
+            ) : totalPendientes === 0 ? (
+              <p className="p-6 text-center text-sm text-ink-subtle">No tienes invitaciones ni solicitudes pendientes.</p>
             ) : (
               <ul className="divide-y divide-line">
                 {invitaciones.map((invitacion) => {
@@ -173,7 +215,10 @@ export default function InvitacionesBell() {
                   const roles = datos?.roles.filter((r) => idsRoles.includes(r.id)) ?? [];
                   const ocupada = enProceso === invitacion.id;
                   return (
-                    <li key={invitacion.id} className="p-4">
+                    <li key={`inv-${invitacion.id}`} className="p-4">
+                      <span className="inline-block px-2 py-0.5 mb-1.5 rounded-full text-[11px] font-semibold bg-brand-subtle text-brand-text border border-brand-line">
+                        Invitación a equipo
+                      </span>
                       <p className="text-sm text-ink-muted">
                         <span className="font-semibold text-ink">{invitador ? nombreDe(invitador) : 'Un usuario'}</span>
                         {' te invita a unirte al equipo '}
@@ -194,6 +239,44 @@ export default function InvitacionesBell() {
                           Rechazar
                         </button>
                         <button type="button" disabled={ocupada} onClick={() => responder(invitacion, true)} className={btnPrimario}>
+                          {ocupada ? 'Procesando...' : 'Aceptar'}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+                {solicitudes.map((solicitud) => {
+                  const ocupada = enProceso === solicitud.id;
+                  return (
+                    <li key={`sol-${solicitud.id}`} className="p-4">
+                      <span className="inline-block px-2 py-0.5 mb-1.5 rounded-full text-[11px] font-semibold bg-warning-subtle text-warning border border-warning-line">
+                        {solicitud.tipo === 'vincular' ? 'Solicitud de vinculación' : 'Solicitud de desvinculación'}
+                      </span>
+                      <p className="text-sm text-ink-muted">
+                        <span className="font-semibold text-ink">{solicitud.nombre_solicitante}</span>
+                        {solicitud.tipo === 'vincular'
+                          ? ' solicita vincular el equipo '
+                          : ' solicita desvincular el equipo '}
+                        <span className="font-semibold text-ink">{solicitud.nombre_equipo}</span>
+                        {' con el proyecto '}
+                        <span className="font-semibold text-ink">{solicitud.nombre_proyecto}</span>
+                        .
+                      </p>
+                      <div className="mt-3 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={ocupada}
+                          onClick={() => responderSolicitud(solicitud, false)}
+                          className={btnSecundario}
+                        >
+                          Rechazar
+                        </button>
+                        <button
+                          type="button"
+                          disabled={ocupada}
+                          onClick={() => responderSolicitud(solicitud, true)}
+                          className={btnPrimario}
+                        >
                           {ocupada ? 'Procesando...' : 'Aceptar'}
                         </button>
                       </div>

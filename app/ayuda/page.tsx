@@ -11,13 +11,13 @@ import PageHeader from '@/components/ui/PageHeader';
 const SECCIONES = [
   {
     icono: FolderGit2,
-    titulo: 'Proyectos',
+    titulo: 'Proyectos y Colaboraciones',
     href: '/',
     puntos: [
-      'Cualquier usuario puede crear un proyecto; quien lo crea puede editarlo y eliminarlo.',
-      'Haz clic en la tarjeta de un proyecto para ver sus requerimientos.',
-      'Arriba ves "Mis proyectos" (los que puedes editar) y abajo los de la comunidad.',
-      'Un proyecto tiene miembros y se divide en equipos. Tú, como creador, agregas a los miembros desde la pestaña Miembros, y al crearlo (o desde "Editar") eliges quién puede crear equipos y quién puede agregar miembros.',
+      'Cualquier usuario puede crear un proyecto; quien lo crea o participa en un equipo vinculado puede editarlo.',
+      'Cada proyecto cuenta con Estado (En progreso, Pausado, Finalizado, Cancelado), Naturaleza (Materia, Ayudantía, Beca, Independiente) y puede pertenecer a una o varias campañas de Colaboración.',
+      'Haz clic en la tarjeta de un proyecto para ver sus requerimientos, equipos asignados y archivos de contexto.',
+      'Los proyectos no tienen miembros sueltos: toda participación ocurre mediante los equipos asignados al proyecto.',
     ],
   },
   {
@@ -50,12 +50,13 @@ const SECCIONES = [
   },
   {
     icono: Users,
-    titulo: 'Equipos y roles',
+    titulo: 'Equipos globales y miembros locales',
+    href: '/equipos-global/',
     puntos: [
-      'Los equipos viven dentro de cada proyecto y se arman solo con sus miembros: abre un proyecto y entra a su pestaña "Equipos".',
-      'Quien crea un equipo queda como su líder. Quién puede crear equipos en un proyecto lo define su creador: solo él, miembros que elija o cualquier miembro.',
-      'El líder invita a los usuarios con uno o varios roles. La invitación te llega a la campana de la barra superior y te unes al aceptarla.',
-      'El líder puede cambiar los roles de un miembro. El equipo siempre debe conservar al menos un líder.',
+      'Los equipos existen como entidades globales independientes que se pueden asignar a múltiples proyectos.',
+      'Dentro de cada proyecto, los equipos tienen un estado (Activo o Desvinculado) y una configuración local de integrantes.',
+      'Puedes modificar los roles de un integrante, activarlo/desactivarlo o agregar miembros locales exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo.',
+      'Cada equipo cuenta con un Historial de miembros que registra cronológicamente las altas, bajas y cambios de rol o estado.',
     ],
   },
   {

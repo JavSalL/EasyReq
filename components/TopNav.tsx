@@ -11,6 +11,7 @@ const enlaces = [
   // `rutas`: pantallas que marcan activa la opción (p. ej. los requerimientos
   // son una subpantalla de Proyectos)
   { nombre: 'Proyectos', href: '/', rutas: ['/', '/requerimientos'] },
+  { nombre: 'Equipos', href: '/equipos-global/', rutas: ['/equipos-global'] },
   { nombre: 'Patrones y Modelos', href: '/patrones/', rutas: ['/patrones'] },
   { nombre: 'Ayuda', href: '/ayuda/', rutas: ['/ayuda'] },
 ];

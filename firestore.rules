@@ -65,7 +65,8 @@ service cloud.firestore {
               data.tipo == 'vincular' &&
               isTeamLeader(data.id_equipo) &&
               existsAfter(relationPath) &&
-              getAfter(relationPath).data.id_solicitud == requestId
+              getAfter(relationPath).data.id_solicitud == requestId &&
+              getAfter(relationPath).data.get('estado', 'activo') == 'activo'
             ) ||
             (
               data.tipo == 'desvincular' &&
@@ -73,7 +74,10 @@ service cloud.firestore {
                 isTeamLeader(data.id_equipo) ||
                 isProjectCreator(data.id_proyecto, request.auth.uid)
               ) &&
-              !existsAfter(relationPath)
+              (
+                !existsAfter(relationPath) ||
+                getAfter(relationPath).data.get('estado', 'activo') == 'desvinculado'
+              )
             )
           )
         );
@@ -94,12 +98,16 @@ service cloud.firestore {
             requestId == 'vincular_' + data.id_proyecto + "_" + data.id_equipo &&
             isProjectCreator(data.id_proyecto, request.auth.uid) &&
             isTeamLeaderUser(data.id_equipo, data.id_destinatario) &&
-            !exists(relationPath)
+            (
+              !exists(relationPath) ||
+              get(relationPath).data.get('estado', 'activo') == 'desvinculado'
+            )
           ) ||
           (
             data.tipo == 'desvincular' &&
             requestId == 'desvincular_' + data.id_proyecto + "_" + data.id_equipo &&
             exists(relationPath) &&
+            get(relationPath).data.get('estado', 'activo') == 'activo' &&
             (
               (
                 isProjectCreator(data.id_proyecto, request.auth.uid) &&
@@ -114,39 +122,57 @@ service cloud.firestore {
         );
     }
 
-    // KAN-24: el proyecto tiene miembros (su creador, que siempre lo es, y los que se agregan
-    // directamente en `ids_miembros`) y los equipos se arman con ellos. Estas funciones replican
-    // lib/equipos-proyecto.ts: si se cambia una, hay que cambiar la otra.
-    //
-    // Es la membresía "directa" y es la que usan las reglas de requerimientos, logs e
-    // invitaciones. No incluye a los miembros de equipos vinculados a propósito: cada
-    // comprobación adicional cuesta lecturas y el presupuesto de reglas es de 10 por
-    // operación. KAN-27 usa `esMiembroDelProyectoConEquipos` para los comentarios.
-    function esMiembroDelProyecto(projectId, userId) {
-      let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
-      return exists(projectPath) && (
-        get(projectPath).data.get('id_creador', null) == userId ||
-        userId in get(projectPath).data.get('ids_miembros', [])
-      );
+    // ¿Pertenece este equipo y está ACTIVO en el proyecto?
+    function isEquipoDelProyecto(equipoId, proyectoId) {
+      let equipoPath = /databases/$(database)/documents/equipo/$(equipoId);
+      let vinculoPath = /databases/$(database)/documents/proyecto_equipos/$(proyectoId + "_" + equipoId);
+      return equipoId != null &&
+        proyectoId != null &&
+        (
+          (
+            exists(vinculoPath) &&
+            get(vinculoPath).data.get('estado', 'activo') == 'activo'
+          ) ||
+          (
+            !exists(vinculoPath) &&
+            exists(equipoPath) &&
+            get(equipoPath).data.get('id_proyecto', null) == proyectoId
+          )
+        );
     }
 
-    // KAN-27: además de los miembros directos, cuenta quien pertenece a un equipo vinculado al
-    // proyecto. Las reglas no pueden enumerar los equipos del proyecto para descubrir si el
-    // usuario está en alguno: cada equipo costaría dos lecturas y el presupuesto es de 10 accesos
-    // por operación. Por eso el cliente deja un puntero en
-    // `proyecto/{id}/acceso_comentarios/{uid}` con **un** equipo por el que entra.
-    //
-    // El puntero no autoriza por sí solo. En cada operación se revalida que el usuario sigue
-    // siendo miembro de ese equipo (`miembros_equipo`) y que el equipo sigue vinculado al
-    // proyecto (`proyecto_equipos`). Si lo sacan del equipo o desvinculan el equipo, el puntero
-    // deja de valer aunque siga escrito. Eso permite cualquier número de equipos sin agotar el
-    // presupuesto: la comprobación cuesta siempre lo mismo, no crece con el proyecto.
-    function esMiembroDelProyectoConEquipos(projectId, userId) {
+    // ¿Es el usuario miembro activo de un equipo activo dentro del proyecto?
+    // Respeta las modificaciones locales en `miembros_proyecto_equipo` y cae a la plantilla
+    // global `miembros_equipo` cuando aún no existe ficha local para ese par proyecto-equipo.
+    function esMiembroDeEquipoEnProyecto(projectId, equipoId, userId) {
+      let localPath = /databases/$(database)/documents/miembros_proyecto_equipo/$(projectId + "_" + equipoId + "_" + userId);
+      let globalPath = /databases/$(database)/documents/miembros_equipo/$(equipoId + "_" + userId);
+      return isEquipoDelProyecto(equipoId, projectId) &&
+        (
+          exists(localPath)
+            ? get(localPath).data.get('estado', 'activo') == 'activo'
+            : exists(globalPath)
+        );
+    }
+
+    // ¿Tiene el usuario rol de líder activo en el equipo dentro de este proyecto?
+    function isProjectTeamLeaderUser(projectId, equipoId, userId) {
+      let localPath = /databases/$(database)/documents/miembros_proyecto_equipo/$(projectId + "_" + equipoId + "_" + userId);
+      return isEquipoDelProyecto(equipoId, projectId) &&
+        (
+          exists(localPath)
+            ? (
+                get(localPath).data.get('estado', 'activo') == 'activo' &&
+                isLeaderRole(get(localPath).data.get('id_rol', null))
+              )
+            : isTeamLeaderUser(equipoId, userId)
+        );
+    }
+
+    // Membresía general del proyecto: su creador o quien pertenece a un equipo activo
+    // vinculado al proyecto (validado mediante el puntero `acceso_comentarios/{uid}`).
+    function esMiembroDelProyecto(projectId, userId) {
       let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
-      // `get()` sobre un documento ausente falla en el emulador; el `exists`
-      // explícito evita que una simple lectura de un proyecto borrado se
-      // convierta en un error de evaluación en vez de un `false`. Las llamadas
-      // repetidas a `get()` se sirven de la caché de la misma evaluación.
       return exists(projectPath) && (
         get(projectPath).data.get('id_creador', null) == userId ||
         userId in get(projectPath).data.get('ids_miembros', []) ||
@@ -154,43 +180,25 @@ service cloud.firestore {
       );
     }
 
+    function esMiembroDelProyectoConEquipos(projectId, userId) {
+      return esMiembroDelProyecto(projectId, userId);
+    }
+
     function esMiembroPorEquipoVinculadoConPuntero(projectId, userId) {
       let accesoPath = /databases/$(database)/documents/proyecto/$(projectId)/acceso_comentarios/$(userId);
-      // El valor por defecto es una cadena vacía, no `null`: el verificador de
-      // tipos de las reglas no estrecha `string | null` y avisaría en la suma
-      // del path. Un equipo vacío nunca existe y la condición lo descarta.
       let equipoId = exists(accesoPath)
         ? get(accesoPath).data.get('id_equipo', '')
         : '';
       return equipoId is string &&
         equipoId != '' &&
-        exists(/databases/$(database)/documents/miembros_equipo/$(equipoId + "_" + userId)) &&
-        exists(/databases/$(database)/documents/proyecto_equipos/$(projectId + "_" + equipoId));
+        esMiembroDeEquipoEnProyecto(projectId, equipoId, userId);
     }
 
-    // Agregar y quitar miembros: el creador y los miembros que él autorizó (`ids_gestores_miembros`).
-    function puedeGestionarMiembrosProyecto(projectId, userId) {
-      let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
-      return exists(projectPath) && (
-        get(projectPath).data.get('id_creador', null) == userId ||
-        userId in get(projectPath).data.get('ids_gestores_miembros', [])
-      );
-    }
-
-    // Crear equipos en el proyecto (campo `quien_crea_equipos`): solo el creador, los miembros
-    // que él elija o cualquier miembro del proyecto.
     function puedeCrearEquipoEnProyecto(projectId, userId) {
       let projectPath = /databases/$(database)/documents/proyecto/$(projectId);
       return exists(projectPath) && (
         get(projectPath).data.get('id_creador', null) == userId ||
-        (
-          get(projectPath).data.get('quien_crea_equipos', 'creador') == 'miembros' &&
-          userId in get(projectPath).data.get('ids_miembros', [])
-        ) ||
-        (
-          get(projectPath).data.get('quien_crea_equipos', 'creador') == 'seleccionados' &&
-          userId in get(projectPath).data.get('ids_creadores_equipos', [])
-        )
+        esMiembroDelProyecto(projectId, userId)
       );
     }
 
@@ -221,20 +229,6 @@ service cloud.firestore {
         );
     }
 
-    // Catálogos de autoría compartida: `patron` y `modelo`.
-    //
-    // KAN-17: están congelados. Se leen y se copian, pero no se editan ni se
-    // borran. `create` sigue abierta a propósito, por dos razones:
-    //   1. `seedCatalogsIfEmpty()` siembra desde el cliente y necesita poder
-    //      escribir; si se cierra, un entorno nuevo se queda sin catálogos.
-    //   2. Es el mismo trato que recibe `match /roles`, donde el seed es lo
-    //      único que crea y `update, delete` están negados.
-    //
-    // Punto de extensión para el sistema de roles. Todas las reglas de estos dos
-    // catálogos pasan por aquí, así que conceder la edición a un rol es cambiar
-    // un solo sitio, no perseguir reglas. Ojo: hay que replicarlo en
-    // `puedeEditarCatalogos` de `lib/permisos.ts` para la interfaz, o al revés:
-    // si solo cambia uno de los dos, la UI y el backend discreparán.
     function puedeEditarCatalogos() {
       return false;
     }
@@ -242,45 +236,8 @@ service cloud.firestore {
     // ==========================================
     // APROBACIÓN DE REQUERIMIENTOS (KAN-18)
     // ==========================================
-    // Un requerimiento nuevo no entra al flujo: nace "Pendiente de aprobación" y
-    // solo avanza cuando el líder de SU equipo lo aprueba.
-    //
-    // Por eso `requerimiento` guarda `id_equipo`. Un proyecto puede tener varios
-    // equipos y los vínculos de `proyecto_equipos` tienen ID compuesto
-    // (`proyecto_equipo`), así que las reglas NO pueden deducir el equipo leyendo
-    // las relaciones: no hay forma de adivinar esos IDs desde el path. Con
-    // `id_equipo` en el documento, la comprobación es una lectura de clave conocida.
-    //
-    // Puntos de extensión para el sistema de roles: `esAprobador` decide quién
-    // aprueba, y las cuatro funciones de actualización de abajo son los únicos
-    // sitios que deciden quién puede tocar el documento. Sus equivalentes en la
-    // interfaz son las funciones de aprobación de `lib/permisos.ts`: se cambian
-    // juntos, o la UI y el backend discrepan.
-
-    // ¿Pertenece este equipo al proyecto del requerimiento?
-    //
-    // Desde KAN-24 los equipos que se crean dentro de un proyecto llevan
-    // `id_proyecto`, así que basta una lectura. Los equipos anteriores no lo
-    // tienen: se relacionan con el proyecto mediante el documento de
-    // `proyecto_equipos`, cuyo ID es compuesto pero sí se puede construir. Por eso
-    // se aceptan las dos formas.
-    function isEquipoDelProyecto(equipoId, proyectoId) {
-      let equipoPath = /databases/$(database)/documents/equipo/$(equipoId);
-      return equipoId != null &&
-        proyectoId != null &&
-        (
-          (
-            exists(equipoPath) &&
-            get(equipoPath).data.get('id_proyecto', null) == proyectoId
-          ) ||
-          exists(/databases/$(database)/documents/proyecto_equipos/$(proyectoId + "_" + equipoId))
-        );
-    }
-
-    // ¿Puede este usuario aprobar los requerimientos de este equipo? Hoy, solo el
-    // líder del propio equipo. Con roles, aquí se añadiría el criterio de rol.
-    function esAprobador(equipoId, userId) {
-      return isTeamLeaderUser(equipoId, userId);
+    function esAprobadorEnProyecto(proyectoId, equipoId, userId) {
+      return isProjectTeamLeaderUser(proyectoId, equipoId, userId);
     }
 
     // Los estados del ciclo de aprobación, comparados por su texto exacto.
@@ -311,15 +268,12 @@ service cloud.firestore {
         get(estadoPath).data.nombre_estado == 'Rechazado';
     }
 
-    // Alta de un requerimiento. Es la regla que impide el autoapartado: el autor lo
-    // pone el sistema, el estado inicial lo pone la regla y el aprobador nace vacío.
     function isValidRequerimientoCreate(data) {
       return isAuthenticated() &&
-        // Estar en el proyecto, que es lo que la interfaz ya comprobaba antes de
-        // mostrar el botón de redactar. Antes bastaba `isAuthenticated()`, así que
-        // cualquier usuario con sesión podía colgar requerimientos en proyectos
-        // ajenos; esto es justo lo que este bloque deja de permitir.
-        esMiembroDelProyecto(data.id_proyecto, request.auth.uid) &&
+        (
+          esMiembroDeEquipoEnProyecto(data.id_proyecto, data.id_equipo, request.auth.uid) ||
+          esMiembroDelProyecto(data.id_proyecto, request.auth.uid)
+        ) &&
         isEquipoDelProyecto(data.id_equipo, data.id_proyecto) &&
         data.id_autor == request.auth.uid &&
         data.id_aprobador == null &&
@@ -327,12 +281,6 @@ service cloud.firestore {
         data.enunciado is string &&
         data.enunciado.size() > 0 &&
         data.enunciado.size() <= 5000 &&
-        // Sin esta lista, un cliente podría colar campos propios y saltarse la
-        // revisión de un schema que nadie ha visto. `numero` y `codigo` los escribe
-        // la transacción de `createRequerimiento`, no el formulario. `id_patron`
-        // (KAN-28) guarda la plantilla usada al redactar y se muestra en la
-        // especificación exportada.
-        // `modulo`, `origen_ia` y `prioridad` (KAN-40) los pone la generación con IA.
         data.keys().hasOnly([
           'enunciado', 'id_tipo_requerimiento', 'id_proyecto', 'id_equipo',
           'id_autor', 'id_aprobador', 'id_modalidad', 'id_estado', 'id_modelo',
@@ -376,44 +324,33 @@ service cloud.firestore {
     function esReenvioDelAutor(data) {
       return isAuthenticated() &&
         resource.data.id_autor == request.auth.uid &&
-        // `id_autor` es inmutable de por vida: es lo que demuestra quién pidió el
-        // cambio. `numero` y `codigo` los mueve la renumeración, no una corrección.
         !data.diff(resource.data).affectedKeys().hasAny([
           'id_autor', 'id_proyecto', 'id_equipo', 'id_aprobador', 'numero', 'codigo'
         ]) &&
-        // El estado solo puede cambiar para volver a espera. Sin esta condición, un
-        // `updateDoc` a mano con el ID de "Aprobado" sería el autoapartado que este
-        // ticket viene a cerrar.
         (
           !data.diff(resource.data).affectedKeys().hasAny(['id_estado']) ||
           esEstadoPendienteAprobacion(data.id_estado)
         );
     }
 
-    // 2. El líder del equipo aprueba o rechaza.
+    // 2. El líder del equipo (evaluado en el ámbito del proyecto) aprueba o rechaza.
     function esDecisionDelAprobador(data) {
-      return esAprobador(resource.data.id_equipo, request.auth.uid) &&
-        // Solo se decide lo que está esperando. Sin esto, un requerimiento ya
-        // implementado podría volver a "Rechazado" con una llamada a mano.
+      return esAprobadorEnProyecto(resource.data.id_proyecto, resource.data.id_equipo, request.auth.uid) &&
         esEstadoPendienteAprobacion(resource.data.id_estado) &&
         data.diff(resource.data).affectedKeys().hasOnly(['id_estado', 'id_aprobador']) &&
         (esEstadoAprobado(data.id_estado) || esEstadoRechazado(data.id_estado)) &&
-        // Aprobar exige registrar quién aprobó; rechazar exige dejarlo vacío,
-        // porque quien rechaza no aprobó y si no el rechazo se mostraría como
-        // "Aprobado por" en la tarjeta.
         (esEstadoAprobado(data.id_estado)
           ? data.id_aprobador == request.auth.uid
           : data.id_aprobador == null);
     }
 
     // 3. Superada la aprobación, el requerimiento vuelve al flujo normal y se edita
-    // como antes: por cualquier miembro del proyecto. Sin esta vía, aprobar un
-    // requerimiento lo dejaría congelado, que es lo contrario de lo que pide el
-    // ticket ("continuará con el flujo normal del sistema").
+    // por cualquier miembro activo del proyecto o del equipo del requerimiento.
     function esEdicionEnFlujoNormal(data) {
-      return esMiembroDelProyecto(resource.data.id_proyecto, request.auth.uid) &&
-        // Solo fuera del ciclo de aprobación: mientras esté pendiente o rechazado
-        // manda el líder, y aquí no se cuela nadie.
+      return (
+          esMiembroDeEquipoEnProyecto(resource.data.id_proyecto, resource.data.id_equipo, request.auth.uid) ||
+          esMiembroDelProyecto(resource.data.id_proyecto, request.auth.uid)
+        ) &&
         !esEstadoPendienteAprobacion(resource.data.id_estado) &&
         !esEstadoRechazado(resource.data.id_estado) &&
         !data.diff(resource.data).affectedKeys().hasAny([
@@ -421,50 +358,29 @@ service cloud.firestore {
         ]);
     }
 
-    // 4. Renumeración. Al insertar un requerimiento en medio, `insertarRequerimiento
-    // DespuesDe` sube un número a todos los posteriores, y
-    // `asignarNumerosRequerimientos` completa los que aún no lo tienen. Ninguna de
-    // las dos toca el contenido, así que se admite solo ese par de campos: con esto
-    // no se cuela ni un cambio de estado ni de autor por el mismo camino.
+    // 4. Renumeración.
     function esRenumeracion(data) {
       return isAuthenticated() &&
         data.diff(resource.data).affectedKeys().hasOnly(['numero', 'codigo']);
     }
 
     // 5. El contador de comentarios (KAN-27).
-    //
-    // Lo mueve la transacción que crea o borra un comentario, junto al propio
-    // comentario, y solo toca esa clave. Es la quinta vía porque es el único cambio
-    // de escritura que no encaja en ninguna de las cuatro anteriores: no corrige el
-    // autor, no es una decisión del aprobador, no edita el contenido del
-    // requerimiento y no renumera.
-    //
-    // El número es de presentación, no de autorización: un miembro podría escribir
-    // un valor falso con esto, pero con eso no gana permiso alguno, y es el mismo
-    // trato que el contador de requerimientos del proyecto, que también escribe el
-    // cliente. Sin esta vía, el indicador de la lista exigiría una consulta de
-    // conteo por requerimiento en cada carga, y la lista no está paginada.
     function esConteoComentarios(data) {
-      // El diff va primero para que las otras cuatro vías no paguen las lecturas
-      // de membresía cuando el cambio no es del contador. Y esta vía se evalúa
-      // antes que las demás: en la transacción de un comentario, el alta y el
-      // contador comparten el presupuesto de 20 accesos.
       return data.diff(resource.data).affectedKeys().hasOnly(['total_comentarios']) &&
-        esMiembroDelProyectoConEquipos(resource.data.id_proyecto, request.auth.uid);
+        (
+          esMiembroDeEquipoEnProyecto(resource.data.id_proyecto, resource.data.id_equipo, request.auth.uid) ||
+          esMiembroDelProyectoConEquipos(resource.data.id_proyecto, request.auth.uid)
+        );
     }
 
     // 1. Perfiles de usuario
     match /perfil_usuario/{userId} {
-      // Los usuarios con correo verificado pueden leer perfiles (necesario para listas de miembros, autores, etc.)
       allow read: if isAuthenticated();
-      // Solo el propio usuario puede crear o editar su perfil, incluso antes de verificar el correo
       allow write: if isOwner(userId);
     }
 
-    // 2. Catálogos base (profesiones, roles, estados, modalidades, tipos, modelos)
-    // Lectura para autenticados; escritura permitida para usuarios autenticados (permite el auto-seed inicial)
+    // 2. Catálogos base (profesiones, roles, estados, estado_proyecto, naturaleza_proyecto, modalidades, tipos, modelos)
     match /profesiones/{docId} {
-      // Lectura pública: el formulario de registro necesita el catálogo antes de que exista sesión.
       allow read: if true;
       allow write: if isAuthenticated();
     }
@@ -487,11 +403,6 @@ service cloud.firestore {
     }
     match /estados/{docId} {
       allow read: if isAuthenticated();
-      // Catálogo congelado (KAN-18), con el mismo trato que `roles`. No es
-      // capricho: las reglas de aprobación comparan el nombre EXACTO del estado
-      // (`esEstadoPendienteAprobacion`). Si cualquiera pudiera añadir "Pendiente de
-      // aprobacion" sin tilde, renombrar el bueno o borrar el de "Aprobado", el
-      // flujo se rompería sin error visible, o alguien se colaría en él.
       allow create: if isAuthenticated() &&
         request.resource.data.keys().hasOnly(['nombre_estado']) &&
         request.resource.data.nombre_estado in [
@@ -504,10 +415,26 @@ service cloud.firestore {
         ];
       allow update, delete: if false;
     }
+    match /estado_proyecto/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly(['nombre_estado']) &&
+        request.resource.data.nombre_estado is string &&
+        request.resource.data.nombre_estado.size() > 0 &&
+        request.resource.data.nombre_estado.size() <= 80;
+      allow update, delete: if puedeEditarCatalogos();
+    }
+    match /naturaleza_proyecto/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly(['nombre_naturaleza']) &&
+        request.resource.data.nombre_naturaleza is string &&
+        request.resource.data.nombre_naturaleza.size() > 0 &&
+        request.resource.data.nombre_naturaleza.size() <= 80;
+      allow update, delete: if puedeEditarCatalogos();
+    }
     match /modalidades/{docId} {
       allow read: if isAuthenticated();
-      // Congelado por el mismo motivo: 'Generado con IA' es la modalidad que el
-      // botón de la IA marca sola, y el servicio la busca por ese texto.
       allow create: if isAuthenticated() &&
         request.resource.data.keys().hasOnly(['nombre_modalidad']) &&
         request.resource.data.nombre_modalidad in [
@@ -526,25 +453,11 @@ service cloud.firestore {
     }
     match /modelo/{docId} {
       allow read: if isAuthenticated();
-      // El seed necesita crear. Editar y borrar, no: ver `puedeEditarCatalogos`.
       allow create: if isAuthenticated();
       allow update, delete: if puedeEditarCatalogos();
     }
 
-    // 3. Proyectos
-    // TODO(control-acceso): la lectura queda abierta a autenticados (política:
-    // todo proyecto es visible para todo usuario autenticado, y cualquier
-    // autenticado puede crear). La escritura debería limitarse a usuarios
-    // relacionados al proyecto: creador (`resource.data.id_creador ==
-    // request.auth.uid`) o miembro de un equipo vinculado vía
-    // `proyecto_equipos` + `miembros_equipo`, pero la parte de membresía no
-    // se puede resolver en `allow`: requeriría leer N documentos de
-    // `miembros_equipo`/`proyecto_equipos` con IDs no predecibles desde el
-    // path, lo que excede lo expresable en rules sin Cloud Functions /
-    // backend con custom claims. El enforcement vive hoy en cliente+servicio
-    // (helpers getProyectosRelacionados/isUsuarioRelacionadoAProyecto y gating
-    // en app/). No endurecer aquí sin backend: se rompería el flujo actual
-    // (incluidos proyectos legacy sin `id_creador`).
+    // 3. Proyectos y Colaboraciones
     match /proyecto/{proyectoId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() &&
@@ -556,40 +469,26 @@ service cloud.firestore {
             !request.resource.data.keys().hasAny(['id_creador'])
           ) ||
           request.resource.data.id_creador == resource.data.id_creador
-        ) &&
-        // KAN-24: los permisos del proyecto (quién crea equipos y quién gestiona miembros) solo
-        // los cambia su creador; la lista de miembros, el creador y los miembros que él autorizó
-        (
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            'quien_crea_equipos', 'ids_creadores_equipos', 'quien_agrega_miembros', 'ids_gestores_miembros'
-          ]) ||
-          resource.data.get('id_creador', null) == request.auth.uid
-        ) &&
-        (
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ids_miembros']) ||
-          resource.data.get('id_creador', null) == request.auth.uid ||
-          request.auth.uid in resource.data.get('ids_gestores_miembros', [])
         );
       allow delete: if isAuthenticated();
 
-      // KAN-27: puntero de acceso al hilo de comentarios para quien entra por un
-      // equipo vinculado. El cliente lo crea para sí mismo; las reglas de los
-      // comentarios no confían en él y revalidan la membresía y el vínculo en cada
-      // operación. Un usuario no puede crear el puntero de otro.
+      // Puntero de acceso al proyecto y a los hilos de comentarios para quien entra por un
+      // equipo activo vinculado. Las reglas revalidan en cada operación que el equipo siga
+      // activo y el usuario siga activo en ese equipo.
       match /acceso_comentarios/{userId} {
         function equipoValido() {
           let equipoId = request.resource.data.get('id_equipo', null);
           return request.resource.data.keys().hasOnly(['id_equipo']) &&
             equipoId is string &&
-            exists(/databases/$(database)/documents/miembros_equipo/$(equipoId + "_" + userId)) &&
-            exists(/databases/$(database)/documents/proyecto_equipos/$(proyectoId + "_" + equipoId));
+            esMiembroDeEquipoEnProyecto(proyectoId, equipoId, userId);
         }
 
-        // Los vínculos y las membresías ya son legibles para autenticados; el
-        // puntero no revela nada nuevo y así el proyecto puede limpiarlos al borrarse.
         allow read: if isAuthenticated();
         allow create, update: if isAuthenticated() &&
-          request.auth.uid == userId &&
+          (
+            request.auth.uid == userId ||
+            isProjectCreator(proyectoId, request.auth.uid)
+          ) &&
           equipoValido();
         allow delete: if isAuthenticated() && (
           request.auth.uid == userId ||
@@ -599,18 +498,51 @@ service cloud.firestore {
       }
     }
 
-    // 4. Equipos y vinculaciones
-    // Los vínculos proyecto-equipo solo se crean o eliminan al aceptar una
-    // solicitud en la misma transacción. Las membresías iniciales se crean
-    // junto al equipo; las demás, al aceptar una invitación de membresía.
-    // La edición y eliminación de equipos y miembros queda reservada al líder.
-    match /equipo/{equipoId} {
+    match /colaboracion/{colaboracionId} {
       allow read: if isAuthenticated();
-      // KAN-24: todo equipo nuevo pertenece a un proyecto y lo crea quien el proyecto autoriza
       allow create: if isAuthenticated() &&
         request.resource.data.id_creador == request.auth.uid &&
-        request.resource.data.id_proyecto is string &&
-        puedeCrearEquipoEnProyecto(request.resource.data.id_proyecto, request.auth.uid);
+        request.resource.data.nombre is string &&
+        request.resource.data.nombre.size() > 0 &&
+        request.resource.data.nombre.size() <= 200;
+      allow update: if isAuthenticated() &&
+        (
+          resource.data.get('id_creador', null) == null ||
+          resource.data.id_creador == request.auth.uid
+        ) &&
+        request.resource.data.get('id_creador', null) == resource.data.get('id_creador', null);
+      allow delete: if isAuthenticated() &&
+        (
+          resource.data.get('id_creador', null) == null ||
+          resource.data.id_creador == request.auth.uid
+        );
+    }
+
+    match /colaboracion_proyecto/{relId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        relId == request.resource.data.id_colaboracion + "_" + request.resource.data.id_proyecto &&
+        request.resource.data.id_autor == request.auth.uid &&
+        existsAfter(/databases/$(database)/documents/colaboracion/$(request.resource.data.id_colaboracion)) &&
+        existsAfter(/databases/$(database)/documents/proyecto/$(request.resource.data.id_proyecto));
+      allow update: if false;
+      allow delete: if isAuthenticated() && (
+        resource.data.get('id_autor', null) == request.auth.uid ||
+        isProjectCreator(resource.data.id_proyecto, request.auth.uid) ||
+        !exists(/databases/$(database)/documents/proyecto/$(resource.data.id_proyecto)) ||
+        !exists(/databases/$(database)/documents/colaboracion/$(resource.data.id_colaboracion))
+      );
+    }
+
+    // 4. Equipos globales, vinculación con estado, miembros locales por proyecto e historial
+    match /equipo/{equipoId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.id_creador == request.auth.uid &&
+        (
+          request.resource.data.get('id_proyecto', null) == null ||
+          puedeCrearEquipoEnProyecto(request.resource.data.id_proyecto, request.auth.uid)
+        );
       allow update: if isAuthenticated() &&
         isTeamLeader(equipoId) &&
         (
@@ -619,9 +551,7 @@ service cloud.firestore {
             !request.resource.data.keys().hasAny(['id_creador'])
           ) ||
           request.resource.data.id_creador == resource.data.id_creador
-        ) &&
-        request.resource.data.get('id_proyecto', null) == resource.data.get('id_proyecto', null);
-      // Lo borra su líder o, cuando se elimina el proyecto, quien lo borró junto con él
+        );
       allow delete: if isAuthenticated() && (
         isTeamLeader(equipoId) ||
         (
@@ -630,43 +560,80 @@ service cloud.firestore {
         )
       );
     }
+
     match /proyecto_equipos/{docId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (
+      allow create: if isAuthenticated() &&
+        docId == request.resource.data.id_proyecto + "_" + request.resource.data.id_equipo &&
+        request.resource.data.get('estado', 'activo') in ['activo', 'desvinculado'] &&
         (
-          request.resource.data.keys().hasOnly(['id_proyecto', 'id_equipo', 'id_solicitud']) &&
-          docId == request.resource.data.id_proyecto + "_" + request.resource.data.id_equipo &&
-          request.resource.data.id_solicitud == "vincular_" + request.resource.data.id_proyecto + "_" + request.resource.data.id_equipo &&
-          isAcceptedLinkRequest(
-            request.resource.data.id_solicitud,
-            request.resource.data.id_proyecto,
-            request.resource.data.id_equipo
-          ) &&
-          isTeamLeader(request.resource.data.id_equipo)
-        ) ||
+          (
+            // Vínculo aceptado por solicitud
+            request.resource.data.id_solicitud == "vincular_" + request.resource.data.id_proyecto + "_" + request.resource.data.id_equipo &&
+            isAcceptedLinkRequest(
+              request.resource.data.id_solicitud,
+              request.resource.data.id_proyecto,
+              request.resource.data.id_equipo
+            ) &&
+            isTeamLeader(request.resource.data.id_equipo)
+          ) ||
+          (
+            // Asignación directa: el creador del proyecto lidera el equipo global
+            isProjectCreator(request.resource.data.id_proyecto, request.auth.uid) &&
+            isTeamLeader(request.resource.data.id_equipo)
+          ) ||
+          (
+            // Creación de equipo y vínculo en el mismo lote
+            existsAfter(/databases/$(database)/documents/equipo/$(request.resource.data.id_equipo)) &&
+            getAfter(/databases/$(database)/documents/equipo/$(request.resource.data.id_equipo)).data.id_creador == request.auth.uid &&
+            puedeCrearEquipoEnProyecto(request.resource.data.id_proyecto, request.auth.uid)
+          )
+        );
+      allow update: if isAuthenticated() &&
+        docId == resource.data.id_proyecto + "_" + resource.data.id_equipo &&
+        request.resource.data.id_proyecto == resource.data.id_proyecto &&
+        request.resource.data.id_equipo == resource.data.id_equipo &&
+        request.resource.data.get('estado', 'activo') in ['activo', 'desvinculado'] &&
         (
-          // KAN-24: vínculo creado en el mismo lote que el equipo, por quien lo crea en el proyecto
-          request.resource.data.keys().hasOnly(['id_proyecto', 'id_equipo']) &&
-          docId == request.resource.data.id_proyecto + "_" + request.resource.data.id_equipo &&
-          existsAfter(/databases/$(database)/documents/equipo/$(request.resource.data.id_equipo)) &&
-          getAfter(/databases/$(database)/documents/equipo/$(request.resource.data.id_equipo)).data.id_proyecto == request.resource.data.id_proyecto &&
-          getAfter(/databases/$(database)/documents/equipo/$(request.resource.data.id_equipo)).data.id_creador == request.auth.uid &&
-          puedeCrearEquipoEnProyecto(request.resource.data.id_proyecto, request.auth.uid)
-        )
-      );
-      allow update: if false;
+          (
+            // Cambio directo de estado cuando quien opera es creador del proyecto y líder del equipo
+            isProjectCreator(resource.data.id_proyecto, request.auth.uid) &&
+            (
+              isTeamLeader(resource.data.id_equipo) ||
+              isProjectTeamLeaderUser(resource.data.id_proyecto, resource.data.id_equipo, request.auth.uid)
+            )
+          ) ||
+          (
+            // Reactivación por solicitud aceptada
+            request.resource.data.get('estado', 'activo') == 'activo' &&
+            request.resource.data.id_solicitud == "vincular_" + resource.data.id_proyecto + "_" + resource.data.id_equipo &&
+            isAcceptedLinkRequest(
+              request.resource.data.id_solicitud,
+              resource.data.id_proyecto,
+              resource.data.id_equipo
+            ) &&
+            isTeamLeader(resource.data.id_equipo)
+          ) ||
+          (
+            // Desvinculación por solicitud aceptada (conservando el registro con estado 'desvinculado')
+            request.resource.data.get('estado', 'activo') == 'desvinculado' &&
+            isAcceptedUnlinkRequest(resource.data.id_proyecto, resource.data.id_equipo) &&
+            (
+              isTeamLeader(resource.data.id_equipo) ||
+              isProjectCreator(resource.data.id_proyecto, request.auth.uid)
+            )
+          )
+        );
       allow delete: if isAuthenticated() && (
         !exists(/databases/$(database)/documents/proyecto/$(resource.data.id_proyecto)) ||
         !exists(/databases/$(database)/documents/equipo/$(resource.data.id_equipo)) ||
         isAcceptedUnlinkRequest(resource.data.id_proyecto, resource.data.id_equipo)
       );
     }
+
     match /miembros_equipo/{docId} {
       allow read: if isAuthenticated();
       allow create: if isAllowedMemberCreate(docId);
-      // Solo el líder cambia los roles de un miembro (KAN-13). `id_rol` es el
-      // primero de `id_roles` (el de líder, si lo tiene) y es el que usan
-      // estas reglas para reconocer al líder.
       allow update: if isAuthenticated() &&
         isTeamLeader(resource.data.id_equipo) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['id_rol', 'id_roles']) &&
@@ -681,17 +648,55 @@ service cloud.firestore {
         (
           isTeamLeader(resource.data.id_equipo) &&
           resource.data.id_usuario != request.auth.uid
-        ) ||
-        (
-          // KAN-24: al quitar a alguien del proyecto, sale de los equipos del proyecto
-          get(/databases/$(database)/documents/equipo/$(resource.data.id_equipo)).data.get('id_proyecto', null) != null &&
-          puedeGestionarMiembrosProyecto(
-            get(/databases/$(database)/documents/equipo/$(resource.data.id_equipo)).data.id_proyecto,
-            request.auth.uid
-          )
         )
       );
     }
+
+    match /miembros_proyecto_equipo/{docId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() &&
+        docId == request.resource.data.id_proyecto + "_" + request.resource.data.id_equipo + "_" + request.resource.data.id_usuario &&
+        request.resource.data.estado in ['activo', 'inactivo'] &&
+        request.resource.data.id_roles is list &&
+        (
+          (request.resource.data.id_roles.size() == 0 && request.resource.data.id_rol == null) ||
+          (request.resource.data.id_roles.size() > 0 && request.resource.data.id_rol == request.resource.data.id_roles[0])
+        ) &&
+        isValidTeamRole(request.resource.data.id_rol) &&
+        (
+          isProjectCreator(request.resource.data.id_proyecto, request.auth.uid) ||
+          isTeamLeader(request.resource.data.id_equipo) ||
+          isProjectTeamLeaderUser(request.resource.data.id_proyecto, request.resource.data.id_equipo, request.auth.uid) ||
+          (
+            existsAfter(/databases/$(database)/documents/equipo/$(request.resource.data.id_equipo)) &&
+            getAfter(/databases/$(database)/documents/equipo/$(request.resource.data.id_equipo)).data.id_creador == request.auth.uid
+          )
+        );
+      allow delete: if isAuthenticated() && (
+        !exists(/databases/$(database)/documents/proyecto/$(resource.data.id_proyecto)) ||
+        !exists(/databases/$(database)/documents/equipo/$(resource.data.id_equipo)) ||
+        isProjectCreator(resource.data.id_proyecto, request.auth.uid) ||
+        isTeamLeader(resource.data.id_equipo) ||
+        isProjectTeamLeaderUser(resource.data.id_proyecto, resource.data.id_equipo, request.auth.uid)
+      );
+    }
+
+    match /logs_integrantes/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly([
+          'id_equipo', 'id_proyecto', 'id_usuario_afectado', 'accion',
+          'id_autor', 'id_lider_en_momento', 'fecha_hora', 'detalles'
+        ]) &&
+        request.resource.data.id_autor == request.auth.uid &&
+        request.resource.data.id_equipo is string &&
+        request.resource.data.accion in [
+          'alta', 'baja', 'cambio_roles', 'cambio_estado', 'clonado_proyecto'
+        ] &&
+        request.resource.data.fecha_hora is string;
+      allow update, delete: if false;
+    }
+
     match /invitaciones_equipo/{invitationId} {
       allow get: if isAuthenticated() && (
         resource == null ||
@@ -711,14 +716,6 @@ service cloud.firestore {
         invitationId == request.resource.data.id_equipo + "_" + request.resource.data.id_invitado &&
         isTeamLeader(request.resource.data.id_equipo) &&
         isValidTeamRole(request.resource.data.id_rol) &&
-        // KAN-24: un equipo con proyecto solo invita a miembros de ese proyecto
-        (
-          get(/databases/$(database)/documents/equipo/$(request.resource.data.id_equipo)).data.get('id_proyecto', null) == null ||
-          esMiembroDelProyecto(
-            get(/databases/$(database)/documents/equipo/$(request.resource.data.id_equipo)).data.id_proyecto,
-            request.resource.data.id_invitado
-          )
-        ) &&
         !exists(/databases/$(database)/documents/miembros_equipo/$(request.resource.data.id_equipo + "_" + request.resource.data.id_invitado));
       allow update: if isAuthenticated() && (
         (
@@ -941,17 +938,31 @@ service cloud.firestore {
       function isProjectMemberForLog(requirementId) {
         let requirementPath = /databases/$(database)/documents/requerimiento/$(requirementId);
         return existsAfter(requirementPath) &&
-          esMiembroDelProyecto(
-            getAfter(requirementPath).data.id_proyecto,
-            request.auth.uid
+          (
+            esMiembroDeEquipoEnProyecto(
+              getAfter(requirementPath).data.id_proyecto,
+              getAfter(requirementPath).data.id_equipo,
+              request.auth.uid
+            ) ||
+            esMiembroDelProyecto(
+              getAfter(requirementPath).data.id_proyecto,
+              request.auth.uid
+            )
           );
       }
 
       allow read: if isAuthenticated() &&
         exists(/databases/$(database)/documents/requerimiento/$(resource.data.id_requerimiento)) &&
-        esMiembroDelProyecto(
-          get(/databases/$(database)/documents/requerimiento/$(resource.data.id_requerimiento)).data.id_proyecto,
-          request.auth.uid
+        (
+          esMiembroDeEquipoEnProyecto(
+            get(/databases/$(database)/documents/requerimiento/$(resource.data.id_requerimiento)).data.id_proyecto,
+            get(/databases/$(database)/documents/requerimiento/$(resource.data.id_requerimiento)).data.id_equipo,
+            request.auth.uid
+          ) ||
+          esMiembroDelProyecto(
+            get(/databases/$(database)/documents/requerimiento/$(resource.data.id_requerimiento)).data.id_proyecto,
+            request.auth.uid
+          )
         );
       allow create: if isAuthenticated() &&
         request.resource.data.keys().hasOnly([
