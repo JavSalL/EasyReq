@@ -438,11 +438,8 @@ service cloud.firestore {
       allow create: if isAuthenticated() &&
         request.resource.data.keys().hasOnly(['nombre_modalidad']) &&
         request.resource.data.nombre_modalidad in [
-          'Presencial',
-          'Remoto',
           'Híbrido',
-          'Obligatorio',
-          'Opcional',
+          'Tradicional',
           'Generado con IA'
         ];
       allow update, delete: if false;
