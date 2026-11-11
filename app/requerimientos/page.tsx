@@ -8,7 +8,7 @@ import {
   ChevronLeft, Plus, Edit2, Trash2, Search, User, Clock, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, Copy, ListPlus, ListOrdered,
   Check, XCircle, Send, Download, Folder, X, Layers, MessageSquare, Map as MapaIcono,
-  Handshake, GraduationCap
+  Handshake, GraduationCap, CircleHelp
 } from 'lucide-react';
 import {
   generateSingleRequirement,
@@ -71,6 +71,8 @@ import ModalComentarios from '@/components/requerimientos/ModalComentarios';
 import EquiposDelProyecto from '@/components/equipos/EquiposDelProyecto';
 import ContextoDelProyecto from '@/components/proyectos/ContextoDelProyecto';
 import ControlEstrictez from '@/components/requerimientos/ControlEstrictez';
+import TourGuiado from '@/components/ui/TourGuiado';
+import { PASOS_TUTORIAL_CREAR, useTutorialCrear } from '@/components/requerimientos/tutorial-crear';
 import PanelGeneracionIterativa, {
   useGeneracionIterativa,
   type OpcionesGuardadas,
@@ -392,6 +394,9 @@ export default function RequerimientosPage() {
   // Si no es null, el requerimiento nuevo se inserta justo después de este y los siguientes suben un número
   const [insertarDespuesDe, setInsertarDespuesDe] = useState<{ numero: number; codigo: string } | null>(null);
   const ultimaClasificacionRef = useRef<Partial<typeof FORM_VACIO> | null>(null);
+
+  // Guía que resalta cada parte del formulario: sale sola la primera vez que se crea un requerimiento y luego con el botón (?)
+  const tutorial = useTutorialCrear(isModalOpen && !editingReq);
 
   // Cambios sin guardar: el enunciado, el texto de la IA y, al editar, el resto de campos
   const { hayCambios, intentarCerrar } = useCierreSeguro(
@@ -2344,11 +2349,22 @@ export default function RequerimientosPage() {
         onClose={intentarCerrar}
         cerrarConFondo={!hayCambios}
         title={
-          editingReq
-            ? 'Editar Requerimiento'
-            : insertarDespuesDe
-              ? `Nuevo requerimiento después de ${insertarDespuesDe.codigo}`
-              : 'Nuevo Requerimiento'
+          editingReq ? (
+            'Editar Requerimiento'
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              {insertarDespuesDe ? `Nuevo requerimiento después de ${insertarDespuesDe.codigo}` : 'Nuevo Requerimiento'}
+              <button
+                type="button"
+                onClick={tutorial.abrir}
+                aria-label="Ver la guía del formulario"
+                title="¿Cómo se usa? Ver la guía"
+                className="inline-flex items-center justify-center size-7 rounded-full text-ink-subtle hover:text-brand-text hover:bg-sunken transition-colors cursor-pointer"
+              >
+                <CircleHelp size={17} />
+              </button>
+            </span>
+          )
         }
         description={
           esMasivo
@@ -2373,7 +2389,7 @@ export default function RequerimientosPage() {
             )}
 
             {/* Tipo, modelo y patrón: lo primero que se elige; la IA los respeta al redactar */}
-            <div className="space-y-4">
+            <div id="tour-clasificacion" className="space-y-4">
               <div>
                 <label htmlFor="req-tipo" className={etiqueta}>Tipo de requerimiento</label>
                 <select
@@ -2451,7 +2467,7 @@ export default function RequerimientosPage() {
                 Generar con IA
               </label>
 
-              <div className="rounded-ui border border-line-strong bg-surface focus-within:border-brand-text focus-within:ring-1 focus-within:ring-brand-text transition-colors">
+              <div id="tour-ia" className="rounded-ui border border-line-strong bg-surface focus-within:border-brand-text focus-within:ring-1 focus-within:ring-brand-text transition-colors">
                 <textarea
                   id="req-ia"
                   rows={esMasivo ? 4 : 3}
@@ -2533,7 +2549,7 @@ export default function RequerimientosPage() {
                 )}
 
                 {/* Barra inferior: modo masivo a la izquierda; estrictez y generar a la derecha */}
-                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-t border-line">
+                <div id="tour-ia-opciones" className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-t border-line">
                   {masivoDisponible ? (
                     <label className="inline-flex items-center gap-2 px-1 min-h-8 text-xs font-semibold text-ink-muted cursor-pointer select-none">
                       <span className="relative inline-flex">
@@ -2585,7 +2601,7 @@ export default function RequerimientosPage() {
 
               {/* Ejemplos (few-shot) */}
 
-              <div className="mt-4 space-y-2">
+              <div id="tour-ejemplos" className="mt-4 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm text-ink-muted">Ejemplos para la IA (opcional)</span>
                   <button
@@ -2663,7 +2679,7 @@ export default function RequerimientosPage() {
             )}
 
             {/* Modalidad y equipo: decide qué líder aprueba (KAN-18) */}
-            <div>
+            <div id="tour-equipo">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {!esMasivo && (
                 <div>
@@ -2710,7 +2726,7 @@ export default function RequerimientosPage() {
 
             {/* Módulo y prioridad (KAN-44): se ven y se editan tanto al crear como al editar.
                 El módulo sugiere los que ya usa el proyecto y permite escribir uno nuevo. */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div id="tour-modulo" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="req-modulo" className={etiqueta}>Módulo</label>
                 <div className="relative">
@@ -2865,7 +2881,7 @@ export default function RequerimientosPage() {
                     {insertarDespuesDe ? 'Insertar y añadir otro' : 'Guardar y añadir otro'}
                   </button>
                 )}
-                <button type="submit" disabled={saving} className={btnPrimario}>
+                <button id="tour-guardar" type="submit" disabled={saving} className={btnPrimario}>
                   <Save size={16} />
                   {saving ? 'Guardando...' : editingReq ? 'Guardar cambios' : insertarDespuesDe ? 'Insertar requerimiento' : 'Registrar requerimiento'}
                 </button>
@@ -2874,6 +2890,8 @@ export default function RequerimientosPage() {
           </ModalFooter>
         </form>
       </Modal>
+
+      <TourGuiado abierto={tutorial.abierto} pasos={PASOS_TUTORIAL_CREAR} onTerminar={tutorial.cerrar} />
 
       {/* Modal Historial */}
       <ModalHistorialLogs
