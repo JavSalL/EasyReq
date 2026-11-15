@@ -282,7 +282,8 @@ export default function LoginPage() {
 
   return (
     <div className="relative min-h-dvh w-full flex items-center justify-center bg-canvas p-4 sm:p-6 lg:p-8">
-      <ThemeToggle className={`absolute top-4 right-4 ${btnIcono}`} />
+      <div className="pwa-wco-login-drag" aria-hidden="true" />
+      <ThemeToggle className={`absolute top-4 right-4 ${btnIcono} pwa-wco-login-toggle`} />
       <div className="w-full max-w-md">
         {/* Logo y Encabezado */}
         <div className="text-center mb-8">
