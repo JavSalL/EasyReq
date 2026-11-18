@@ -1,0 +1,161 @@
+Proyecto: EasyReq
+Tipo de sistema: Plataforma web
+Descripción del proyecto: plataforma web para que equipos universitarios gestionen los requerimientos de sus proyectos de software, con apoyo de IA.
+
+### Archivo de contexto: ayuda.txt
+'use client';
+ HelpCircle, FolderGit2, FileText, Users, BookOpen, Shield, Sparkles, Keyboard, ChevronRight, ChevronDown
+ from 'lucide-react';
+const SECCIONES = [
+ icono: FolderGit2,
+ titulo: 'Proyectos y Colaboraciones',
+ href: '/',
+ puntos: [
+ 'Cualquier usuario puede crear un proyecto; quien lo crea o participa en un equipo vinculado puede editarlo.',
+ 'Cada proyecto cuenta con Estado (En progreso, Pausado, Finalizado, Cancelado), Naturaleza (Materia, Ayudantía, Beca, Independiente) y puede pertenecer a una o varias campañas de Colaboración.',
+ 'Haz clic en la tarjeta de un proyecto para ver sus requerimientos, equipos asignados y archivos de contexto.',
+ 'Los proyectos no tienen miembros sueltos: toda participación ocurre mediante los equipos asignados al proyecto.',
+ ],
+ ,
+ icono: FileText,
+ titulo: 'Requerimientos',
+ puntos: [
+ 'Elige un modelo (EARS, Sistemas Embebidos, Dr. Reyes) y un patrón; con "Usar plantilla" se copia su estructura al enunciado.',
+ 'Cada requerimiento tiene un identificador dentro de su proyecto (REQ-001, REQ-002...). Van en orden y, si borras uno, su número no se reutiliza. Haz clic en el identificador para copiarlo, o búscalo escribiendo su número.',
+ 'Con «Insertar después» (el icono de lista con un +, en cada fila) añades un requerimiento entre dos: se registra con el número siguiente y todos los que venían después suben un número.',
+ 'Cada requerimiento pertenece a un equipo, y su líder es quien lo aprueba. El equipo se elige al redactar y no se cambia después: mover el requerimiento movería al que tiene que decidir sobre él.',
+ 'Al registrarlo queda «Pendiente de aprobación»: no entra al flujo normal hasta que el líder de su equipo lo acepta.',
+ 'El líder del equipo tiene dos botones en la fila: el de check verde para aprobar y el de aspa para rechazar.',
+ 'Si lo rechazan, puedes corregir el texto y devolverlo con el botón de reenviar; vuelve a la cola del líder.',
+ 'El botón de historial muestra quién hizo cada cambio, cuándo ocurrió y, en las ediciones de texto registradas desde esta función, el enunciado anterior y el nuevo. Las entradas anteriores que no guardaban esos textos no pueden reconstruirse.',
+ 'Si tienes permiso para editar el requerimiento, puedes restaurar una versión desde su entrada en el historial. La restauración reemplaza el enunciado actual y aparece como un cambio nuevo.',
+ ],
+ ,
+ icono: Sparkles,
+ titulo: 'Generación con IA',
+ puntos: [
+ 'Dentro del formulario de un requerimiento, describe la funcionalidad y presiona "Generar".',
+ 'La IA redacta el enunciado siguiendo el patrón seleccionado; revísalo antes de guardar.',
+ 'En «Varios requerimientos», marca las propuestas que quieres registrar. «Aprobar todos» marca todas, «Quitar selección» las desmarca y la casilla de un área marca ese módulo completo, incluidas las propuestas que los filtros ocultan.',
+ 'Los filtros por prioridad, tipo y posibles duplicados solo cambian lo que ves: no borran lo que ya marcaste. Con filtros activos, «Seleccionar filtrados» marca solo lo visible y el contador muestra cuántos van seleccionados sobre el total.',
+ 'El botón de registrar indica cuántos se procesarán y pide confirmación; solo se registran los seleccionados, y quedan pendientes de la aprobación de su líder.',
+ 'Lo generado con IA se registra con la modalidad «Generado con IA» puesta sola, para que se distinga de lo escrito a mano.',
+ 'Un requerimiento generado con IA sigue el mismo camino: también espera la aprobación de su líder.',
+ ],
+ ,
+ icono: Users,
+ titulo: 'Equipos globales y miembros locales',
+ href: '/equipos-global/',
+ puntos: [
+ 'Los equipos existen como entidades globales independientes que se pueden asignar a múltiples proyectos.',
+ 'Dentro de cada proyecto, los equipos tienen un estado (Activo o Desvinculado) y una configuración local de integrantes.',
+ 'Puedes modificar los roles de un integrante, activarlo/desactivarlo o agregar miembros locales exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo.',
+ 'Cada equipo cuenta con un Historial de miembros que registra cronológicamente las altas, bajas y cambios de rol o estado.',
+ ],
+ ,
+ icono: BookOpen,
+ titulo: 'Patrones y modelos',
+ href: '/patrones/',
+ puntos: [
+ 'Catálogo de estructuras sintácticas para redactar requerimientos sin ambigüedad.',
+ 'Puedes copiar un patrón o crear uno nuevo para cualquier modelo.',
+ ],
+ ,
+];
+const PERMISOS: Array
+ = [
+ ['Ver proyectos, requerimientos, equipos y patrones', 'Cualquier usuario con sesión'],
+ ['Crear proyectos', 'Cualquier usuario con sesión'],
+ ['Agregar o quitar miembros de un proyecto', 'El creador y los miembros que él autorice'],
+ ['Crear equipos en un proyecto', 'Lo define el creador: solo él, miembros que elija o cualquier miembro'],
+ ['Cambiar quién crea equipos o gestiona miembros', 'El creador del proyecto'],
+ ['Editar o eliminar un proyecto', 'Su creador y sus miembros'],
+ ['Crear requerimientos', 'Los miembros del proyecto'],
+ ['Corregir un requerimiento en revisión', 'Su autor'],
+ ['Aprobar o rechazar un requerimiento', 'El líder del equipo al que pertenece'],
+ ['Reenviar un requerimiento rechazado', 'Su autor'],
+ ['Editar un requerimiento ya aprobado', 'Cualquier miembro del proyecto'],
+ ['Consultar y restaurar versiones del historial', 'Los miembros del proyecto (restaurar requiere permiso para editar el requerimiento)'],
+ ['Leer y escribir comentarios en un requerimiento', 'Los miembros del proyecto, incluidos los que llegan por un equipo vinculado. Comentar no depende del estado del requerimiento'],
+ ['Corregir o borrar comentarios', 'Corregir: su autor. Borrar: su autor, o el creador del proyecto en los comentarios de cualquiera. El creador no puede corregir los ajenos'],
+ ['Editar un equipo, invitar miembros y cambiar roles', 'Los líderes del equipo'],
+ ['Editar o eliminar patrones y modelos', 'Nadie por ahora. Se pueden copiar y crear nuevos'],
+];
+const FAQS = [
+ pregunta: '¿Qué es un modelo y en qué se diferencia de un patrón?',
+ respuesta: 'El modelo es el enfoque o familia de especificación (EARS, Sistemas Embebidos, Dr. Reyes). El patrón es una plantilla concreta dentro de ese modelo (por ejemplo, “Event-Driven” dentro de EARS). Un modelo agrupa varios patrones.',
+ ,
+ pregunta: '¿Cómo copio la sintaxis de un patrón?',
+ respuesta: 'Ve a Patrones y Modelos, localiza la tarjeta del patrón y pulsa el icono de copiar (Copy). Verás un aviso de “Sintaxis copiada al portapapeles” y podrás pegarla en el editor del requerimiento.',
+ ,
+ pregunta: '¿Cómo creo un patrón nuevo?',
+ respuesta: 'En Patrones y Modelos pulsa “Nuevo Patrón”, elige el modelo al que pertenece, escribe un nombre descriptivo (por ejemplo “Timing Constraint”) y la sintaxis o prompt con placeholders entre 
+. Guarda y aparecerá en el catálogo.',
+ ,
+ pregunta: '¿Qué hago si un modelo no tiene patrones?',
+ respuesta: 'Verifica que el filtro de pestaña sea el correcto y limpia el buscador. Si el catálogo aún está vacío, es probable que falte la siembra inicial (seed) de Firestore; pide a un administrador que ejecute la inicialización de catálogos o crea los patrones manualmente con “Nuevo Patrón”.',
+ ,
+ pregunta: '¿Cómo se vincula un modelo a un requerimiento?',
+ respuesta: 'Al crear o editar un requerimiento selecciona el modelo correspondiente y redacta el texto siguiendo la sintaxis del patrón elegido. El modelo queda registrado como referencia del estilo usado; el texto del requerimiento es el que debe respetar la plantilla.',
+ ,
+ pregunta: '¿Cómo funcionan los proyectos, equipos y roles?',
+ respuesta: 'Los proyectos agrupan requerimientos. Cada proyecto tiene miembros (los agrega su creador desde la pestaña “Miembros”) y se divide en equipos armados con esos miembros, cada uno con sus roles (por ejemplo, líder, analista). Los equipos se gestionan desde la pestaña “Equipos”, y las invitaciones que recibas para unirte a un equipo aparecen en la campana de la barra superior.',
+ ,
+ pregunta: '¿Por qué mi requerimiento no aparece en el flujo normal todavía?',
+ respuesta: 'Porque está “Pendiente de aprobación”. Todo requerimiento nuevo nace así y solo avanza cuando el líder de su equipo lo aprueba. Si nadie lo aprueba, sigue visible con su estado en la lista: no se ha perdido ni se ha descartado.',
+ ,
+ pregunta: 'Soy líder de un equipo y no me salen los botones de aprobar y rechazar.',
+ respuesta: 'Los botones solo aparecen en los requerimientos que están “Pendiente de aprobación” y que pertenecen a un equipo que tú lideras. Si el requerimiento ya está aprobado, implementado o en borrador, no se vuelve a decidir. Ten en cuenta también que el equipo no se puede cambiar al editar: si el requerimiento es de otro equipo, el líder de ese otro equipo es quien decide.',
+ ,
+ pregunta: 'Me rechazaron un requerimiento. ¿Qué hago?',
+ respuesta: 'Corrige el texto con el botón de editar y devuélvelo con el de reenviar. Volverá a la cola de tu líder. El motivo queda en el historial del requerimiento, que se abre con el icono de reloj.',
+ ,
+ pregunta: '¿Quién es el autor y el aprobador de un requerimiento?',
+ respuesta: 'El autor lo pone el sistema: es quien lo registró, y no se puede cambiar ni desde el formulario ni escribiendo directamente en la base. El aprobador lo escribe el líder al aprobar, y queda vacío mientras tanto o si lo rechaza, porque quien rechaza no aprobó.',
+ ,
+ pregunta: 'Mi requerimiento dice “Sin equipo”. ¿Qué significa?',
+ respuesta: 'Que se creó antes de que existiera la aprobación por líder. Esos requerimientos no guardan a qué equipo pertenecían, así que no hay un líder concreto que pueda aprobarlos: se pueden editar como cualquier otro del proyecto. Los nuevos sí llevan equipo y sí pasan por aprobación.',
+ ,
+ pregunta: '¿Puedo registrar solo algunos de los requerimientos que generó la IA?',
+ respuesta: 'Sí. Cada propuesta tiene su casilla y puedes combinarla con «Aprobar todos», «Quitar selección», la casilla de un área o «Seleccionar filtrados». El contador y la confirmación muestran cuántos se van a registrar; los que dejes sin marcar permanecen en la revisión y no se envían al flujo de aprobación.',
+ ,
+ pregunta: '¿Cómo comento un requerimiento?',
+ respuesta: 'En la lista, cada tarjeta lleva un icono de burbuja de diálogo con el número de comentarios que tiene. Al abrirlo se ve el hilo completo en orden cronológico, con el autor, la fecha de cada entrada y, si se corrigió, cuándo fue la última corrección. Cualquier miembro del proyecto puede escribir, sin importar si el requerimiento está pendiente, aprobado o rechazado: comentar no mueve el estado. Si alguien comenta mientras tienes el hilo abierto, la lista se actualiza sola. Puedes corregir tu propio comentario y borrarlo; el creador del proyecto además puede borrar comentarios de otras personas, pero no corregirlos. El conteo que ves en la tarjeta cuenta los que quedan visibles.',
+ ,
+ pregunta: '¿A quién pido ayuda si algo falla?',
+ respuesta: 'Pregunta primero a tu líder de equipo o administrador del proyecto. Si el problema es técnico (error al guardar, catálogo vacío, sesión), repórtalo con captura de pantalla, pasos para reproducirlo y el mensaje de error exacto.',
+ ,
+];
+export default function AyudaPage() 
+ return (
+ SECCIONES.map(( icono: Icono, titulo, href, puntos ) => (
+ titulo 
+ href && (
+ Ir 
+ ) 
+ puntos.map((p) => (
+ p 
+ )) 
+ )) 
+ ¿Quién puede hacer qué?
+ PERMISOS.map(([accion, quien]) => (
+ accion 
+ quien 
+ )) 
+ Atajos
+/
+ ' ' lleva el cursor al buscador de la pantalla.
+Esc
+ ' ' cierra cualquier ventana abierta. Si tienes cambios sin guardar, te pregunta antes de descartarlos.
+Ctrl
+ ' + ' 
+Enter
+ ' ' guarda el formulario abierto (proyecto, equipo, patrón o requerimiento).
+ Al registrar varios requerimientos seguidos, usa «Guardar y añadir otro»: la ventana se queda abierta
+ con el mismo modelo y tipo para que solo escribas el siguiente enunciado.
+ Preguntas frecuentes
+ FAQS.map((faq) => (
+ faq.pregunta 
+ faq.respuesta 
+ )) 
+ );

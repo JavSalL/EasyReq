@@ -50,7 +50,7 @@ const modo = process.argv.includes('--offline') ? 'offline' : process.argv.inclu
 // ---------------------------------------------------------------------------
 // Comprobaciones sin IA: interpretación del plan, cifras, estrictez máxima y dedup léxico
 // ---------------------------------------------------------------------------
-function probarOffline(): number {
+async function probarOffline(): Promise<number> {
   let fallos = 0;
   const comprobar = (ok: boolean, nombre: string, detalle = '') => {
     if (!ok) fallos++;
@@ -131,6 +131,9 @@ ${relleno('envíos y paquetería', 30)}`;
   comprobar(globalIA.topeEfectivo(topes.rpm, 'individual', topes.reservaIndividual) === 10 && globalIA.topeEfectivo(topes.rpm, 'lote', topes.reservaIndividual) === 8, 'global: los lotes dejan el 20 % a las individuales');
   comprobar(globalIA.topeEfectivo(topes.tpm, 'lote', topes.reservaIndividual) === Number.MAX_SAFE_INTEGER, 'global: tope vacío = sin tope');
   comprobar(globalIA.segundosHastaSiguienteMinuto(new Date('2026-11-17T10:00:45Z')) === 16, 'global: Retry-After hasta el siguiente minuto');
+  // KAN-47: el 429 de embeddings del nivel gratuito trae cuánto esperar
+  const geminiMod = await import('../workers/ai-proxy/src/gemini.ts');
+  comprobar(geminiMod.segundosDeEspera('{"error":{"details":[{"retryDelay": "23s"}]}}') === 24 && geminiMod.segundosDeEspera('sin datos') === null, 'embeddings: lee retryDelay del 429');
   return fallos;
 }
 
@@ -264,7 +267,7 @@ async function probarGeneracion(clave: string, modelo: string): Promise<number> 
 
 const fallos =
   modo === 'offline'
-    ? probarOffline()
+    ? await probarOffline()
     : modo === 'generacion'
       ? await probarGeneracion(leerClave(), leerModelo())
       : await probarSingle(leerClave(), leerModelo());

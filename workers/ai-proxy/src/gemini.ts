@@ -143,6 +143,14 @@ export async function callGeminiJson(prompt: string, apiKey: string, model: stri
 
 /** Máximo de textos por petición `batchEmbedContents`. */
 const EMBEDDINGS_POR_PETICION = 100;
+/** Espera total que se admite por 429 al pedir embeddings (la respuesta al cliente no debe tardar minutos). */
+const MAX_ESPERA_EMBEDDINGS_S = 75;
+
+/** Segundos que pide esperar un 429 de Gemini ("retryDelay": "23s"), con un segundo de margen. */
+export function segundosDeEspera(detalle: string): number | null {
+  const m = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(detalle);
+  return m ? Math.ceil(Number(m[1])) + 1 : null;
+}
 
 /**
  * Embeddings de varios textos (para comparar significados, no palabras). Se piden en tandas de
@@ -151,6 +159,7 @@ const EMBEDDINGS_POR_PETICION = 100;
 export async function embedTexts(texts: string[], apiKey: string, model: string, dimensiones = 768): Promise<number[][]> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:batchEmbedContents`;
   const vectores: number[][] = [];
+  let esperaAcumulada = 0;
   for (let i = 0; i < texts.length; i += EMBEDDINGS_POR_PETICION) {
     const tanda = texts.slice(i, i + EMBEDDINGS_POR_PETICION);
     const res = await fetch(url, {
@@ -167,6 +176,16 @@ export async function embedTexts(texts: string[], apiKey: string, model: string,
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
+      // KAN-47: en el nivel gratuito cada texto cuenta como una petición por minuto, así que una
+      // segunda tanda de 100 casi siempre recibe 429 con el tiempo de espera ("retryDelay").
+      // Se espera lo que pide (con tope) y se repite la misma tanda.
+      const segundos = res.status === 429 ? segundosDeEspera(detail) : null;
+      if (segundos !== null && esperaAcumulada + segundos <= MAX_ESPERA_EMBEDDINGS_S) {
+        esperaAcumulada += segundos;
+        await new Promise((r) => setTimeout(r, segundos * 1000));
+        i -= EMBEDDINGS_POR_PETICION;
+        continue;
+      }
       throw new Error(`Gemini (embeddings) respondió ${res.status}: ${detail.slice(0, 500)}`);
     }
     const data = (await res.json()) as { embeddings?: { values?: number[] }[] };
