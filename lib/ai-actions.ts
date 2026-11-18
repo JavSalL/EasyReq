@@ -217,7 +217,7 @@ export interface PropuestaIA extends RequerimientoIA {
   area: string;
   /**
    * Parecido con un requerimiento existente u otra propuesta: léxico (0,6-0,85 de trigramas) o,
-   * con `semantico`, por significado (coseno de embeddings ≥ 0,90).
+   * con `semantico`, por significado (coseno de embeddings ≥ 0,95).
    */
   posibleDuplicado?: MarcaDuplicado;
 }
