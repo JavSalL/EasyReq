@@ -43,6 +43,9 @@ import {
   useFocoSintaxis
 } from '@/components/requerimientos/SintaxisRequerimiento';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
+import { avisoColaToast } from '@/lib/aviso-cola';
+import { huellaContexto, UMBRAL_CONTEXTO_RESUMIDO } from '@/lib/contexto-ia';
+import { getResumenContexto, guardarResumenContexto } from '@/lib/services/contexto-service';
 import { btnPrimario, btnSecundario, btnSecundarioCompacto, btnIconoPeligro, campo } from '@/components/ui/estilos';
 
 // ==========================================
@@ -322,7 +325,17 @@ export function useGeneracionIterativa(proyectoId: string | null) {
     setPropuestas([]);
     setResultado(null);
 
-    const res = await runIterativeGeneration(userPrompt, { ...opciones, signal: controlador.signal }, {
+    // KAN-43: con un contexto largo, los lotes usan un resumen. Si ya hay uno guardado de este mismo
+    // contexto se reutiliza; si no, el plan escribe uno y se guarda para la próxima corrida.
+    const contexto = opciones.contexto?.trim() ?? '';
+    const huella = contexto.length > UMBRAL_CONTEXTO_RESUMIDO ? huellaContexto(contexto) : null;
+    const resumenContexto = huella && proyectoId ? await getResumenContexto(proyectoId, huella) : null;
+
+    const res = await runIterativeGeneration(userPrompt, { ...opciones, resumenContexto: resumenContexto ?? undefined, signal: controlador.signal }, {
+      onResumenContexto: resumen => {
+        if (!huella || !proyectoId) return;
+        guardarResumenContexto(proyectoId, huella, resumen).catch(err => console.warn('No se pudo guardar el resumen del contexto:', err));
+      },
       revisarPlan: planIA =>
         new Promise(resolve => {
           setPlan(planIA);
@@ -355,7 +368,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
     }
     setResultado({ estado: res.estado, motivo: res.motivo });
     return res;
-  }, [limpiarGuardado]);
+  }, [limpiarGuardado, proyectoId]);
 
   /** Generación masiva de una sola pasada (la de antes), con el mismo filtro de repetidos. */
   const iniciarRapida = useCallback(async (
@@ -373,7 +386,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
     setPropuestas(null);
     setResultado(null);
     try {
-      const r = await generateBulkRequirements(userPrompt, opciones);
+      const r = await generateBulkRequirements(userPrompt, opciones, avisoColaToast());
       if (!r.valido || r.requerimientos.length === 0) {
         setFase('inactivo');
         setResultado({ estado: 'invalido', motivo: r.motivo || 'La IA no encontró requerimientos que respalden el pedido. Detállalo más o agrega contexto al proyecto.' });
@@ -1063,7 +1076,7 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
           </div>
           {progreso.esperando ? (
             <p className="text-xs text-warning" role="status">
-              Se alcanzó el límite de peticiones por minuto: se reanuda solo en {progreso.esperando} s.
+              En cola, continúa en {progreso.esperando} s.
             </p>
           ) : null}
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">

@@ -9,6 +9,18 @@ export interface GeminiOptions {
   maxOutputTokens?: number;
   /** Esquema (subconjunto de OpenAPI que admite Gemini) que debe cumplir la respuesta JSON. */
   responseSchema?: Record<string, unknown>;
+  /**
+   * Se llama después de cada petición a Gemini (también la del reintento) con los tokens que
+   * reportó `usageMetadata` (KAN-43). Sirve para registrar el gasto y el contador global.
+   */
+  alUsar?: (uso: UsoTokens) => void | Promise<void>;
+}
+
+/** Tokens de una petición según `usageMetadata` de Gemini. */
+export interface UsoTokens {
+  entrada: number;
+  salida: number;
+  total: number;
 }
 
 /** Tope por defecto: holgado para un lote de requerimientos, pero evita respuestas sin fin. */
@@ -18,6 +30,22 @@ interface RespuestaGemini {
   texto: string;
   /** `MAX_TOKENS` indica que la respuesta se cortó por el tope de tokens. */
   finishReason?: string;
+  uso: UsoTokens;
+}
+
+interface UsageMetadata {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  thoughtsTokenCount?: number;
+  totalTokenCount?: number;
+}
+
+/** Normaliza `usageMetadata`; los razonamientos (thoughts) se cobran como salida. */
+export function usoDe(meta: UsageMetadata | undefined): UsoTokens {
+  const entrada = Number(meta?.promptTokenCount) || 0;
+  const salida = (Number(meta?.candidatesTokenCount) || 0) + (Number(meta?.thoughtsTokenCount) || 0);
+  const total = Number(meta?.totalTokenCount) || entrada + salida;
+  return { entrada, salida, total };
 }
 
 async function solicitarGemini(prompt: string, apiKey: string, model: string, options: GeminiOptions): Promise<RespuestaGemini> {
@@ -55,12 +83,21 @@ async function solicitarGemini(prompt: string, apiKey: string, model: string, op
 
   const data = (await res.json()) as {
     candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+    usageMetadata?: UsageMetadata;
   };
 
   const candidato = data.candidates?.[0];
+  const uso = usoDe(data.usageMetadata);
+  // Un fallo al registrar el gasto no debe tumbar la respuesta.
+  try {
+    await options.alUsar?.(uso);
+  } catch (err) {
+    console.error('No se pudo registrar el uso de tokens:', err instanceof Error ? err.message : err);
+  }
   return {
     texto: (candidato?.content?.parts ?? []).map((p) => p.text ?? '').join(''),
     finishReason: candidato?.finishReason,
+    uso,
   };
 }
 
