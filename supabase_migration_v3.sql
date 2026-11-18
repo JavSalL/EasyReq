@@ -247,7 +247,7 @@ INSERT INTO roles (nombre_rol) VALUES
 ON CONFLICT (nombre_rol) DO NOTHING;
 
 INSERT INTO estados (nombre_estado) VALUES 
-('Borrador'),
+('Devuelto'),
 ('En Revisión'),
 ('Aprobado'),
 ('Rechazado'),

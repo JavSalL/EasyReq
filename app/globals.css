@@ -333,3 +333,50 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Window Controls Overlay (PWA de escritorio):
+ * Permite que la cabecera de EasyReq se extienda hasta el borde superior nativo
+ * de la ventana, reemplazando la barra estándar del navegador (eliminando iconos
+ * intrusivos de navegadores como Brave o Chrome) y dejando únicamente los controles
+ * nativos (_ ▢ X) en la esquina superior.
+ */
+@media (display-mode: window-controls-overlay) {
+  .pwa-wco-header {
+    -webkit-app-region: drag;
+    app-region: drag;
+    padding-top: env(titlebar-area-y, 0px);
+    padding-left: max(1rem, env(titlebar-area-x, 0px));
+    padding-right: max(1rem, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
+  }
+
+  .pwa-wco-no-drag,
+  .pwa-wco-header button,
+  .pwa-wco-header a,
+  .pwa-wco-header input,
+  .pwa-wco-header select,
+  .pwa-wco-header [role="button"] {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+
+  .pwa-wco-login-drag {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: max(2.5rem, env(titlebar-area-height, 0px));
+    -webkit-app-region: drag;
+    app-region: drag;
+    z-index: 50;
+    pointer-events: auto;
+  }
+
+  .pwa-wco-login-toggle {
+    top: max(1rem, env(titlebar-area-height, 0px)) !important;
+    right: max(1rem, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 0.5rem)) !important;
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+    z-index: 60;
+  }
+}

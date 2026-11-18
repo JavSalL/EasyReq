@@ -48,7 +48,7 @@ export default function TopNav() {
   );
 
   return (
-    <header id="tour-nav-principal" className="sticky top-0 z-40 bg-surface border-b border-line">
+    <header id="tour-nav-principal" className="sticky top-0 z-40 bg-surface border-b border-line pwa-wco-header">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-6">
         <Link href="/" aria-label="EasyReq, ir a Proyectos" className="flex items-center gap-3 shrink-0 rounded-ui text-ink">
           <Logo variante="marca" className="h-8 w-auto" />
