@@ -63,15 +63,18 @@ export interface CoincidenciaDuplicado {
   /** Enunciado del requerimiento parecido, para que el usuario compare. */
   texto: string;
   similitud: number;
+  /** Referencia del parecido (la clave de otra propuesta), si se dio al agregarlo (KAN-49). */
+  ref?: string;
 }
 
 /** Índice de textos ya conocidos (existentes del proyecto y lo que se va generando). */
 export class IndiceDuplicados {
-  private entradas: Array<{ etiqueta: string; texto: string; firma: Set<string> }> = [];
+  private entradas: Array<{ etiqueta: string; texto: string; firma: Set<string>; ref?: string }> = [];
 
-  agregar(texto: string, etiqueta: string): void {
+  /** `ref` identifica el texto (p. ej. la clave de la propuesta) para poder ubicarlo después. */
+  agregar(texto: string, etiqueta: string, ref?: string): void {
     const firma = trigramas(texto);
-    if (firma.size > 0) this.entradas.push({ etiqueta, texto, firma });
+    if (firma.size > 0) this.entradas.push({ etiqueta, texto, firma, ...(ref ? { ref } : {}) });
   }
 
   /** El texto conocido más parecido, o null si no hay ninguno. */
@@ -80,7 +83,7 @@ export class IndiceDuplicados {
     let mejor: CoincidenciaDuplicado | null = null;
     for (const e of this.entradas) {
       const s = similitudTrigramas(firma, e.firma);
-      if (!mejor || s > mejor.similitud) mejor = { etiqueta: e.etiqueta, texto: e.texto, similitud: s };
+      if (!mejor || s > mejor.similitud) mejor = { etiqueta: e.etiqueta, texto: e.texto, similitud: s, ...(e.ref ? { ref: e.ref } : {}) };
     }
     return mejor;
   }
