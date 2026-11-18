@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CircleHelp, X } from 'lucide-react';
 
 export interface PasoTour {
   /** id del elemento a resaltar. Si no está en pantalla, el paso se salta. */
@@ -166,7 +166,7 @@ function TourActivo({ pasos, onTerminar }: Omit<TourGuiadoProps, 'abierto'>) {
         ref={tarjetaRef}
         role="dialog"
         aria-label={`Guía: ${paso.titulo}`}
-        className="absolute bg-surface border border-line rounded-ui shadow-xl p-4 transition-[top,left] duration-300 ease-out"
+        className="absolute bg-surface border border-line-strong ring-1 ring-black/15 dark:ring-white/20 rounded-ui shadow-2xl p-4 transition-[top,left] duration-300 ease-out"
         style={{ top, left, width: ancho }}
       >
         <div className="flex items-start justify-between gap-3">
@@ -219,5 +219,72 @@ function TourActivo({ pasos, onTerminar }: Omit<TourGuiadoProps, 'abierto'>) {
       </div>
     </div>,
     document.body
+  );
+}
+
+const VENTANA_CUENTA_NUEVA_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Devuelve true solo si la cuenta se creó hace menos de 24 horas.
+ * Evita interrumpir con guías automáticas a usuarios que ya llevan tiempo en la app.
+ */
+export function esCuentaNueva(creationTime?: string | null): boolean {
+  if (!creationTime) return false;
+  const creada = Date.parse(creationTime);
+  if (Number.isNaN(creada)) return false;
+  return Date.now() - creada <= VENTANA_CUENTA_NUEVA_MS;
+}
+
+/**
+ * Controla un recorrido guiado por sección:
+ * - Se abre solo la primera vez cuando `autoAbrir` es true.
+ * - Siempre permite abrirlo manualmente con `abrir` (p. ej. desde el botón ?).
+ */
+export function useTutorialSeccion(clave: string, uid: string | null, autoAbrir: boolean) {
+  const [abierto, setAbierto] = useState(false);
+  const storageKey = uid ? `easyreq:tour:${clave}:${uid}` : `easyreq:tour:${clave}`;
+
+  useEffect(() => {
+    if (!uid || !autoAbrir) return;
+    try {
+      if (window.localStorage.getItem(storageKey) === '1') return;
+    } catch {
+      return;
+    }
+    const t = window.setTimeout(() => setAbierto(true), 450);
+    return () => window.clearTimeout(t);
+  }, [uid, autoAbrir, storageKey]);
+
+  const abrir = useCallback(() => setAbierto(true), []);
+  const cerrar = useCallback(() => {
+    setAbierto(false);
+    try {
+      window.localStorage.setItem(storageKey, '1');
+    } catch {
+      // Sin almacenamiento: la guía podrá volver a salir
+    }
+  }, [storageKey]);
+
+  return { abierto, abrir, cerrar };
+}
+
+/** Botón discreto (?) junto al título de una página o modal para abrir su guía. */
+export function BotonAyudaTour({
+  onClick,
+  label = 'Ver la guía de esta sección',
+}: {
+  onClick: () => void;
+  label?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="inline-flex items-center justify-center size-7 rounded-full text-ink-subtle hover:text-brand-text hover:bg-sunken transition-colors cursor-pointer align-middle"
+    >
+      <CircleHelp size={17} />
+    </button>
   );
 }

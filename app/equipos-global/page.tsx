@@ -50,6 +50,12 @@ import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import PageHeader from '@/components/ui/PageHeader';
+import TourGuiado, {
+  BotonAyudaTour,
+  esCuentaNueva,
+  useTutorialSeccion,
+} from '@/components/ui/TourGuiado';
+import { PASOS_TUTORIAL_EQUIPOS } from '@/lib/tutoriales';
 import ModalFormEquipo from '@/components/equipos/ModalFormEquipo';
 import { HistorialMiembrosModal } from '@/components/equipos/HistorialMiembrosModal';
 import BuscadorPersonas from '@/components/proyectos/BuscadorPersonas';
@@ -154,7 +160,7 @@ function FormularioDatosEquipo({
 
 export default function EquiposGlobalPage() {
   const confirmar = useConfirm();
-  const { user } = useAuth();
+  const { user, profile, profileLoaded } = useAuth();
   const uid = user?.uid ?? null;
 
   const [equipos, setEquipos] = useState<EquipoGlobalDetallado[]>([]);
@@ -162,6 +168,11 @@ export default function EquiposGlobalPage() {
   const [roles, setRoles] = useState<Rol[]>([]);
   const [proyectosMap, setProyectosMap] = useState<Map<string, Proyecto>>(new Map());
   const [loading, setLoading] = useState(true);
+  const tutorial = useTutorialSeccion(
+    'equipos',
+    uid,
+    Boolean(user && profileLoaded && profile && !loading && esCuentaNueva(user.metadata?.creationTime))
+  );
 
   const [searchTerm, setSearchTerm] = useEstadoSesion('easyreq:equipos:buscar', '');
   const [filtroMios, setFiltroMios] = useEstadoSesion('easyreq:equipos:filtro', 'todos');
@@ -829,17 +840,22 @@ export default function EquiposGlobalPage() {
   return (
     <div className="animate-in fade-in">
       <PageHeader
-        title="Equipos"
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            Equipos
+            <BotonAyudaTour onClick={tutorial.abrir} label="Ver la guía de Equipos" />
+          </span>
+        }
         description="Entidades globales de trabajo que pueden asignarse a uno o varios proyectos."
         actions={
-          <button onClick={openModal} className={btnPrimario}>
+          <button id="tour-eq-nuevo" onClick={openModal} className={btnPrimario}>
             <Plus size={16} />
             Nuevo equipo
           </button>
         }
       />
 
-      <div className="flex flex-col sm:flex-row gap-3 mb-8">
+      <div id="tour-eq-filtros" className="flex flex-col sm:flex-row gap-3 mb-8">
         <div className="relative flex-1">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
             <Search size={16} />
@@ -904,7 +920,7 @@ export default function EquiposGlobalPage() {
         </div>
       ) : (
         <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
-          {equiposFiltrados.map(team => {
+          {equiposFiltrados.map((team, idx) => {
             const gestionable = puedeGestionarEquipo(team.equipo_id);
             const lideres = team.miembros.filter(m => m.esLider);
             const proyectosActivos = team.proyectosVinculados.filter(
@@ -912,7 +928,7 @@ export default function EquiposGlobalPage() {
             ).length;
 
             return (
-              <li key={team.equipo_id}>
+              <li key={team.equipo_id} id={idx === 0 ? 'tour-eq-lista' : undefined}>
                 <div
                   role="link"
                   tabIndex={0}
@@ -1003,6 +1019,7 @@ export default function EquiposGlobalPage() {
       )}
 
       {modalEquipo}
+      <TourGuiado abierto={tutorial.abierto} pasos={PASOS_TUTORIAL_EQUIPOS} onTerminar={tutorial.cerrar} />
     </div>
   );
 }

@@ -71,7 +71,12 @@ import ModalComentarios from '@/components/requerimientos/ModalComentarios';
 import EquiposDelProyecto from '@/components/equipos/EquiposDelProyecto';
 import ContextoDelProyecto from '@/components/proyectos/ContextoDelProyecto';
 import ControlEstrictez from '@/components/requerimientos/ControlEstrictez';
-import TourGuiado from '@/components/ui/TourGuiado';
+import TourGuiado, {
+  BotonAyudaTour,
+  esCuentaNueva,
+  useTutorialSeccion,
+} from '@/components/ui/TourGuiado';
+import { PASOS_TUTORIAL_PROYECTO } from '@/lib/tutoriales';
 import { PASOS_TUTORIAL_CREAR, useTutorialCrear } from '@/components/requerimientos/tutorial-crear';
 import PanelGeneracionIterativa, {
   useGeneracionIterativa,
@@ -397,6 +402,11 @@ export default function RequerimientosPage() {
 
   // Guía que resalta cada parte del formulario: sale sola la primera vez que se crea un requerimiento y luego con el botón (?)
   const tutorial = useTutorialCrear(isModalOpen && !editingReq);
+  const tutorialProyecto = useTutorialSeccion(
+    'proyecto',
+    user?.uid ?? null,
+    Boolean(user && proyecto && !loading && !isModalOpen && esCuentaNueva(user.metadata?.creationTime))
+  );
 
   // Cambios sin guardar: el enunciado, el texto de la IA y, al editar, el resto de campos
   const { hayCambios, intentarCerrar } = useCierreSeguro(
@@ -2052,6 +2062,7 @@ export default function RequerimientosPage() {
           proyecto ? (
             <span className="flex flex-wrap items-center gap-2.5">
               {proyecto.nombre}
+              <BotonAyudaTour onClick={tutorialProyecto.abrir} label="Ver la guía del proyecto" />
               {proyecto.estado_proyecto?.nombre_estado && (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-subtle text-brand-text border border-brand-line">
                   {proyecto.estado_proyecto.nombre_estado}
@@ -2088,6 +2099,7 @@ export default function RequerimientosPage() {
           vista === 'requerimientos' && (
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               <button
+                id="tour-req-exportar"
                 onClick={() => setShowExportModal(true)}
                 className={btnSecundario}
                 title="Exportar requerimientos a PDF, Markdown o Word"
@@ -2096,7 +2108,7 @@ export default function RequerimientosPage() {
                 Exportar
               </button>
               {esMiembroProyecto && (
-                <button onClick={openCreateModal} className={btnPrimario}>
+                <button id="tour-req-nuevo" onClick={openCreateModal} className={btnPrimario}>
                   <Plus size={16} />
                   Nuevo requerimiento
                 </button>
@@ -2108,7 +2120,7 @@ export default function RequerimientosPage() {
 
       {/* Secciones del proyecto */}
       {proyecto && proyectoId && (
-        <nav aria-label="Secciones del proyecto" className="flex gap-1 border-b border-line overflow-x-auto overflow-y-hidden custom-scrollbar">
+        <nav id="tour-req-tabs" aria-label="Secciones del proyecto" className="flex gap-1 border-b border-line overflow-x-auto overflow-y-hidden custom-scrollbar">
           {[
             { id: 'requerimientos' as const, nombre: 'Requerimientos', cantidad: loading ? null : requerimientos.length },
             { id: 'equipos' as const, nombre: 'Equipos', cantidad: cantidadEquipos },
@@ -2892,6 +2904,7 @@ export default function RequerimientosPage() {
       </Modal>
 
       <TourGuiado abierto={tutorial.abierto} pasos={PASOS_TUTORIAL_CREAR} onTerminar={tutorial.cerrar} />
+      <TourGuiado abierto={tutorialProyecto.abierto} pasos={PASOS_TUTORIAL_PROYECTO} onTerminar={tutorialProyecto.cerrar} />
 
       {/* Modal Historial */}
       <ModalHistorialLogs
