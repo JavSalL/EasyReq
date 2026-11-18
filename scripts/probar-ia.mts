@@ -92,6 +92,7 @@ function probarOffline(): number {
   comprobar(prompts.pareceTitulo('Instrucciones por voz en lugar de texto extenso', '[Actor] + [Acción] + [Objeto]'), 'con patrón, detecta un tema sin verbo');
   comprobar(prompts.pareceTitulo('Botones grandes y coloridos para niños pequeños en la pantalla', 'When <trigger>, the <system> shall <response>.'), 'con patrón EARS, exige "shall"');
   comprobar(!prompts.pareceTitulo('Cuando falla el pago con tarjeta, el sistema debe avisar al usuario y conservar su carrito.', 'Cuando <condición>, el <sistema> debe <respuesta>'), 'con patrón EARS traducido, acepta "Cuando" y "debe"');
+  comprobar(!prompts.pareceTitulo('Cuando falla el pago con tarjeta, el sistema debe avisar al usuario y conservar su carrito.', 'When <trigger>, the <system> shall <response>'), 'con patrón EARS en inglés, acepta palabras clave traducidas al español');
   comprobar(prompts.pareceTitulo('Avisos de pago fallido y conservación del carrito', 'Cuando <condición>, el <sistema> debe <respuesta>'), 'con patrón EARS traducido, detecta un título');
   const promptEarsEnglish = buildSinglePrompt('users can rename files', {
     pattern: 'While <state>, the <system> shall <response>',
