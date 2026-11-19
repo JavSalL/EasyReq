@@ -91,6 +91,20 @@ function probarOffline(): number {
   comprobar(!prompts.pareceTitulo('El niño navega por el menú principal con botones grandes y coloridos.', '[Actor] + [Acción] + [Objeto]'), 'con patrón, acepta un enunciado sin "debe"');
   comprobar(prompts.pareceTitulo('Instrucciones por voz en lugar de texto extenso', '[Actor] + [Acción] + [Objeto]'), 'con patrón, detecta un tema sin verbo');
   comprobar(prompts.pareceTitulo('Botones grandes y coloridos para niños pequeños en la pantalla', 'When <trigger>, the <system> shall <response>.'), 'con patrón EARS, exige "shall"');
+  comprobar(!prompts.pareceTitulo('Cuando falla el pago con tarjeta, el sistema debe avisar al usuario y conservar su carrito.', 'Cuando <condición>, el <sistema> debe <respuesta>'), 'con patrón EARS traducido, acepta "Cuando" y "debe"');
+  comprobar(!prompts.pareceTitulo('Cuando falla el pago con tarjeta, el sistema debe avisar al usuario y conservar su carrito.', 'When <trigger>, the <system> shall <response>'), 'con patrón EARS en inglés, acepta palabras clave traducidas al español');
+  comprobar(prompts.pareceTitulo('Avisos de pago fallido y conservación del carrito', 'Cuando <condición>, el <sistema> debe <respuesta>'), 'con patrón EARS traducido, detecta un título');
+  const promptEarsEnglish = buildSinglePrompt('users can rename files', {
+    pattern: 'While <state>, the <system> shall <response>',
+    estrictez: 3,
+    ejemplos: []
+  });
+  comprobar(
+    promptEarsEnglish.includes('Redacta "name" completamente en ese idioma') &&
+      promptEarsEnglish.includes('No mezcles idiomas') &&
+      promptEarsEnglish.includes('メインメニューが表示されている間'),
+    'el prompt exige un requerimiento completamente en el idioma de entrada'
+  );
 
   const sinTildes = prompts.corregirOrtografia('El padre debe ingresar su contrasena desde la aplicacion movil para autorizar la sesion de los ninos.');
   comprobar(sinTildes === 'El padre debe ingresar su contraseña desde la aplicación móvil para autorizar la sesión de los niños.', 'corrige tildes y eñes perdidas', sinTildes);
