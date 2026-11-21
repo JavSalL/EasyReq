@@ -12,6 +12,7 @@ process.env.NEXT_PUBLIC_FIREBASE_API_KEY ??= 'demo-key';
 process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ??= 'demo-easyreq';
 process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ??= 'demo-easyreq.firebaseapp.com';
 
+const { randomUUID } = await import('node:crypto');
 const { db, auth } = await import('../lib/firebase');
 const { connectFirestoreEmulator, collection, getDocs, query, where, doc, getDoc } = await import('firebase/firestore');
 const { connectAuthEmulator, createUserWithEmailAndPassword } = await import('firebase/auth');
@@ -39,7 +40,7 @@ async function sembrar(ruta: string, campos: Record<string, string | number | nu
   if (!res.ok) throw new Error(`No se pudo sembrar ${ruta}: ${res.status} ${await res.text()}`);
 }
 
-const cred = await createUserWithEmailAndPassword(auth, `prueba-${Date.now()}@example.com`, `clave-${Math.random().toString(36).slice(2)}`);
+const cred = await createUserWithEmailAndPassword(auth, `prueba-${Date.now()}@example.com`, `clave-${randomUUID()}`);
 const uid = cred.user.uid;
 // Las reglas piden el correo verificado: se marca en el emulador y se renueva el token.
 const verificado = await fetch(`http://${HOST_AUTH}/identitytoolkit.googleapis.com/v1/projects/${PROYECTO_FB}/accounts:update`, {
