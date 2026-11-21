@@ -260,7 +260,26 @@ export interface PropuestaIA extends RequerimientoIA {
    * Parecido con un requerimiento existente u otra propuesta: léxico (0,6-0,85 de trigramas) o,
    * con `semantico`, por significado (coseno de embeddings ≥ 0,95).
    */
-  posibleDuplicado?: { etiqueta: string; texto: string; similitud: number; semantico?: boolean };
+  posibleDuplicado?: MarcaDuplicado;
+}
+
+/**
+ * Marca de posible duplicado (KAN-49). `etiqueta` es el código del requerimiento existente
+ * ("REQ-012") o, si el parecido es otra propuesta, "otra propuesta (Área)"; en ese caso `clave`
+ * dice cuál es, para mostrar su número y poder desmarcarla desde la marca.
+ */
+export interface MarcaDuplicado {
+  etiqueta: string;
+  texto: string;
+  similitud: number;
+  semantico?: boolean;
+  /** Clave de la otra propuesta cuando el parecido es de la misma generación. */
+  clave?: string;
+}
+
+/** Convierte lo que devuelve el índice léxico en una marca de duplicado. */
+export function marcaDesdeCoincidencia(de: { etiqueta: string; texto: string; similitud: number; ref?: string }): MarcaDuplicado {
+  return { etiqueta: de.etiqueta, texto: de.texto, similitud: de.similitud, ...(de.ref ? { clave: de.ref } : {}) };
 }
 
 /** Requerimiento que ya tiene el proyecto, en la forma compacta que se manda a la IA. */
@@ -324,7 +343,7 @@ export interface CallbacksGeneracion {
   /** Propuestas nuevas de un lote, ya filtradas de repetidos. */
   onPropuestas?: (nuevas: PropuestaIA[]) => void;
   /** Propuestas que, al final, resultaron parecidas por significado a algo existente u otra propuesta. */
-  onDuplicadosSemanticos?: (marcas: Array<{ clave: string; etiqueta: string; texto: string; similitud: number }>) => void;
+  onDuplicadosSemanticos?: (marcas: Array<{ clave: string; marca: MarcaDuplicado }>) => void;
   /** El plan escribió un resumen nuevo del contexto: para guardarlo y reutilizarlo (KAN-43). */
   onResumenContexto?: (resumen: string) => void;
 }
@@ -538,9 +557,9 @@ async function correrIterativo(ctx: {
         ...c,
         area: c.area || area,
         clave: `${Date.now().toString(36)}-${(secuencia.valor++).toString(36)}`,
-        ...(veredicto.tipo === 'posible' ? { posibleDuplicado: veredicto.de } : {})
+        ...(veredicto.tipo === 'posible' ? { posibleDuplicado: marcaDesdeCoincidencia(veredicto.de) } : {})
       };
-      indice.agregar(c.name, `otra propuesta (${propuesta.area})`);
+      indice.agregar(c.name, `otra propuesta (${propuesta.area})`, propuesta.clave);
       nuevas.push(propuesta);
     }
     propuestas.push(...nuevas);
@@ -722,7 +741,7 @@ async function correrIterativo(ctx: {
           signal,
           onEspera
         );
-        const marcas: Array<{ clave: string; etiqueta: string; texto: string; similitud: number }> = [];
+        const marcas: Array<{ clave: string; marca: MarcaDuplicado }> = [];
         const textoExistente = new Map(existentes.map(e => [e.codigo, e.enunciado]));
         for (const d of Array.isArray(respuesta?.duplicados) ? respuesta.duplicados : []) {
           const propuesta = propuestas[d.indice];
@@ -732,8 +751,9 @@ async function correrIterativo(ctx: {
           const parecida = otra ? propuestas[Number(otra[1])] : undefined;
           const etiqueta = otra ? `otra propuesta (${parecida?.area ?? 'esta generación'})` : d.etiqueta;
           const texto = otra ? parecida?.name ?? '' : textoExistente.get(d.etiqueta) ?? '';
-          propuesta.posibleDuplicado = { etiqueta, texto, similitud: d.similitud, semantico: true };
-          marcas.push({ clave: propuesta.clave, etiqueta, texto, similitud: d.similitud });
+          const marca: MarcaDuplicado = { etiqueta, texto, similitud: d.similitud, semantico: true, ...(parecida ? { clave: parecida.clave } : {}) };
+          propuesta.posibleDuplicado = marca;
+          marcas.push({ clave: propuesta.clave, marca });
         }
         if (marcas.length) callbacks.onDuplicadosSemanticos?.(marcas);
       } catch (err) {
@@ -873,7 +893,7 @@ export async function continuarGeneracion(
   // Índice de duplicados: lo existente más lo ya generado en esta corrida, para no repetir al reanudar.
   const indice = new IndiceDuplicados();
   existentes.forEach(r => indice.agregar(r.enunciado, r.codigo));
-  propuestas.forEach(p => indice.agregar(p.name, `otra propuesta (${p.area})`));
+  propuestas.forEach(p => indice.agregar(p.name, `otra propuesta (${p.area})`, p.clave));
   const secuencia = { valor: propuestasIniciales.length };
   return await correrIterativo({
     userPrompt,

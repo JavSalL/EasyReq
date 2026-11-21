@@ -8,6 +8,7 @@ import {
   AIError,
   continuarGeneracion,
   generateBulkRequirements,
+  marcaDesdeCoincidencia,
   runIterativeGeneration,
   type AlcanceGeneracion,
   type AreaGeneracion,
@@ -17,6 +18,7 @@ import {
   type PlanGeneracion,
   type PrioridadMoSCoW,
   type ProgresoGeneracion,
+  type MarcaDuplicado,
   type PropuestaIA,
   type RequerimientoExistente,
   type ResultadoIterativo
@@ -112,6 +114,22 @@ export function ordenarPorArea<T extends { area: string }>(lista: T[], ordenArea
     .map((p, i) => ({ p, i }))
     .sort((a, b) => posicion(a.p.area) - posicion(b.p.area) || a.i - b.i)
     .map(x => x.p);
+}
+
+/** Añade las propuestas nuevas de un lote a la lista, en el orden de las áreas. */
+const agregarPropuestas = (prev: PropuestaRevisable[] | null, nuevas: PropuestaIA[], ordenAreas: string[]) =>
+  ordenarPorArea([...(prev ?? []), ...nuevas.map(aRevisable)], ordenAreas);
+
+/** Un parecido por significado se marca igual que uno léxico; la propuesta sigue elegida. */
+function marcarDuplicadosSemanticos(
+  prev: PropuestaRevisable[] | null,
+  marcas: Array<{ clave: string; marca: MarcaDuplicado }>
+): PropuestaRevisable[] | null {
+  const porClave = new Map(marcas.map(m => [m.clave, m.marca]));
+  return prev?.map(p => {
+    const marca = porClave.get(p.clave);
+    return marca ? { ...p, posibleDuplicado: marca } : p;
+  }) ?? null;
 }
 
 /**
@@ -345,16 +363,8 @@ export function useGeneracionIterativa(proyectoId: string | null) {
           resolverPlanRef.current = resolve;
         }),
       onProgreso: setProgreso,
-      onPropuestas: nuevas =>
-        setPropuestas(prev => ordenarPorArea([...(prev ?? []), ...nuevas.map(aRevisable)], ordenAreasRef.current)),
-      // Un parecido por significado se marca igual que uno léxico; la propuesta sigue elegida.
-      onDuplicadosSemanticos: marcas => {
-        const porClave = new Map(marcas.map(m => [m.clave, m]));
-        setPropuestas(prev => prev?.map(p => {
-          const m = porClave.get(p.clave);
-          return m ? { ...p, posibleDuplicado: { etiqueta: m.etiqueta, texto: m.texto, similitud: m.similitud, semantico: true } } : p;
-        }) ?? null);
-      }
+      onPropuestas: nuevas => setPropuestas(prev => agregarPropuestas(prev, nuevas, ordenAreasRef.current)),
+      onDuplicadosSemanticos: marcas => setPropuestas(prev => marcarDuplicadosSemanticos(prev, marcas))
     });
 
     resolverPlanRef.current = null;
@@ -398,14 +408,15 @@ export function useGeneracionIterativa(proyectoId: string | null) {
       r.requerimientos.forEach((req, i) => {
         const v = clasificarDuplicado(indice, req.name);
         if (v.tipo === 'duplicado') return;
-        indice.agregar(req.name, `otra propuesta (${req.area ?? 'General'})`);
+        const clave = `${Date.now()}-${i}`;
+        indice.agregar(req.name, `otra propuesta (${req.area ?? 'General'})`, clave);
         lista.push({
           ...req,
           area: req.area ?? 'General',
-          clave: `${Date.now()}-${i}`,
+          clave,
           texto: req.name,
           elegida: true,
-          ...(v.tipo === 'posible' ? { posibleDuplicado: v.de } : {})
+          ...(v.tipo === 'posible' ? { posibleDuplicado: marcaDesdeCoincidencia(v.de) } : {})
         });
       });
       setPropuestas(ordenarPorArea(lista, r.areas.map(a => a.nombre)));
@@ -490,16 +501,8 @@ export function useGeneracionIterativa(proyectoId: string | null) {
         {
           revisarPlan: async () => areasPlanActual,
           onProgreso: setProgreso,
-          onPropuestas: nuevas =>
-            setPropuestas(prev => ordenarPorArea([...(prev ?? []), ...nuevas.map(aRevisable)], ordenAreasRef.current)),
-          // Un parecido por significado se marca igual que uno léxico; la propuesta sigue elegida.
-          onDuplicadosSemanticos: marcas => {
-            const porClave = new Map(marcas.map(m => [m.clave, m]));
-            setPropuestas(prev => prev?.map(p => {
-              const m = porClave.get(p.clave);
-              return m ? { ...p, posibleDuplicado: { etiqueta: m.etiqueta, texto: m.texto, similitud: m.similitud, semantico: true } } : p;
-            }) ?? null);
-          }
+          onPropuestas: nuevas => setPropuestas(prev => agregarPropuestas(prev, nuevas, ordenAreasRef.current)),
+          onDuplicadosSemanticos: marcas => setPropuestas(prev => marcarDuplicadosSemanticos(prev, marcas))
         },
         planActual, areasPlanActual, progresoActual, propuestasIA
       );
@@ -749,6 +752,78 @@ const NOMBRES_FURPS: Record<PropuestaIA['type_furps'], string> = {
 };
 
 const etiquetaChip = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-ui text-[11px] font-medium border';
+const botonMarca = 'inline-flex items-center gap-1 min-h-7 px-2 rounded-ui text-xs font-semibold border border-warning-line bg-surface text-ink hover:bg-warning-subtle cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+
+/** Área de una etiqueta antigua "otra propuesta (Seguridad)", para marcas guardadas antes de KAN-49. */
+const areaDeEtiqueta = (etiqueta: string) => /^otra propuesta \((.+)\)$/.exec(etiqueta)?.[1];
+
+/**
+ * Marca de posible duplicado (KAN-49): dice con qué se parece (código del existente, o número y
+ * módulo de la otra propuesta), muestra su texto y permite desmarcar esta o la otra sin buscarla.
+ */
+function MarcaPosibleDuplicado({ marca, propia, otra, numeroOtra, bloqueado, onAlternar, onVerOtra }: {
+  marca: MarcaDuplicado;
+  propia: PropuestaRevisable;
+  /** La otra propuesta, si el parecido es de esta misma generación y sigue en la lista. */
+  otra?: PropuestaRevisable;
+  numeroOtra?: number;
+  bloqueado?: boolean;
+  onAlternar: (clave: string, elegida: boolean) => void;
+  onVerOtra: (clave: string) => void;
+}) {
+  const esPropuesta = !!marca.clave || !!areaDeEtiqueta(marca.etiqueta);
+  const area = otra?.area ?? areaDeEtiqueta(marca.etiqueta);
+  const titulo = !esPropuesta
+    ? `Posible duplicado de ${marca.etiqueta}`
+    : otra && numeroOtra
+      ? `Posible duplicado de la propuesta n.º ${numeroOtra}${area ? ` (módulo ${area})` : ''}`
+      : `Posible duplicado de otra propuesta${area ? ` del módulo ${area}` : ''}`;
+  const donde = !esPropuesta
+    ? 'Ya está registrado en el proyecto.'
+    : otra || !marca.clave
+      ? 'Es de esta misma generación.'
+      : 'Era de esta generación y ya no está en la lista.';
+  const tipo = marca.semantico ? 'Mismo significado' : 'Texto parecido';
+  const texto = otra?.texto ?? marca.texto;
+
+  return (
+    <div className="rounded-ui border border-warning-line border-l-4 bg-warning-subtle px-3 py-2 space-y-1.5" role="note" aria-label={titulo}>
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-semibold text-ink">
+        <Copy size={14} className="text-warning shrink-0" aria-hidden />
+        {titulo}
+        <span className="text-xs font-normal text-ink-muted">
+          {tipo} · {Math.round(marca.similitud * 100)} % · {donde}
+        </span>
+      </p>
+      {texto && <p className="text-sm text-ink-muted leading-snug pl-5">«{texto}»</p>}
+      <div className="flex flex-wrap gap-1.5 pl-5">
+        <button
+          type="button"
+          className={botonMarca}
+          disabled={bloqueado || (!propia.elegida && !esSeleccionable(propia))}
+          onClick={() => onAlternar(propia.clave, !propia.elegida)}
+        >
+          {propia.elegida ? 'Desmarcar esta' : 'Volver a marcar esta'}
+        </button>
+        {otra && (
+          <>
+            <button
+              type="button"
+              className={botonMarca}
+              disabled={bloqueado || (!otra.elegida && !esSeleccionable(otra))}
+              onClick={() => onAlternar(otra.clave, !otra.elegida)}
+            >
+              {otra.elegida ? `Desmarcar la n.º ${numeroOtra}` : `Volver a marcar la n.º ${numeroOtra}`}
+            </button>
+            <button type="button" className={botonMarca} onClick={() => onVerOtra(otra.clave)}>
+              Ver la n.º {numeroOtra}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 const selectChico = 'px-2 min-h-8 text-xs border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text';
 
 interface FiltrosPropuestas {
@@ -869,6 +944,27 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
   /** Elige o quita de una vez un conjunto de propuestas. */
   const elegirVarias = (claves: Iterable<string>, elegida: boolean) => {
     setPropuestas(prev => prev ? aplicarSeleccion(prev, claves, elegida) : null);
+  };
+
+  // KAN-49: número visible de cada propuesta (su posición en la lista completa) para que la marca
+  // de posible duplicado diga cuál es la otra, y acceso por clave para desmarcarla desde ahí.
+  const { numeroDe, porClave } = useMemo(() => {
+    const lista = propuestas ?? [];
+    return {
+      numeroDe: new Map(lista.map((p, i) => [p.clave, i + 1])),
+      porClave: new Map(lista.map(p => [p.clave, p]))
+    };
+  }, [propuestas]);
+  const [resaltada, setResaltada] = useState<string | null>(null);
+
+  /** Lleva la vista a una propuesta (quitando los filtros si la ocultan) y la resalta un momento. */
+  const verPropuesta = (clave: string) => {
+    if (!visibles.some(p => p.clave === clave)) setFiltros(FILTROS_VACIOS);
+    setResaltada(clave);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById(`propuesta-${clave}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }));
+    setTimeout(() => setResaltada(actual => (actual === clave ? null : actual)), 2500);
   };
 
   // El estado de selección vive en cada propuesta, así que los filtros y los
@@ -1280,7 +1376,11 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                       {lista.map(p => {
                         const disponible = esSeleccionable(p);
                         return (
-                          <li key={p.clave} className={`flex items-start gap-3 px-3 py-2.5 ${p.elegida ? 'bg-brand-subtle/20' : disponible ? 'opacity-70' : ''}`}>
+                          <li
+                            key={p.clave}
+                            id={`propuesta-${p.clave}`}
+                            className={`flex items-start gap-3 px-3 py-2.5 scroll-mt-12 transition-colors duration-500 ${resaltada === p.clave ? 'bg-warning-subtle' : p.elegida ? 'bg-brand-subtle/20' : disponible ? 'opacity-70' : ''}`}
+                          >
                             <input
                               type="checkbox"
                               checked={p.elegida}
@@ -1306,6 +1406,9 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                                 </p>
                               )}
                               <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[11px] font-semibold text-ink-subtle tabular-nums" title="Número de la propuesta en la lista">
+                                  n.º {numeroDe.get(p.clave)}
+                                </span>
                                 <span className={`${etiquetaChip} bg-sunken text-ink-muted border-line`}>{nombreTipo(p)}</span>
                                 {p.prioridad && (
                                   <span className={`${etiquetaChip} bg-surface text-ink-muted border-line`} title="Prioridad MoSCoW propuesta">
@@ -1315,15 +1418,6 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                                 {p.origen === 'inferido' && (
                                   <span className={`${etiquetaChip} bg-brand-subtle text-brand-text border-brand-line`} title="La IA lo dedujo: el pedido y el contexto no lo dicen">
                                     Inferido
-                                  </span>
-                                )}
-                                {p.posibleDuplicado && (
-                                  <span className={`${etiquetaChip} bg-warning-subtle text-warning border-warning-line`}>
-                                    <Copy size={10} aria-hidden />
-                                    Posible duplicado de {p.posibleDuplicado.etiqueta}
-                                    <span className="font-normal opacity-80">
-                                      ({p.posibleDuplicado.semantico ? 'mismo significado' : 'texto parecido'}, {Math.round(p.posibleDuplicado.similitud * 100)} %)
-                                    </span>
                                   </span>
                                 )}
                                 {p.cifras_sin_respaldo?.length ? (
@@ -1348,11 +1442,26 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                                   mapaTonos={mapaTonosSintaxis}
                                 />
                               ) : null}
-                              {p.posibleDuplicado?.texto && (
-                                <p className="text-xs text-ink-muted leading-snug border-l-2 border-warning-line pl-2">
-                                  <span className="font-semibold">{p.posibleDuplicado.etiqueta}:</span> {p.posibleDuplicado.texto}
-                                </p>
-                              )}
+                              {p.posibleDuplicado && (() => {
+                                // Las marcas guardadas antes de KAN-49 no traen la clave: se busca la otra por su texto.
+                                const marca = p.posibleDuplicado;
+                                const otra = marca.clave
+                                  ? porClave.get(marca.clave)
+                                  : areaDeEtiqueta(marca.etiqueta)
+                                    ? propuestas?.find(x => x.clave !== p.clave && (x.name === marca.texto || x.texto === marca.texto))
+                                    : undefined;
+                                return (
+                                  <MarcaPosibleDuplicado
+                                    marca={p.posibleDuplicado}
+                                    propia={p}
+                                    otra={otra}
+                                    numeroOtra={otra ? numeroDe.get(otra.clave) : undefined}
+                                    bloqueado={bloqueado}
+                                    onAlternar={(clave, elegida) => actualizar(clave, { elegida })}
+                                    onVerOtra={verPropuesta}
+                                  />
+                                );
+                              })()}
                               {p.justificacion && <p className="text-[11px] text-ink-subtle leading-snug">{p.justificacion}</p>}
                             </div>
                           </li>
