@@ -18,8 +18,9 @@ function leerClave(): string {
   for (const archivo of ['workers/ai-proxy/.dev.vars', '.env.local']) {
     try {
       for (const linea of readFileSync(archivo, 'utf-8').split(/\r?\n/)) {
-        const m = linea.match(/^\s*GEMINI_API_KEY\s*=\s*(.*?)\s*$/);
-        if (m && m[1]) return m[1].replace(/^["']|["']$/g, '');
+        const [nombre, ...resto] = linea.split('=');
+        const valor = resto.join('=').trim();
+        if (nombre.trim() === 'GEMINI_API_KEY' && valor) return valor.replace(/^["']|["']$/g, '');
       }
     } catch {
       // siguiente archivo
