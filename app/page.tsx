@@ -56,6 +56,11 @@ import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { ModalColaboraciones } from '@/components/proyectos/ModalColaboraciones';
+import TourGuiado, { BotonAyudaTour, esCuentaNueva } from '@/components/ui/TourGuiado';
+import {
+  PASOS_TUTORIAL_BIENVENIDA,
+  useTutorialBienvenida,
+} from '@/components/proyectos/tutorial-bienvenida';
 import {
   btnPrimario,
   btnSecundario,
@@ -87,7 +92,7 @@ function claseInsigniaEstadoProyecto(nombreEstado?: string): string {
 export default function Home() {
   const router = useRouter();
   const confirmar = useConfirm();
-  const { user } = useAuth();
+  const { user, profile, profileLoaded } = useAuth();
   const uid = user?.uid ?? null;
 
   const [projects, setProjects] = useState<Array<ProyectoConStats>>([]);
@@ -127,6 +132,22 @@ export default function Home() {
   // Modal Crear / Editar Proyecto
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isColabModalOpen, setIsColabModalOpen] = useState(false);
+
+  // Guía de bienvenida: solo se abre sola en cuentas nuevas sin proyectos; los demás pueden abrirla con (?)
+  const tutorial = useTutorialBienvenida(
+    uid,
+    Boolean(
+      user &&
+        profileLoaded &&
+        profile &&
+        !loading &&
+        !loadingPermisos &&
+        !isModalOpen &&
+        !isColabModalOpen &&
+        esCuentaNueva(user.metadata?.creationTime) &&
+        projects.length === 0
+    )
+  );
   const [editingProject, setEditingProject] = useState<Proyecto | null>(null);
 
   const [formData, setFormData] = useState({
@@ -476,11 +497,17 @@ export default function Home() {
   return (
     <div className="animate-in fade-in">
       <PageHeader
-        title="Proyectos"
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            Proyectos
+            <BotonAyudaTour onClick={tutorial.abrir} label="¿Cómo empezar? Ver la guía" />
+          </span>
+        }
         description="Sistemas de software y la especificación de sus requerimientos."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button
+              id="tour-colaboraciones"
               type="button"
               onClick={() => setIsColabModalOpen(true)}
               className={btnSecundario}
@@ -493,7 +520,7 @@ export default function Home() {
                 </span>
               )}
             </button>
-            <button onClick={openCreateModal} className={btnPrimario}>
+            <button id="tour-nuevo-proyecto" onClick={openCreateModal} className={btnPrimario}>
               <Plus size={16} />
               Nuevo proyecto
             </button>
@@ -598,7 +625,7 @@ export default function Home() {
         </div>
       ) : (
         <div className="space-y-12">
-          {gruposProyectos.map(({ titulo, proyectos, mensajeVacio }) => (
+          {gruposProyectos.map(({ titulo, proyectos, mensajeVacio }, idxGrupo) => (
             <section key={titulo}>
               <h2 className="text-lg font-semibold text-ink mb-3">
                 {titulo}
@@ -608,13 +635,16 @@ export default function Home() {
                 <p className="text-sm text-ink-subtle">{mensajeVacio}</p>
               ) : (
                 <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
-                  {proyectos.map(proj => {
+                  {proyectos.map((proj, idxProj) => {
                     const editable = puedeEditarProyecto(proj.proyecto_id);
                     const reqs = proj.requerimientos_count || 0;
                     const eqs = proj.equipos_count || 0;
                     const colabs = proj.colaboraciones ?? [];
                     return (
-                      <li key={proj.proyecto_id}>
+                      <li
+                        key={proj.proyecto_id}
+                        id={idxGrupo === 0 && idxProj === 0 ? 'tour-lista-proyectos' : undefined}
+                      >
                         <div
                           role="link"
                           tabIndex={0}
@@ -990,6 +1020,8 @@ export default function Home() {
         proyectosPermitidos={proyectosPermitidos}
         onCambio={fetchProjects}
       />
+
+      <TourGuiado abierto={tutorial.abierto} pasos={PASOS_TUTORIAL_BIENVENIDA} onTerminar={tutorial.cerrar} />
     </div>
   );
 }

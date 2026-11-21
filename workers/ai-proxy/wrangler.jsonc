@@ -14,7 +14,15 @@
     "DAILY_LIMIT": "50",
     // Generaciones completas (iterativas) por usuario y día; cada una cuenta como 1 uso de DAILY_LIMIT.
     "DAILY_JOB_LIMIT": "3",
-    "REQUIRE_EMAIL_VERIFIED": "false"
+    "REQUIRE_EMAIL_VERIFIED": "false",
+    // Límite global de la plataforma (KAN-43), común a todos los usuarios. VALORES PROVISIONALES:
+    // confirmar el nivel del proyecto de Google y sus límites en AI Studio y dejar estos por debajo.
+    // Vaciar una variable ("") quita ese tope; el registro de tokens sigue funcionando.
+    "GLOBAL_RPM": "12",
+    "GLOBAL_TPM": "200000",
+    "GLOBAL_RPD": "900",
+    // Parte de cada tope reservada a las generaciones individuales (los lotes no la usan).
+    "GLOBAL_RESERVA_INDIVIDUAL": "0.2"
   },
 
   // Límite de ráfagas por usuario: 10 peticiones por minuto (period solo admite 10 o 60).

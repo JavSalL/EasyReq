@@ -216,8 +216,10 @@ const MAX_RENUMERADOS = 450;
 // Alta en lote (KAN-40): tamaño máximo de cada writeBatch (Firestore admite 500 escrituras).
 const MAX_POR_LOTE = 450;
 // Los logs se escriben en lotes más chicos: la regla de cada log lee su requerimiento, y un lote
-// admite 20 lecturas de reglas en total.
-const LOGS_POR_LOTE = 15;
+// admite 20 lecturas de reglas en total. KAN-47: en el emulador, con las reglas actuales, 7 o más
+// logs por lote se rechazan y 6 pasan; se deja 5 de margen (antes 15: cada alta gastaba un lote
+// rechazado antes de partirlo). Ver scripts/probar-registro-lote.mts.
+const LOGS_POR_LOTE = 5;
 
 /**
  * Escribe `ops` en writeBatch de hasta `tamano` operaciones, en orden. Si las reglas rechazan un
