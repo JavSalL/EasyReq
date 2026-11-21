@@ -103,7 +103,10 @@ const TOKENS_LOTE = 16_384;
 // Duplicados por significado (embeddings): cuántos textos se comparan y desde qué coseno se marcan.
 const GEN_MAX_EMBED_NUEVOS = 400;
 const GEN_MAX_EMBED_EXISTENTES = 600;
-const UMBRAL_COSENO = 0.9;
+// KAN-47: con gemini-embedding-001 (768 dimensiones) los enunciados de un mismo sistema casi siempre
+// pasan de 0,8. En una corrida real (307 propuestas), 0,90 marcaba 130 (42 %), la mayoría distintas;
+// desde 0,95 quedaban 28 y casi todas eran el mismo requerimiento redactado de otra forma.
+const UMBRAL_COSENO = 0.95;
 // Contexto de los lotes (KAN-43): el plan y la cobertura reciben el contexto completo; cada lote solo
 // un resumen (lo hace el plan) más los fragmentos relevantes del área que elige el cliente.
 const GEN_MAX_RESUMEN_CONTEXTO = 8_000;
