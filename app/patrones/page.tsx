@@ -21,10 +21,18 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
+import { useAuth } from '@/lib/firebase-auth-provider';
+import TourGuiado, {
+  BotonAyudaTour,
+  esCuentaNueva,
+  useTutorialSeccion,
+} from '@/components/ui/TourGuiado';
+import { PASOS_TUTORIAL_PATRONES } from '@/lib/tutoriales';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 
 export default function PatronesPage() {
+  const { user, profile, profileLoaded } = useAuth();
   const confirmar = useConfirm();
   // KAN-17: `false` para todos los usuarios por ahora, así que los botones de
   // editar y eliminar no se renderizan. El JSX sigue aquí detrás de la condición
@@ -35,6 +43,11 @@ export default function PatronesPage() {
   const [modelos, setModelos] = useState<Array<Modelo>>([]);
   const [patrones, setPatrones] = useState<Array<Patron>>([]);
   const [loading, setLoading] = useState(true);
+  const tutorial = useTutorialSeccion(
+    'patrones',
+    user?.uid ?? null,
+    Boolean(user && profileLoaded && profile && !loading && esCuentaNueva(user.metadata?.creationTime))
+  );
   const [selectedModeloFilter, setSelectedModeloFilter] = useEstadoSesion<string>("easyreq:patrones:modelo", "todos");
   const [searchTerm, setSearchTerm] = useEstadoSesion("easyreq:patrones:buscar", "");
   const [copiadoId, setCopiadoId] = useState<string | null>(null);
@@ -193,11 +206,16 @@ export default function PatronesPage() {
   return (
     <div className="space-y-6 animate-in fade-in">
       <PageHeader
-        title="Patrones y Modelos"
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            Patrones y Modelos
+            <BotonAyudaTour onClick={tutorial.abrir} label="Ver la guía de Patrones y Modelos" />
+          </span>
+        }
         description="Catálogo de sintaxis estructuradas para redactar requerimientos (EARS, Sistemas Embebidos, Lenguaje Natural)."
         actions={
           puedeEditar && (
-            <button onClick={() => openModal()} className={btnPrimario}>
+            <button id="tour-pat-nuevo" onClick={() => openModal()} className={btnPrimario}>
               <Plus size={16} />
               Nuevo patrón
             </button>
@@ -206,7 +224,7 @@ export default function PatronesPage() {
       />
 
       {/* Filtros por Modelo */}
-      <div className="space-y-2">
+      <div id="tour-pat-modelos" className="space-y-2">
         <div role="group" aria-label="Filtrar por modelo" className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={() => setSelectedModeloFilter('todos')}
@@ -232,7 +250,7 @@ export default function PatronesPage() {
       </div>
 
       {/* Buscador */}
-      <div className="relative">
+      <div id="tour-pat-buscar" className="relative">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
           <Search size={14} />
         </div>
@@ -275,7 +293,7 @@ export default function PatronesPage() {
         </div>
       ) : (
         <div className="space-y-12">
-          {gruposPatrones.map((grupo) => (
+          {gruposPatrones.map((grupo, idxGrupo) => (
             <section key={grupo.id} aria-labelledby={`grupo-${grupo.id}`}>
               <div className="pb-3 mb-5 border-b-2 border-line-strong">
                 <h2 id={`grupo-${grupo.id}`} className="text-xl font-semibold text-ink">
@@ -290,8 +308,12 @@ export default function PatronesPage() {
               </div>
 
               <ul className="space-y-4">
-                {grupo.patrones.map((pat) => (
-                  <li key={pat.patron_id} className={`${tarjeta} p-5`}>
+                {grupo.patrones.map((pat, idxPat) => (
+                  <li
+                    key={pat.patron_id}
+                    id={idxGrupo === 0 && idxPat === 0 ? 'tour-pat-lista' : undefined}
+                    className={`${tarjeta} p-5`}
+                  >
                     <div className="flex items-start justify-between gap-3 mb-4">
                       <h3 className="text-base font-semibold text-ink min-w-0">{pat.nombre}</h3>
 
@@ -406,6 +428,8 @@ export default function PatronesPage() {
           </ModalFooter>
         </form>
       </Modal>
+
+      <TourGuiado abierto={tutorial.abierto} pasos={PASOS_TUTORIAL_PATRONES} onTerminar={tutorial.cerrar} />
     </div>
   );
 }

@@ -147,6 +147,16 @@ export const CASOS_GENERACION_IA: CasoGeneracionIA[] = [
     noDebeContener: [/\d/]
   },
   {
+    id: 'estrictez-baja',
+    descripcion: 'Estrictez baja con otro tipo de sistema (app móvil): sistema completo con áreas de calidad (KAN-47)',
+    pedido: 'una app móvil para que los socios de un gimnasio reserven clases',
+    alcance: 'auto',
+    estrictez: 1,
+    alcanceEsperado: 'sistema',
+    minAreas: 8,
+    areasObligatorias: [/segur/i, /usabil/i]
+  },
+  {
     id: 'estrictez-maxima',
     descripcion: 'Estrictez máxima: solo lo literal, nada inferido ni áreas de calidad no pedidas',
     pedido: 'un sistema donde los alumnos consultan sus calificaciones',

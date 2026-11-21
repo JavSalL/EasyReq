@@ -1,5 +1,6 @@
 import { auth } from "./firebase";
 import { IndiceDuplicados, clasificarDuplicado } from "./dedup-requerimientos";
+import { fragmentosRelevantes, UMBRAL_CONTEXTO_RESUMIDO } from "./contexto-ia";
 import type { ElementoSintactico } from "./database.types";
 
 export type { ElementoSintactico };
@@ -39,7 +40,10 @@ export type AIErrorCode =
   | 'UNAVAILABLE'
   // Generación iterativa (KAN-40): la corrida caducó o no es del usuario / gastó sus llamadas.
   | 'JOB_INVALID'
-  | 'JOB_LIMIT';
+  | 'JOB_LIMIT'
+  // Límite global de la plataforma (KAN-43): en cola por el minuto en curso / tope del día agotado.
+  | 'GLOBAL_BUSY'
+  | 'GLOBAL_DAILY_LIMIT';
 
 /** Error del servicio de IA con un mensaje apto para mostrar al usuario. */
 export class AIError extends Error {
@@ -50,11 +54,46 @@ export class AIError extends Error {
   }
 }
 
+/** Recibe los segundos que falta esperar en la cola, o undefined cuando la espera termina. */
+export type AvisoEspera = (segundos: number | undefined) => void;
+
+/** Espera en cola a lo sumo esto por intento; más (p. ej. el tope del día) se trata como error. */
+const MAX_ESPERA_COLA_S = 120;
+const MAX_ESPERAS_COLA = 10;
+
+/**
+ * Llama a un endpoint del Worker de IA. Si la plataforma está ocupada (429 GLOBAL_BUSY, KAN-43),
+ * espera lo que diga Retry-After, avisa con `onEspera` ("En cola, continúa en N s") y reintenta solo.
+ */
+async function callAI<T>(path: string, body: Record<string, unknown>, signal?: AbortSignal, onEspera?: AvisoEspera): Promise<T> {
+  for (let espera = 0; ; espera++) {
+    try {
+      return await llamarWorker<T>(path, body, signal);
+    } catch (err) {
+      const segundos = err instanceof AIError && err.code === 'GLOBAL_BUSY' ? err.retryAfter ?? 30 : 0;
+      if (!segundos || segundos > MAX_ESPERA_COLA_S || espera >= MAX_ESPERAS_COLA) throw err;
+      await esperarConCuenta(segundos, signal, onEspera);
+    }
+  }
+}
+
+/** Espera `segundos` avisando cada segundo cuántos faltan (para la cuenta atrás de la interfaz). */
+async function esperarConCuenta(segundos: number, signal: AbortSignal | undefined, onEspera?: AvisoEspera): Promise<void> {
+  try {
+    for (let s = Math.ceil(segundos); s > 0; s--) {
+      onEspera?.(s);
+      await esperar(1000, signal);
+    }
+  } finally {
+    onEspera?.(undefined);
+  }
+}
+
 /**
  * Llama a un endpoint del Worker de IA con el ID token del usuario actual.
  * Lanza `AIError` si no hay sesión, si se superó el límite o si el servicio falla.
  */
-async function callAI<T>(path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+async function llamarWorker<T>(path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
   if (!AI_API_URL) {
     console.error('[EasyReq] Falta NEXT_PUBLIC_AI_API_URL en .env.local');
     throw new AIError('UNAVAILABLE', 'El servicio de IA no está configurado.');
@@ -141,8 +180,8 @@ const cuerpoOpciones = (o: OpcionesGeneracion) => ({
  * Genera varios requerimientos a partir de un pedido y del contexto del proyecto. La IA decide
  * cuántos según el alcance del pedido (una parte del sistema o el sistema completo).
  */
-export async function generateBulkRequirements(userPrompt: string, opciones: OpcionesGeneracion = {}): Promise<ResultadoMasivo> {
-  const result = await callAI<ResultadoMasivo>('/generate-bulk', { userPrompt, ...cuerpoOpciones(opciones) });
+export async function generateBulkRequirements(userPrompt: string, opciones: OpcionesGeneracion = {}, onEspera?: AvisoEspera): Promise<ResultadoMasivo> {
+  const result = await callAI<ResultadoMasivo>('/generate-bulk', { userPrompt, ...cuerpoOpciones(opciones) }, undefined, onEspera);
   return {
     valido: result?.valido !== false,
     motivo: result?.motivo,
@@ -154,22 +193,22 @@ export async function generateBulkRequirements(userPrompt: string, opciones: Opc
 /**
  * Genera un requerimiento a partir del texto del usuario.
  */
-export async function generateSingleRequirement(userPrompt: string, opciones: OpcionesGeneracion = {}): Promise<AIRequirement | null> {
-  const result = await callAI<AIRequirement | null>('/generate-single', { userPrompt, ...cuerpoOpciones(opciones) });
+export async function generateSingleRequirement(userPrompt: string, opciones: OpcionesGeneracion = {}, onEspera?: AvisoEspera): Promise<AIRequirement | null> {
+  const result = await callAI<AIRequirement | null>('/generate-single', { userPrompt, ...cuerpoOpciones(opciones) }, undefined, onEspera);
   return result ?? null;
 }
 
 /** Extrae el texto de un PDF (en base64) para usarlo como contexto del proyecto. */
-export async function extraerTextoPdf(base64: string): Promise<string> {
-  const result = await callAI<{ texto?: string }>('/extract-text', { mimeType: 'application/pdf', data: base64 });
+export async function extraerTextoPdf(base64: string, onEspera?: AvisoEspera): Promise<string> {
+  const result = await callAI<{ texto?: string }>('/extract-text', { mimeType: 'application/pdf', data: base64 }, undefined, onEspera);
   return result?.texto ?? '';
 }
 
 /**
  * Evalúa un requerimiento existente de forma inteligente.
  */
-export async function evaluateRequirement(requirementText: string, pattern?: string): Promise<Partial<AIRequirement>> {
-  const result = await callAI<Partial<AIRequirement>>('/evaluate', { requirementText, pattern });
+export async function evaluateRequirement(requirementText: string, pattern?: string, onEspera?: AvisoEspera): Promise<Partial<AIRequirement>> {
+  const result = await callAI<Partial<AIRequirement>>('/evaluate', { requirementText, pattern }, undefined, onEspera);
   return result ?? {};
 }
 
@@ -200,6 +239,8 @@ export interface PlanGeneracion {
   areas: AreaGeneracion[];
   job_id?: string;
   llamadas_restantes?: number;
+  /** Resumen del contexto del proyecto para los lotes (KAN-43): el que escribió el plan o uno guardado. */
+  resumen_contexto?: string;
 }
 
 export interface RequerimientoIA extends AIRequirement {
@@ -270,7 +311,7 @@ export interface ProgresoGeneracion {
   areas: ProgresoArea[];
   total: number;
   llamadasRestantes: number;
-  /** Segundos de espera por el límite de peticiones por minuto, si aplica. */
+  /** Segundos que faltan para continuar cuando la corrida está en cola (límite por minuto propio o global). */
   esperando?: number;
 }
 
@@ -288,6 +329,8 @@ export interface OpcionesIterativas extends OpcionesGeneracion {
   signal?: AbortSignal;
   /** Estado previo para reanudar una corrida interrumpida sin pedir un nuevo plan. */
   estadoInicial?: EstadoInicialIterativo;
+  /** Resumen guardado (Firestore) del mismo contexto: si está, el plan no tiene que escribir otro (KAN-43). */
+  resumenContexto?: string;
 }
 
 export interface CallbacksGeneracion {
@@ -301,6 +344,8 @@ export interface CallbacksGeneracion {
   onPropuestas?: (nuevas: PropuestaIA[]) => void;
   /** Propuestas que, al final, resultaron parecidas por significado a algo existente u otra propuesta. */
   onDuplicadosSemanticos?: (marcas: Array<{ clave: string; marca: MarcaDuplicado }>) => void;
+  /** El plan escribió un resumen nuevo del contexto: para guardarlo y reutilizarlo (KAN-43). */
+  onResumenContexto?: (resumen: string) => void;
 }
 
 export interface ResultadoIterativo {
@@ -389,19 +434,17 @@ async function llamarConReintentos<T>(
   path: string,
   body: Record<string, unknown>,
   signal: AbortSignal | undefined,
-  onEspera: (segundos: number | undefined) => void
+  onEspera: AvisoEspera
 ): Promise<T> {
   let caidas = 0;
   for (let intento = 0; ; intento++) {
     try {
-      return await callAI<T>(path, body, signal);
+      return await callAI<T>(path, body, signal, onEspera);
     } catch (err) {
       if (!(err instanceof AIError) || intento >= MAX_REINTENTOS) throw err;
       if (err.code === 'RATE_LIMITED') {
         const segundos = err.retryAfter && err.retryAfter > 0 ? err.retryAfter : 60;
-        onEspera(segundos);
-        await esperar(segundos * 1000, signal);
-        onEspera(undefined);
+        await esperarConCuenta(segundos, signal, onEspera);
         continue;
       }
       if (err.code === 'UNAVAILABLE' && caidas++ === 0) {
@@ -423,14 +466,22 @@ async function enParalelo<T>(items: T[], limite: number, tarea: (item: T) => Pro
 }
 
 /** Pide el mapa de áreas (abre el job de la corrida y consume 1 uso de la cuota diaria). */
-export async function planificarGeneracion(userPrompt: string, opciones: OpcionesIterativas = {}): Promise<PlanGeneracion> {
+export async function planificarGeneracion(userPrompt: string, opciones: OpcionesIterativas = {}, onEspera?: AvisoEspera): Promise<PlanGeneracion> {
+  const contexto = opciones.contexto?.trim() ?? '';
+  const resumenGuardado = opciones.resumenContexto?.trim() || undefined;
+  // KAN-43: con un contexto largo los lotes necesitan un resumen; el plan lo escribe si no hay uno guardado.
+  const pedirResumen = contexto.length > UMBRAL_CONTEXTO_RESUMIDO && !resumenGuardado;
   const result = await callAI<PlanGeneracion>('/generation/plan', {
     userPrompt,
     alcance: opciones.alcance ?? 'auto',
     existentes: opciones.existentes?.length ? resumirExistentes(opciones.existentes) : undefined,
+    ...(pedirResumen ? { pedir_resumen: true } : {}),
     ...cuerpoOpciones(opciones)
-  }, opciones.signal);
+  }, opciones.signal, onEspera);
+  const resumenNuevo = typeof result?.resumen_contexto === 'string' && result.resumen_contexto.trim() ? result.resumen_contexto.trim() : undefined;
+  const resumen = pedirResumen ? resumenNuevo : contexto.length > UMBRAL_CONTEXTO_RESUMIDO ? resumenGuardado : undefined;
   return {
+    ...(resumen ? { resumen_contexto: resumen } : {}),
     valido: result?.valido !== false,
     motivo: result?.motivo,
     alcance: result?.alcance === 'modulo' ? 'modulo' : 'sistema',
@@ -480,6 +531,16 @@ async function correrIterativo(ctx: {
       .slice(0, MAX_EXISTENTES_AREA)
       .map(r => lineaExistente(r, MAX_LINEA - 20));
   const base = cuerpoOpciones(opciones);
+  // KAN-43: un lote no recibe el contexto completo si es largo: el resumen del plan y los fragmentos del área.
+  const contextoCompleto = base.contexto ?? '';
+  const contextoLote = (area: AreaGeneracion, pendiente: string[]) => {
+    if (contextoCompleto.length <= UMBRAL_CONTEXTO_RESUMIDO) return { contexto: base.contexto };
+    const resumen = plan.resumen_contexto?.trim();
+    return {
+      contexto: fragmentosRelevantes(contextoCompleto, { nombre: area.nombre, enfoque: area.enfoque, pendiente }, resumen ? undefined : UMBRAL_CONTEXTO_RESUMIDO),
+      ...(resumen ? { resumen_contexto: resumen } : {})
+    };
+  };
 
   /** Filtra repetidos, registra las que pasan y devuelve cuántas entraron y cuántas se descartaron. */
   const incorporar = (candidatas: RequerimientoIA[], area: string) => {
@@ -567,7 +628,8 @@ async function correrIterativo(ctx: {
             generados: propuestas.filter(x => x.area === area.nombre).slice(-MAX_GENERADOS).map(x => x.name.slice(0, MAX_LINEA)),
             pendiente: e.pendiente,
             lote: Math.min(LOTE_POR_DEFECTO, Math.max(1, MAX_PROPUESTAS - propuestas.length)),
-            ...base
+            ...base,
+            ...contextoLote(area, e.pendiente)
           },
           signal,
           onEspera
@@ -739,9 +801,15 @@ export async function runIterativeGeneration(
     // 1. Plan: pide el mapa de áreas (abre el job de la corrida y consume 1 uso de la cuota diaria).
     const avisar = () => callbacks.onProgreso?.({ ...progreso, areas: progreso.areas.map(a => ({ ...a })) });
     avisar();
-    plan = await planificarGeneracion(userPrompt, opciones);
+    plan = await planificarGeneracion(userPrompt, opciones, segundos => {
+      progreso.esperando = segundos;
+      avisar();
+    });
     if (!plan.valido || plan.areas.length === 0 || !plan.job_id) {
       return { estado: 'invalido', motivo: plan.motivo || 'El pedido no da base para generar requerimientos.', plan, propuestas };
+    }
+    if (plan.resumen_contexto && plan.resumen_contexto !== opciones.resumenContexto?.trim()) {
+      callbacks.onResumenContexto?.(plan.resumen_contexto);
     }
     progreso.llamadasRestantes = plan.llamadas_restantes ?? 0;
     progreso.fase = 'revision-plan';
