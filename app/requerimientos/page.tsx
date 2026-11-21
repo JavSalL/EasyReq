@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import toast from "react-hot-toast";
+import { avisoColaToast } from "@/lib/aviso-cola";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -1100,7 +1101,7 @@ export default function RequerimientosPage() {
 
     setIsAILoading(true);
     try {
-      const generated = await generateSingleRequirement(aiPrompt, opcionesIA());
+      const generated = await generateSingleRequirement(aiPrompt, opcionesIA(), avisoColaToast());
       if (generated && generated.valido === false) {
         // La IA no inventa: si el texto no da base, se explica qué falta y se conserva lo escrito
         toast.error(generated.motivo || 'No se pudo identificar qué debe hacer el sistema. Descríbelo con más detalle.');
