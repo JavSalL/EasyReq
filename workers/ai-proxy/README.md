@@ -79,3 +79,29 @@ El Worker crea la tabla `ai_jobs` por sí mismo la primera vez que la usa, así 
 ```bash
 npx wrangler d1 execute easyreq-ai-quota --remote --file migrations/kan-40-ai-jobs.sql
 ```
+
+---
+
+## Límite global, cola y costo del contexto (KAN-43)
+
+La cuota de Gemini es por proyecto de Google y la comparten todos los usuarios, así que además de los límites por usuario el Worker lleva un **contador global** en D1 (tabla `ai_global`, una fila por minuto y otra por día, en UTC).
+
+| Variable (`wrangler.jsonc`) | Qué limita |
+|------|----------|
+| `GLOBAL_RPM` | Llamadas a Gemini por minuto de toda la plataforma |
+| `GLOBAL_TPM` | Tokens por minuto (se comparan los ya gastados en el minuto en curso) |
+| `GLOBAL_RPD` | Llamadas por día |
+| `GLOBAL_RESERVA_INDIVIDUAL` | Parte de cada tope que solo pueden usar las llamadas individuales (0.2 = 20 %) |
+
+Los valores actuales son **provisionales**: hay que confirmar el nivel del proyecto de Google y sus límites en AI Studio y dejarlos por debajo. Una variable vacía quita ese tope.
+
+- **Cola:** si una petición no cabe, el Worker responde `429 GLOBAL_BUSY` con `Retry-After` (segundos hasta el siguiente minuto). El cliente espera y reintenta solo, mostrando "En cola, continúa en N s". Si se agotó el tope del día responde `429 GLOBAL_DAILY_LIMIT` y el cliente no espera. La comprobación va antes que la cuota del usuario: una petición en cola no gasta usos ni llamadas del job.
+- **Prioridad:** generar un requerimiento, evaluar y extraer texto (`individual`) pueden usar todo el tope; el plan, los lotes, la cobertura y la masiva de una pasada (`lote`) se detienen al llegar a `1 - GLOBAL_RESERVA_INDIVIDUAL`.
+- **Tokens:** cada llamada registra `usageMetadata` (tokens de entrada y salida) en el log del Worker (`evento: gemini_uso`) y en la tabla `ai_uso_tokens` (por día, usuario y tipo de llamada). Para ver el gasto de hoy:
+  ```bash
+  npx wrangler d1 execute easyreq-ai-quota --remote --command "SELECT tipo, SUM(llamadas), SUM(tokens_entrada), SUM(tokens_salida) FROM ai_uso_tokens WHERE day = date('now') GROUP BY tipo"
+  ```
+- **Contexto:** el contexto completo del proyecto solo va al plan y a la cobertura. Si pasa de 40 000 caracteres, el plan escribe un resumen (`resumen_contexto`) que la app guarda en Firestore (`contexto_resumen/{id del proyecto}`, con la huella del contexto) y reutiliza mientras el contexto no cambie; cada lote recibe ese resumen más los fragmentos del contexto relacionados con su área. El Worker recorta a 40 000 caracteres el contexto de un lote por si un cliente viejo manda el completo.
+- No se usa el caché de contexto de Gemini: falta confirmar si `gemini-3.5-flash-lite` lo soporta.
+
+Las tablas se crean solas la primera vez; para crearlas a mano: `npx wrangler d1 execute easyreq-ai-quota --remote --file migrations/kan-43-limite-global.sql`.

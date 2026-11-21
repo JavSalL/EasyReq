@@ -1012,6 +1012,18 @@ service cloud.firestore {
         esMiembroDelProyecto(resource.data.id_proyecto, request.auth.uid);
     }
 
+    // Resumen del contexto que escribe la IA al planear una generación (KAN-43). Un documento por
+    // proyecto (el id es el del proyecto). Lo escribe cualquier miembro; no se puede mover de proyecto.
+    match /contexto_resumen/{proyectoId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() &&
+        request.resource.data.id_proyecto == proyectoId &&
+        esMiembroDelProyecto(proyectoId, request.auth.uid) &&
+        request.resource.data.resumen is string &&
+        request.resource.data.resumen.size() <= 8000;
+      allow delete: if isAuthenticated() && esMiembroDelProyecto(proyectoId, request.auth.uid);
+    }
+
     // Regla por defecto: denegar cualquier otra colección no especificada
     match /{document=**} {
       allow read, write: if false;

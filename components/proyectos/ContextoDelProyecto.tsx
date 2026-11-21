@@ -21,6 +21,7 @@ import {
   renombrarContexto
 } from '@/lib/firestore-service';
 import { extraerTextoPdf, AIError } from '@/lib/ai-actions';
+import { avisoColaToast } from '@/lib/aviso-cola';
 import { useAuth } from '@/lib/firebase-auth-provider';
 import { esMiembroDelProyecto } from '@/lib/equipos-proyecto';
 import { mensajeError } from '@/lib/errores';
@@ -144,7 +145,7 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
         if (formato === 'pdf') {
           setSubiendo(`Extrayendo el texto de ${f.name}...`);
           try {
-            texto = await extraerTextoPdf(await leerBase64(f));
+            texto = await extraerTextoPdf(await leerBase64(f), avisoColaToast());
           } catch (err) {
             toast.error(
               `${f.name}: no se pudo extraer su texto (${err instanceof AIError ? err.message : 'error del servicio de IA'}). Se guardará igual, pero la IA no lo leerá.`,

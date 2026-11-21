@@ -1,6 +1,7 @@
 import { getBearerToken, verifyFirebaseToken } from './auth';
 import { borrarJob, consumeDailyQuota, consumirLlamadaJob, crearJob, marcarJobConResultado } from './quota';
 import { callGemini, callGeminiJson, coseno, embedTexts, type GeminiOptions } from './gemini';
+import { registrarTokens, reservarGlobal, sumarLlamadasGlobal, topesDe, type Prioridad } from './global';
 import {
   buildAreaPrompt,
   buildCoberturaPrompt,
@@ -53,6 +54,16 @@ export interface Env {
   /** Corridas de generación iterativa por usuario y día (KAN-40). Opcional: 3 por defecto. */
   DAILY_JOB_LIMIT?: string;
   REQUIRE_EMAIL_VERIFIED: string; // "true" | "false"
+  /**
+   * Topes globales de la plataforma (KAN-43), comunes a todos los usuarios: llamadas a Gemini por
+   * minuto y por día, y tokens por minuto. Deben quedar por debajo de los del proyecto en AI Studio.
+   * Vacíos o ausentes = sin tope (el contador y el registro de tokens siguen funcionando).
+   */
+  GLOBAL_RPM?: string;
+  GLOBAL_TPM?: string;
+  GLOBAL_RPD?: string;
+  /** Fracción de cada tope global reservada a las llamadas individuales (0.2 por defecto). */
+  GLOBAL_RESERVA_INDIVIDUAL?: string;
   // Bindings
   USER_LIMITER: RateLimiter;
   DB: D1Database;
@@ -93,6 +104,10 @@ const TOKENS_LOTE = 16_384;
 const GEN_MAX_EMBED_NUEVOS = 400;
 const GEN_MAX_EMBED_EXISTENTES = 600;
 const UMBRAL_COSENO = 0.9;
+// Contexto de los lotes (KAN-43): el plan y la cobertura reciben el contexto completo; cada lote solo
+// un resumen (lo hace el plan) más los fragmentos relevantes del área que elige el cliente.
+const GEN_MAX_RESUMEN_CONTEXTO = 8_000;
+const GEN_MAX_CONTEXTO_LOTE = 40_000;
 
 class HttpError extends Error {
   constructor(public status: number, public code: string, message: string, public headers: Record<string, string> = {}) {
@@ -216,12 +231,35 @@ function opcionesRedaccion(body: Record<string, unknown>): OpcionesRedaccion {
 // Acciones de IA
 // ---------------------------------------------------------------------------
 
-async function runGemini(prompt: string, env: Env, options: GeminiOptions = {}): Promise<string> {
+/**
+ * Lo que necesita un handler para llamar a Gemini: el entorno y a quién se le cuenta el gasto.
+ * `reservadas` son las llamadas que ya se apartaron en el contador global al admitir la petición;
+ * las que pasen de ahí (reintentos, segunda pasada por títulos) se suman sin volver a comprobar.
+ */
+export interface ContextoIA {
+  env: Env;
+  uid: string;
+  /** Ruta sin la barra inicial (p. ej. "generation/area"): el "tipo" del registro diario. */
+  tipo: string;
+  reservadas: number;
+  hechas: number;
+}
+
+async function runGemini(prompt: string, ia: ContextoIA, options: GeminiOptions = {}): Promise<string> {
+  const { env } = ia;
+  // Cada petición real a Gemini (incluido el reintento de callGeminiJson) pasa por alUsar.
+  const alUsar: GeminiOptions['alUsar'] = async (uso) => {
+    ia.hechas++;
+    console.log(JSON.stringify({ evento: 'gemini_uso', tipo: ia.tipo, uid: ia.uid, ...uso }));
+    const tareas: Promise<unknown>[] = [registrarTokens(env.DB, ia.uid, ia.tipo, uso)];
+    if (ia.hechas > ia.reservadas) tareas.push(sumarLlamadasGlobal(env.DB, 1));
+    await Promise.all(tareas);
+  };
   try {
     // Las respuestas JSON se validan y, si llegan cortadas o rotas, se piden una vez más.
     return options.responseMimeType === 'text/plain'
-      ? await callGemini(prompt, env.GEMINI_API_KEY, env.GEMINI_MODEL, options)
-      : await callGeminiJson(prompt, env.GEMINI_API_KEY, env.GEMINI_MODEL, options);
+      ? await callGemini(prompt, env.GEMINI_API_KEY, env.GEMINI_MODEL, { ...options, alUsar })
+      : await callGeminiJson(prompt, env.GEMINI_API_KEY, env.GEMINI_MODEL, { ...options, alUsar });
   } catch (err) {
     console.error('Error llamando a Gemini:', err instanceof Error ? err.message : err);
     throw new HttpError(502, 'UNAVAILABLE', 'El servicio de IA no está disponible en este momento.');
@@ -231,7 +269,7 @@ async function runGemini(prompt: string, env: Env, options: GeminiOptions = {}):
 // Cada handler valida la entrada de forma síncrona (lanza 400 si es inválida)
 // y devuelve la función que hace la llamada a Gemini. Así una petición
 // inválida se rechaza antes de consumir cuota.
-type Executor = (env: Env) => Promise<unknown>;
+type Executor = (ia: ContextoIA) => Promise<unknown>;
 type Handler = (body: Record<string, unknown>) => Executor;
 
 /**
@@ -247,8 +285,8 @@ const handleGenerateSingle: Handler = (body) => {
   const userPrompt = meaningfulText(body.userPrompt, 'userPrompt');
   const opciones = opcionesRedaccion(body);
 
-  return async (env) => {
-    const text = await runGemini(buildSinglePrompt(userPrompt, opciones), env, {
+  return async (ia) => {
+    const text = await runGemini(buildSinglePrompt(userPrompt, opciones), ia, {
       temperature: TEMPERATURA_ESTRICTEZ[opciones.estrictez],
       responseSchema: esquemaUnico(opciones.pattern),
     });
@@ -270,9 +308,9 @@ const handleGenerateBulk: Handler = (body) => {
   const opciones = opcionesRedaccion(body);
   const temperature = TEMPERATURA_ESTRICTEZ[opciones.estrictez];
 
-  return async (env) => {
+  return async (ia) => {
     const plan = interpretarPlan(
-      await runGemini(buildPlanPrompt(userPrompt, opciones, MAX_AREAS, MAX_POR_AREA), env, { temperature }),
+      await runGemini(buildPlanPrompt(userPrompt, opciones, MAX_AREAS, MAX_POR_AREA), ia, { temperature }),
       MAX_AREAS,
       MAX_POR_AREA
     );
@@ -294,7 +332,7 @@ const handleGenerateBulk: Handler = (body) => {
       plan.areas.map(async (area) => {
         try {
           const otras = plan.areas.filter((a) => a !== area).map((a) => a.nombre);
-          const text = await runGemini(buildAreaPrompt(userPrompt, area, otras, opciones), env, {
+          const text = await runGemini(buildAreaPrompt(userPrompt, area, otras, opciones), ia, {
             temperature,
             responseSchema: esquemaListaRequerimientos(opciones.pattern),
           });
@@ -316,7 +354,7 @@ const handleGenerateBulk: Handler = (body) => {
         const faltantes = Math.min(MAX_COBERTURA, MAX_TOTAL - requerimientos.length);
         const text = await runGemini(
           buildCoberturaPrompt(userPrompt, requerimientos.map((r) => r.name), opciones, faltantes),
-          env,
+          ia,
           { temperature, responseSchema: esquemaListaRequerimientos(opciones.pattern) }
         );
         agregar(interpretarGeneracionMasiva(text, opciones.pattern).slice(0, faltantes), 'Cobertura adicional');
@@ -342,9 +380,11 @@ const handleGenerationPlan: Handler = (body) => {
   const alcance = alcanceDe(body.alcance, true);
   const existentes = optionalText(body.existentes, 'existentes', GEN_MAX_RESUMEN);
   const opciones = opcionesRedaccion(body);
+  // KAN-43: el cliente lo pide cuando el contexto es largo y no tiene un resumen guardado de él.
+  const pedirResumen = body.pedir_resumen === true;
 
-  return async (env) => {
-    const text = await runGemini(buildGenPlanPrompt(userPrompt, alcance, existentes, opciones, GEN_MAX_AREAS), env, {
+  return async (ia) => {
+    const text = await runGemini(buildGenPlanPrompt(userPrompt, alcance, existentes, opciones, GEN_MAX_AREAS, pedirResumen), ia, {
       temperature: temperaturaIterativa(opciones.estrictez),
       responseSchema: ESQUEMA_PLAN,
     });
@@ -368,15 +408,15 @@ const PROPORCION_TITULOS_REINTENTO = 0.25;
  */
 async function pedirSinTitulos<T extends { requerimientos: RequerimientoIterativo[] }>(
   prompt: string,
-  env: Env,
+  ia: ContextoIA,
   options: GeminiOptions,
   interpretar: (text: string) => T,
   pattern?: string
 ): Promise<T> {
-  let resultado = interpretar(await runGemini(prompt, env, options));
+  let resultado = interpretar(await runGemini(prompt, ia, options));
   const titulos = resultado.requerimientos.filter((r) => pareceTitulo(r.name, pattern)).length;
   if (resultado.requerimientos.length > 0 && titulos / resultado.requerimientos.length >= PROPORCION_TITULOS_REINTENTO) {
-    const otra = interpretar(await runGemini(prompt + CORRECCION_TITULOS, env, options));
+    const otra = interpretar(await runGemini(prompt + CORRECCION_TITULOS, ia, options));
     if (otra.requerimientos.length > 0) resultado = otra;
   }
   return { ...resultado, requerimientos: resultado.requerimientos.filter((r) => !pareceTitulo(r.name, pattern)) };
@@ -401,15 +441,22 @@ const handleGenerationArea: Handler = (body) => {
     generados: listaTextos(body.generados, 'generados', GEN_MAX_GENERADOS),
     pendiente: listaTextos(body.pendiente, 'pendiente', 40, 200),
     lote,
+    resumenContexto: optionalText(body.resumen_contexto, 'resumen_contexto', GEN_MAX_RESUMEN_CONTEXTO),
   };
+  // KAN-43: un lote no recibe el contexto completo. Si llega más de la cuenta (un cliente viejo), se
+  // recorta aquí para no multiplicar los tokens en cada lote.
   const opciones = opcionesRedaccion(body);
+  if (opciones.contexto && opciones.contexto.length > GEN_MAX_CONTEXTO_LOTE) {
+    opciones.contexto = `${opciones.contexto.slice(0, GEN_MAX_CONTEXTO_LOTE)}
+[El contexto se recortó por su tamaño.]`;
+  }
 
-  return async (env) => {
+  return async (ia) => {
     const resultado = await pedirSinTitulos(
       buildGenAreaPrompt(entrada, opciones),
-      env,
+      ia,
       { temperature: temperaturaIterativa(opciones.estrictez), responseSchema: esquemaLoteArea(opciones.pattern), maxOutputTokens: TOKENS_LOTE },
-      (text) => interpretarLoteArea(text, opciones, fuenteDe(userPrompt, opciones.contexto, area.enfoque), lote),
+      (text) => interpretarLoteArea(text, opciones, fuenteDe(userPrompt, entrada.resumenContexto, opciones.contexto, area.enfoque), lote),
       opciones.pattern
     );
     const conocidos = [...entrada.existentesArea, ...entrada.generados, ...(entrada.existentesResto ?? '').split(/\r?\n/)];
@@ -433,10 +480,10 @@ const handleGenerationCobertura: Handler = (body) => {
   };
   const opciones = opcionesRedaccion(body);
 
-  return async (env) => {
+  return async (ia) => {
     const { requerimientos: faltantes } = await pedirSinTitulos(
       buildGenCoberturaPrompt(entrada, opciones),
-      env,
+      ia,
       { temperature: temperaturaIterativa(opciones.estrictez), responseSchema: esquemaCobertura(opciones.pattern), maxOutputTokens: TOKENS_LOTE },
       (text) => ({ requerimientos: interpretarCobertura(text, opciones, fuenteDe(userPrompt, opciones.contexto), areas, maximo) }),
       opciones.pattern
@@ -461,11 +508,11 @@ const handleGenerationEmbed: Handler = (body) => {
     .map((e) => ({ etiqueta: optionalText(e.etiqueta, 'existentes.etiqueta', 40), texto: optionalText(e.texto, 'existentes.texto', GEN_MAX_LINEA) }))
     .filter((e): e is { etiqueta: string; texto: string } => !!e.etiqueta && !!e.texto);
 
-  return async (env) => {
+  return async (ia) => {
     if (nuevos.length === 0) return { duplicados: [] };
     let vectores: number[][];
     try {
-      vectores = await embedTexts([...existentes.map((e) => e.texto), ...nuevos], env.GEMINI_API_KEY, env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001');
+      vectores = await embedTexts([...existentes.map((e) => e.texto), ...nuevos], ia.env.GEMINI_API_KEY, ia.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001');
     } catch (err) {
       console.error('Error llamando a Gemini (embeddings):', err instanceof Error ? err.message : err);
       throw new HttpError(502, 'UNAVAILABLE', 'El servicio de IA no está disponible en este momento.');
@@ -495,8 +542,8 @@ const handleEvaluate: Handler = (body) => {
   const requirementText = requiredText(body.requirementText, 'requirementText');
   const pattern = optionalPattern(body.pattern);
 
-  return async (env) => {
-    const text = await runGemini(buildEvaluatePrompt(requirementText, pattern), env);
+  return async (ia) => {
+    const text = await runGemini(buildEvaluatePrompt(requirementText, pattern), ia);
     return interpretarEvaluacion(text);
   };
 };
@@ -514,8 +561,8 @@ const handleExtractText: Handler = (body) => {
     throw new HttpError(400, 'INVALID_INPUT', 'El PDF es demasiado grande para extraer su texto.');
   }
 
-  return async (env) => {
-    const texto = await runGemini(buildExtraerTextoPrompt(), env, {
+  return async (ia) => {
+    const texto = await runGemini(buildExtraerTextoPrompt(), ia, {
       temperature: 0,
       responseMimeType: 'text/plain',
       inlineData: { mimeType: 'application/pdf', data },
@@ -524,17 +571,46 @@ const handleExtractText: Handler = (body) => {
   };
 };
 
-// `generaResultado`: un paso que termina bien hace que la corrida cuente para el tope diario de corridas.
-const ROUTES: Record<string, { handler: Handler; cuota: TipoCuota; generaResultado?: boolean }> = {
-  '/generate-single': { handler: handleGenerateSingle, cuota: 'diaria' },
-  '/generate-bulk': { handler: handleGenerateBulk, cuota: 'diaria' },
-  '/evaluate': { handler: handleEvaluate, cuota: 'diaria' },
-  '/extract-text': { handler: handleExtractText, cuota: 'diaria' },
-  '/generation/plan': { handler: handleGenerationPlan, cuota: 'plan' },
-  '/generation/area': { handler: handleGenerationArea, cuota: 'job', generaResultado: true },
-  '/generation/cobertura': { handler: handleGenerationCobertura, cuota: 'job' },
-  '/generation/embed': { handler: handleGenerationEmbed, cuota: 'job' },
+interface Ruta {
+  handler: Handler;
+  cuota: TipoCuota;
+  /** Un paso que termina bien hace que la corrida cuente para el tope diario de corridas. */
+  generaResultado?: boolean;
+  /** Prioridad ante el límite global (KAN-43): las individuales pasan antes que los lotes. */
+  prioridad: Prioridad;
+  /**
+   * Llamadas a Gemini que se apartan en el contador global al admitir la petición. La masiva de una
+   * pasada hace el plan, hasta MAX_AREAS áreas y la cobertura. Los embeddings tienen su propia cuota
+   * en Google y no se cuentan aquí.
+   */
+  llamadas: number;
+}
+
+const ROUTES: Record<string, Ruta> = {
+  '/generate-single': { handler: handleGenerateSingle, cuota: 'diaria', prioridad: 'individual', llamadas: 1 },
+  '/generate-bulk': { handler: handleGenerateBulk, cuota: 'diaria', prioridad: 'lote', llamadas: MAX_AREAS + 2 },
+  '/evaluate': { handler: handleEvaluate, cuota: 'diaria', prioridad: 'individual', llamadas: 1 },
+  '/extract-text': { handler: handleExtractText, cuota: 'diaria', prioridad: 'individual', llamadas: 1 },
+  '/generation/plan': { handler: handleGenerationPlan, cuota: 'plan', prioridad: 'lote', llamadas: 1 },
+  '/generation/area': { handler: handleGenerationArea, cuota: 'job', generaResultado: true, prioridad: 'lote', llamadas: 1 },
+  '/generation/cobertura': { handler: handleGenerationCobertura, cuota: 'job', prioridad: 'lote', llamadas: 1 },
+  '/generation/embed': { handler: handleGenerationEmbed, cuota: 'job', prioridad: 'lote', llamadas: 0 },
 };
+
+/**
+ * Aparta las llamadas de la petición en el contador global o lanza 429 con Retry-After. Va antes
+ * que la cuota del usuario: una petición en cola no gasta usos diarios ni llamadas del job.
+ */
+async function reservarCupoGlobal(env: Env, ruta: Ruta): Promise<void> {
+  if (ruta.llamadas <= 0) return;
+  const reserva = await reservarGlobal(env.DB, topesDe(env), ruta.prioridad, ruta.llamadas);
+  if (reserva.ok) return;
+  const retryAfter = String(reserva.retryAfter);
+  if (reserva.motivo === 'DIA') {
+    throw new HttpError(429, 'GLOBAL_DAILY_LIMIT', 'La plataforma alcanzó el límite diario de uso de la IA. Vuelve mañana.', { 'Retry-After': retryAfter });
+  }
+  throw new HttpError(429, 'GLOBAL_BUSY', 'La IA está atendiendo muchas peticiones. Tu petición está en cola.', { 'Retry-After': retryAfter });
+}
 
 const JOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -551,10 +627,11 @@ async function consumirCuotaDiaria(env: Env, uid: string): Promise<void> {
  * Ejecuta una ruta según cómo cuenta contra la cuota. En las de generación iterativa la respuesta
  * lleva el id del job y las llamadas que le quedan, para que el cliente reparta el presupuesto.
  */
-async function ejecutarConCuota(cuota: TipoCuota, execute: Executor, body: Record<string, unknown>, uid: string, env: Env, generaResultado = false): Promise<unknown> {
+async function ejecutarConCuota(cuota: TipoCuota, execute: Executor, body: Record<string, unknown>, uid: string, ia: ContextoIA, generaResultado = false): Promise<unknown> {
+  const { env } = ia;
   if (cuota === 'diaria') {
     await consumirCuotaDiaria(env, uid);
-    return execute(env);
+    return execute(ia);
   }
 
   if (cuota === 'plan') {
@@ -565,7 +642,7 @@ async function ejecutarConCuota(cuota: TipoCuota, execute: Executor, body: Recor
     }
     try {
       await consumirCuotaDiaria(env, uid);
-      const result = (await execute(env)) as { valido?: boolean };
+      const result = (await execute(ia)) as { valido?: boolean };
       // Un plan rechazado no deja un job abierto (el uso diario sí se gastó, como en el resto).
       if (result?.valido === false) {
         await borrarJob(env.DB, jobId, uid);
@@ -588,7 +665,7 @@ async function ejecutarConCuota(cuota: TipoCuota, execute: Executor, body: Recor
       ? new HttpError(429, 'JOB_LIMIT', `Esta generación ya usó sus ${GEN_MAX_LLAMADAS_JOB} llamadas a la IA. Revisa lo generado o inicia otra.`)
       : new HttpError(403, 'JOB_INVALID', 'La generación caducó o no es tuya. Iníciala de nuevo.');
   }
-  const result = (await execute(env)) as Record<string, unknown>;
+  const result = (await execute(ia)) as Record<string, unknown>;
   if (generaResultado) await marcarJobConResultado(env.DB, jobId);
   return { ...result, llamadas_restantes: GEN_MAX_LLAMADAS_JOB - job.llamadas };
 }
@@ -652,8 +729,12 @@ export default {
       }
       const execute = route.handler(body);
 
-      // 4. Cuota (diaria, o del job en la generación iterativa) y 5. Gemini
-      const result = await ejecutarConCuota(route.cuota, execute, body, uid, env, route.generaResultado);
+      // 4. Límite global de la plataforma (KAN-43): si está lleno, 429 y el cliente espera en cola
+      await reservarCupoGlobal(env, route);
+
+      // 5. Cuota (diaria, o del job en la generación iterativa) y 6. Gemini
+      const ia: ContextoIA = { env, uid, tipo: pathname.slice(1), reservadas: route.llamadas, hechas: 0 };
+      const result = await ejecutarConCuota(route.cuota, execute, body, uid, ia, route.generaResultado);
       return json({ data: result }, 200, cors);
     } catch (err) {
       if (err instanceof HttpError) {
