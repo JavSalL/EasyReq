@@ -45,6 +45,7 @@ import {
   useFocoSintaxis
 } from '@/components/requerimientos/SintaxisRequerimiento';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
+import { useAtajos } from '@/lib/use-atajos';
 import { avisoColaToast } from '@/lib/aviso-cola';
 import { huellaContexto, UMBRAL_CONTEXTO_RESUMIDO } from '@/lib/contexto-ia';
 import { getResumenContexto, guardarResumenContexto } from '@/lib/services/contexto-service';
@@ -1118,6 +1119,17 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
     if (siguiente) setIndiceActual(visibles.indexOf(siguiente));
   };
 
+  // Atajos de la vista una por una (dentro del formulario, que es un diálogo)
+  useAtajos(
+    {
+      s: () => { if (actual) decidir(actual, true); },
+      x: () => { if (actual) decidir(actual, false); },
+      arrowleft: () => setIndiceActual(Math.max(0, indiceSeguro - 1)),
+      arrowright: () => setIndiceActual(Math.min(visibles.length - 1, indiceSeguro + 1)),
+    },
+    { activo: modoRevision === 'una' && !!actual && !bloqueado, dentroDeDialogo: true }
+  );
+
   return (
     <div ref={contenedorRef} className="space-y-4 scroll-mt-4">
       {/* Paso 0: armando el plan */}
@@ -1587,6 +1599,7 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                   >
                     <X size={16} aria-hidden />
                     Descartar
+                    <kbd className="hidden pointer-fine:inline ml-1 px-1 rounded border border-current/30 text-xs font-sans opacity-70">X</kbd>
                   </button>
                   <button
                     type="button"
@@ -1596,6 +1609,7 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                   >
                     <Check size={16} aria-hidden />
                     Seleccionar
+                    <kbd className="hidden pointer-fine:inline ml-1 px-1 rounded border border-current/30 text-xs font-sans opacity-70">S</kbd>
                   </button>
                 </div>
               </div>

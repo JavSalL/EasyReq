@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import toast from "react-hot-toast";
 import { accionConDeshacer } from '@/lib/deshacer';
 import { elementosSegunPatron, patronReconocible } from '@/lib/sintaxis-en-vivo';
+import { useAtajos } from '@/lib/use-atajos';
 import { avisoColaToast } from "@/lib/aviso-cola";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,7 +12,7 @@ import {
   ChevronLeft, Plus, Edit2, Trash2, Search, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, Copy, ListPlus, ListOrdered,
   Check, XCircle, Send, Download, Folder, X, Layers, MessageSquare, Map as MapaIcono,
-  SlidersHorizontal
+  SlidersHorizontal, Keyboard
 } from 'lucide-react';
 import {
   generateSingleRequirement,
@@ -1840,6 +1841,33 @@ export default function RequerimientosPage() {
     [filteredRequerimientos, patronFiltroUnico]
   );
 
+  // Atajos de teclado de la lista: J/K recorren las filas y la letra actúa sobre la marcada
+  const [filaActiva, setFilaActiva] = useState<string | null>(null);
+  const [verAtajos, setVerAtajos] = useState(false);
+  const moverFila = (paso: 1 | -1) => {
+    const filas = Array.from(document.querySelectorAll<HTMLElement>('[data-fila-req]'));
+    if (filas.length === 0) return;
+    const actual = filas.findIndex(f => f.dataset.filaReq === filaActiva);
+    const siguiente = actual === -1 ? (paso === 1 ? 0 : filas.length - 1) : Math.min(filas.length - 1, Math.max(0, actual + paso));
+    setFilaActiva(filas[siguiente].dataset.filaReq ?? null);
+    filas[siguiente].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+  const reqActivo = filaActiva ? requerimientos.find(r => r.id === filaActiva) : undefined;
+  useAtajos(
+    {
+      j: () => moverFila(1),
+      k: () => moverFila(-1),
+      a: () => { if (reqActivo && puedeDecidir(reqActivo)) handleDecision(reqActivo, 'aprobar'); },
+      r: () => { if (reqActivo && puedeDecidir(reqActivo)) handleDecision(reqActivo, 'rechazar'); },
+      e: () => { if (reqActivo && esMiembroProyecto && puedeAbrirEditor(reqActivo)) openEditModal(reqActivo); },
+      c: () => { if (reqActivo && puedeComentar) abrirComentarios(reqActivo); },
+      n: () => { if (esMiembroProyecto) openCreateModal(); },
+      escape: () => setFilaActiva(null),
+      '?': () => setVerAtajos(true),
+    },
+    { activo: vista === 'requerimientos' && !loading }
+  );
+
   if (urlLeida && !proyectoId) {
     return (
       <div className="p-8 text-center bg-surface rounded-ui border border-line">
@@ -1884,7 +1912,9 @@ export default function RequerimientosPage() {
     return (
     <li
               key={req.id}
-              className="px-5 py-5 hover:bg-sunken/60 transition-colors flex flex-col md:flex-row md:items-start justify-between gap-3 md:gap-4 first:rounded-t-ui last:rounded-b-ui"
+              data-fila-req={req.id}
+              aria-current={filaActiva === req.id ? 'true' : undefined}
+              className="px-5 py-5 scroll-my-24 hover:bg-sunken/60 aria-[current=true]:bg-brand-subtle/50 aria-[current=true]:shadow-[inset_3px_0_0_var(--brand-solid)] transition-colors flex flex-col md:flex-row md:items-start justify-between gap-3 md:gap-4 first:rounded-t-ui last:rounded-b-ui"
             >
               <div className="space-y-2 flex-1 min-w-0">
                 {/* Código y estado; las notas de estado van como texto, no como etiqueta */}
@@ -2335,6 +2365,15 @@ export default function RequerimientosPage() {
                 Quitar filtros
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setVerAtajos(true)}
+              className="ml-auto hidden pointer-fine:inline-flex items-center gap-1.5 text-ink-subtle hover:text-ink cursor-pointer"
+            >
+              <Keyboard size={15} aria-hidden />
+              Atajos
+              <kbd className="px-1.5 rounded border border-line-strong text-xs font-sans">?</kbd>
+            </button>
           </div>
         )}
         {!loading && leyendaLista.length > 0 && (
@@ -3007,6 +3046,35 @@ export default function RequerimientosPage() {
         onEditar={handleEditarComentario}
         onBorrar={handleBorrarComentario}
       />
+
+      <Modal open={verAtajos} onClose={() => setVerAtajos(false)} title="Atajos de teclado" size="md">
+        <ModalBody>
+          <dl className="divide-y divide-line text-sm">
+            {[
+              ['J / K', 'Bajar o subir por la lista'],
+              ['A', 'Aprobar el requerimiento marcado (si eres líder)'],
+              ['R', 'Devolverlo a su autor (si eres líder)'],
+              ['E', 'Editarlo'],
+              ['C', 'Ver sus comentarios'],
+              ['N', 'Nuevo requerimiento'],
+              ['/', 'Buscar'],
+              ['Esc', 'Quitar la marca'],
+            ].map(([tecla, que]) => (
+              <div key={tecla} className="flex items-center justify-between gap-4 py-2.5">
+                <dt className="text-ink-muted">{que}</dt>
+                <dd>
+                  <kbd className="inline-block min-w-8 px-2 py-0.5 rounded-ui border border-line-strong bg-sunken text-center text-xs font-semibold text-ink">
+                    {tecla}
+                  </kbd>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-4 text-sm text-ink-subtle">
+            Al revisar las propuestas de la IA una por una: S selecciona, X descarta y las flechas cambian de propuesta.
+          </p>
+        </ModalBody>
+      </Modal>
 
       {/* Modal Exportar especificación (KAN-28) */}
       <Modal
