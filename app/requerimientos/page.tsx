@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import toast from "react-hot-toast";
+import { accionConDeshacer } from '@/lib/deshacer';
 import { avisoColaToast } from "@/lib/aviso-cola";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -448,9 +449,12 @@ export default function RequerimientosPage() {
   }, [isModalOpen, detenerGeneracion]);
 
   // Cargar lista de requerimientos (más recientes primero)
+  // Requerimientos borrados que aún se pueden deshacer: no se pintan aunque se recargue la lista
+  const eliminandoRef = useRef(new Set<string>());
+
   const fetchRequerimientos = useCallback(async () => {
     if (!proyectoId) return;
-    const data = await getRequerimientos(proyectoId);
+    const data = (await getRequerimientos(proyectoId)).filter(r => !eliminandoRef.current.has(r.id));
     setRequerimientos(data.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')));
   }, [proyectoId]);
 
@@ -1359,39 +1363,37 @@ export default function RequerimientosPage() {
   };
 
   // Eliminar Requerimiento
-  const handleDeleteReq = async (req: Requerimiento) => {
+  const handleDeleteReq = (req: Requerimiento) => {
     // Borrar sigue igual que antes de KAN-18: lo que las reglas permiten es a
     // cualquier autenticado, así que el botón no se estrecha más de lo que ya estaba.
     if (!esMiembroProyecto || !uid) {
       toast.error('Solo los miembros del proyecto pueden eliminar requerimientos');
       return;
     }
-    const extracto = req.enunciado.length > 120 ? `${req.enunciado.slice(0, 120)}…` : req.enunciado;
-    const ok = await confirmar({
-      titulo: '¿Eliminar requerimiento?',
-      mensaje: (
-        <>
-          <span className="block font-mono text-xs bg-sunken border border-line rounded-ui p-2 mb-2 text-ink">
-            {extracto}
-          </span>
-          Esta acción no se puede deshacer.
-        </>
-      ),
-      textoConfirmar: 'Eliminar',
-      peligro: true
+    // Sin «¿Seguro?»: se quita de la lista al momento y se borra de verdad
+    // pasados unos segundos, con «Deshacer» a mano por si fue un error.
+    accionConDeshacer({
+      mensaje: `${codigoDe(req) ?? 'Requerimiento'} eliminado`,
+      alAplicar: () => {
+        eliminandoRef.current.add(req.id);
+        setRequerimientos(prev => prev.filter(r => r.id !== req.id));
+      },
+      alDeshacer: () => {
+        eliminandoRef.current.delete(req.id);
+        void fetchRequerimientos();
+      },
+      alConfirmar: async () => {
+        try {
+          const renumerados = await deleteRequerimiento(req.id, uid);
+          if (renumerados > 0) toast.success(`Se actualizaron ${renumerados} identificadores.`);
+        } catch (e) {
+          toast.error(mensajeError(e, 'No se pudo eliminar el requerimiento'));
+        } finally {
+          eliminandoRef.current.delete(req.id);
+          await fetchRequerimientos();
+        }
+      },
     });
-    if (!ok) return;
-    try {
-      const renumerados = await deleteRequerimiento(req.id, uid!);
-      toast.success(
-        renumerados > 0
-          ? `Requerimiento eliminado. Se actualizaron ${renumerados} identificadores.`
-          : 'Requerimiento eliminado'
-      );
-      await fetchRequerimientos();
-    } catch (e) {
-      toast.error(mensajeError(e, 'No se pudo eliminar el requerimiento'));
-    }
   };
 
   // Ver Logs del Requerimiento
@@ -1551,22 +1553,33 @@ export default function RequerimientosPage() {
     }
   };
 
-  const handleBorrarComentario = async (comentario: Comentario): Promise<boolean> => {
+  // Comentarios borrados que aún se pueden deshacer: se esconden del hilo mientras tanto
+  const [comentariosOcultos, setComentariosOcultos] = useState<ReadonlySet<string>>(new Set());
+  const mostrarComentario = (id: string, mostrar: boolean) =>
+    setComentariosOcultos(prev => {
+      const sig = new Set(prev);
+      if (mostrar) sig.delete(id);
+      else sig.add(id);
+      return sig;
+    });
+
+  const handleBorrarComentario = (comentario: Comentario) => {
     const req = reqComentarios;
-    if (!req || guardandoComentarioRef.current) return false;
-    guardandoComentarioRef.current = true;
-    setGuardandoComentario(true);
-    try {
-      await borrarComentario(req.id, comentario.id);
-      toast.success('Comentario borrado.');
-      return true;
-    } catch (e) {
-      toast.error(mensajeError(e, 'No se pudo borrar el comentario'));
-      return false;
-    } finally {
-      guardandoComentarioRef.current = false;
-      setGuardandoComentario(false);
-    }
+    if (!req) return;
+    accionConDeshacer({
+      mensaje: 'Comentario borrado',
+      alAplicar: () => mostrarComentario(comentario.id, false),
+      alDeshacer: () => mostrarComentario(comentario.id, true),
+      alConfirmar: async () => {
+        try {
+          await borrarComentario(req.id, comentario.id);
+        } catch (e) {
+          toast.error(mensajeError(e, 'No se pudo borrar el comentario'));
+        } finally {
+          mostrarComentario(comentario.id, true);
+        }
+      },
+    });
   };
 
   const handleRestoreVersion = async (log: LogRequerimiento) => {
@@ -2966,7 +2979,7 @@ export default function RequerimientosPage() {
         open={reqComentarios !== null}
         onClose={cerrarComentarios}
         requerimiento={reqComentarios}
-        comentarios={comentarios}
+        comentarios={comentariosOcultos.size ? comentarios.filter(c => !comentariosOcultos.has(c.id)) : comentarios}
         loading={loadingComentarios}
         error={comentariosError}
         uid={uid}

@@ -4,7 +4,6 @@ import React, { useId, useRef, useState } from 'react';
 import { Check, Loader2, MessageSquare, Pencil, Trash2 } from 'lucide-react';
 import { Comentario, Requerimiento } from '@/lib/database.types';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
-import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
 import { puedeBorrarComentario, puedeEditarComentario } from '@/lib/permisos';
 import {
@@ -77,7 +76,6 @@ export default function ModalComentarios({
   const ids = useId();
   const idTexto = `${ids}-texto`;
   const idEdicion = `${ids}-edicion`;
-  const confirmar = useConfirm();
   const [texto, setTexto] = useState('');
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [textoEdicion, setTextoEdicion] = useState('');
@@ -118,20 +116,6 @@ export default function ModalComentarios({
     } finally {
       enviandoRef.current = false;
     }
-  };
-
-  const confirmarBorrado = async (comentario: Comentario) => {
-    const quien =
-      comentario.autor?.nombre || comentario.autor?.correo || 'esta persona';
-    // Se confirma porque es irreversible, y con el nombre del autor del comentario
-    // para que no haya duda de cuál se va.
-    const ok = await confirmar({
-      titulo: '¿Borrar comentario?',
-      mensaje: `El comentario de ${quien} se eliminará del hilo. Esta acción no se puede deshacer.`,
-      textoConfirmar: 'Borrar',
-      peligro: true
-    });
-    if (ok) onBorrar(comentario);
   };
 
   const titulo = requerimiento && codigoDe(requerimiento)
@@ -290,7 +274,7 @@ export default function ModalComentarios({
                           {puedeBorrar && (
                             <button
                               type="button"
-                              onClick={() => void confirmarBorrado(comentario)}
+                              onClick={() => onBorrar(comentario)}
                               title="Borrar comentario"
                               aria-label="Borrar comentario"
                               className={btnIconoPeligro}
