@@ -362,6 +362,8 @@ export type EstadoInvitacionEquipo = 'pendiente' | 'aceptada' | 'rechazada';
 export interface InvitacionEquipo {
   id: UUID;
   id_equipo: UUID;
+  /** Cuando está presente, la invitación es únicamente para este proyecto (ajuste local) sin modificar la plantilla global. */
+  id_proyecto?: UUID | null;
   id_invitador: UUID;
   id_invitado: UUID;
   // Rol principal (el de líder, si lo hay); lo validan las reglas de Firestore

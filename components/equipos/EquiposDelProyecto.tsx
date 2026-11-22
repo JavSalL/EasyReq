@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   Save,
   Edit2,
-  Trash2,
   Crown,
   UserPlus,
   Check,
@@ -22,11 +21,15 @@ import {
   UserX,
   Globe,
   Layers,
+  Send,
+  Clock,
+  X,
 } from 'lucide-react';
 import type {
   Equipo,
   EstadoEquipoProyecto,
   EstadoMiembroProyecto,
+  InvitacionEquipo,
   MiembroProyectoEquipo,
   PerfilUsuario,
   Proyecto,
@@ -36,8 +39,6 @@ import type {
 import {
   getEquipos,
   createEquipoEnProyecto,
-  updateEquipo,
-  deleteEquipo,
   getAllUsers,
   getRoles,
   getVinculosEquiposDeProyecto,
@@ -51,6 +52,9 @@ import {
   agregarMiembroLocalProyectoEquipo,
   actualizarRolesMiembroLocal,
   cambiarEstadoMiembroLocal,
+  crearInvitacionLocalProyectoEquipo,
+  getInvitacionesLocalesEnviadas,
+  cancelarInvitacionEquipo,
   getEquiposLideradosPor,
   esRolLider,
 } from '@/lib/firestore-service';
@@ -97,75 +101,6 @@ interface EquipoEnProyectoDetallado extends Equipo {
 const nombreDe = (u: PerfilUsuario) => u.nombre || u.correo;
 const iniciales = (u: PerfilUsuario) => nombreDe(u).slice(0, 2).toUpperCase();
 
-interface FormularioDatosEquipoProps {
-  equipo: EquipoEnProyectoDetallado;
-  guardando: boolean;
-  onGuardar: (datos: { nombre: string; descripcion: string }) => void;
-  onEliminar: () => void;
-}
-
-function FormularioDatosEquipo({
-  equipo,
-  guardando,
-  onGuardar,
-  onEliminar,
-}: FormularioDatosEquipoProps) {
-  const [nombre, setNombre] = useState(equipo.nombre);
-  const [descripcion, setDescripcion] = useState(equipo.descripcion ?? '');
-  const hayCambios =
-    nombre.trim() !== equipo.nombre || descripcion.trim() !== (equipo.descripcion ?? '');
-
-  return (
-    <form
-      onSubmit={e => {
-        e.preventDefault();
-        onGuardar({ nombre, descripcion });
-      }}
-      noValidate
-      className={`${tarjeta} p-5`}
-    >
-      <h3 className="text-base font-semibold text-ink mb-4">Datos del equipo</h3>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <label htmlFor="equipo-nombre" className={etiqueta}>
-            Nombre <span className="text-danger">*</span>
-          </label>
-          <input
-            id="equipo-nombre"
-            type="text"
-            maxLength={80}
-            value={nombre}
-            onChange={e => setNombre(e.target.value)}
-            className={campo}
-          />
-        </div>
-        <div>
-          <label htmlFor="equipo-descripcion" className={etiqueta}>
-            Descripción <span className="text-danger">*</span>
-          </label>
-          <input
-            id="equipo-descripcion"
-            type="text"
-            value={descripcion}
-            onChange={e => setDescripcion(e.target.value)}
-            className={campo}
-          />
-        </div>
-      </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <button type="button" onClick={onEliminar} className={btnSecundario}>
-          <Trash2 size={16} />
-          Eliminar equipo global
-        </button>
-        <button type="submit" disabled={guardando || !hayCambios} className={btnPrimario}>
-          <Save size={16} />
-          {guardando ? 'Guardando...' : 'Guardar cambios'}
-        </button>
-      </div>
-    </form>
-  );
-}
-
 interface EquiposDelProyectoProps {
   proyecto: Proyecto;
   /** Se avisa con la cantidad de equipos activos cada vez que se cargan (para el contador de la pestaña). */
@@ -182,6 +117,8 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
   const [equipos, setEquipos] = useState<EquipoEnProyectoDetallado[]>([]);
   const [todosEquiposGlobales, setTodosEquiposGlobales] = useState<Equipo[]>([]);
   const [solicitudesEnviadas, setSolicitudesEnviadas] = useState<SolicitudProyectoEquipo[]>([]);
+  const [invitacionesLocales, setInvitacionesLocales] = useState<InvitacionEquipo[]>([]);
+  const [cancelandoInvId, setCancelandoInvId] = useState<string | null>(null);
   const [usuarios, setUsuarios] = useState<PerfilUsuario[]>([]);
   const [roles, setRoles] = useState<Rol[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,7 +162,6 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
 
   const [memberForm, setMemberForm] = useState({ id_usuario: '', id_roles: [] as string[] });
   const [guardandoMiembro, setGuardandoMiembro] = useState(false);
-  const [guardandoDatos, setGuardandoDatos] = useState(false);
 
   useEffect(() => {
     const leerUrl = () => {
@@ -246,6 +182,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
         miembrosLocalesProyecto,
         miembrosGlobales,
         solEnviadas,
+        invLocales,
       ] = await Promise.all([
         getAllUsers(),
         getRoles(),
@@ -254,12 +191,14 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
         getMiembrosProyectoEquipo(proyectoId, undefined, true),
         getMiembrosEquipo(),
         uid ? getSolicitudesProyectoEquipoEnviadas(uid, proyectoId) : Promise.resolve([]),
+        uid ? getInvitacionesLocalesEnviadas(uid, proyectoId) : Promise.resolve([]),
       ]);
 
       setUsuarios([...usersData].sort((a, b) => nombreDe(a).localeCompare(nombreDe(b))));
       setRoles(rolesData);
       setTodosEquiposGlobales(equiposGlobales);
       setSolicitudesEnviadas(solEnviadas);
+      setInvitacionesLocales(invLocales);
 
       // Agrupar miembros locales por equipo
       const localesPorEquipo = new Map<string, MiembroProyectoEquipo[]>();
@@ -501,61 +440,6 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
     }
   };
 
-  const guardarDatosEquipo = async (
-    team: EquipoEnProyectoDetallado,
-    datos: { nombre: string; descripcion: string }
-  ) => {
-    if (!esLiderEquipo(team.equipo_id)) {
-      toast.error('Solo el líder del equipo puede editar sus datos globales');
-      return;
-    }
-    if (!datos.nombre.trim() || !datos.descripcion.trim()) {
-      toast.error('El nombre y la descripción son obligatorios');
-      return;
-    }
-    setGuardandoDatos(true);
-    try {
-      await updateEquipo(team.equipo_id, {
-        nombre: datos.nombre.trim(),
-        descripcion: datos.descripcion.trim(),
-      });
-      toast.success('Equipo actualizado');
-      await recargar();
-    } catch (err) {
-      toast.error(mensajeError(err, 'No se pudo guardar el equipo'));
-    } finally {
-      setGuardandoDatos(false);
-    }
-  };
-
-  const handleDeleteTeam = async (team: EquipoEnProyectoDetallado) => {
-    if (!esLiderEquipo(team.equipo_id)) {
-      toast.error('Solo el líder del equipo puede eliminarlo');
-      return;
-    }
-    const ok = await confirmar({
-      titulo: '¿Eliminar equipo global?',
-      mensaje: (
-        <>
-          Se eliminará <strong className="text-ink">{team.nombre}</strong> de manera global con sus
-          miembros e invitaciones. Si solo deseas retirarlo de este proyecto, usa el botón{' '}
-          <strong className="text-ink">Desvincular del proyecto</strong>.
-        </>
-      ),
-      textoConfirmar: 'Eliminar globalmente',
-      peligro: true,
-    });
-    if (!ok) return;
-    try {
-      await deleteEquipo(team.equipo_id);
-      toast.success('Equipo eliminado');
-      if (equipoAbiertoId === team.equipo_id) cerrarEquipo();
-      await recargar();
-    } catch (err) {
-      toast.error(mensajeError(err, 'No se pudo eliminar el equipo'));
-    }
-  };
-
   const handleSincronizarPlantilla = async () => {
     if (!equipoAbierto || !uid) return;
     setSincronizandoPlantilla(true);
@@ -625,7 +509,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
           id_autor: uid,
         });
         toast.success('Roles locales actualizados para este proyecto');
-      } else {
+      } else if (miembroExistente || memberForm.id_usuario === uid) {
         await agregarMiembroLocalProyectoEquipo({
           id_proyecto: proyectoId,
           id_equipo: equipoAbierto.equipo_id,
@@ -636,16 +520,38 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
         toast.success(
           miembroExistente
             ? 'Integrante reactivado en este proyecto'
-            : 'Integrante agregado localmente a este proyecto'
+            : 'Te uniste localmente al equipo en este proyecto'
         );
+      } else {
+        await crearInvitacionLocalProyectoEquipo({
+          id_proyecto: proyectoId,
+          id_equipo: equipoAbierto.equipo_id,
+          id_invitador: uid,
+          id_invitado: memberForm.id_usuario,
+          id_roles: memberForm.id_roles,
+        });
+        toast.success('Invitación enviada. El usuario se unirá a este proyecto cuando la acepte.');
       }
       setMemberForm({ id_usuario: '', id_roles: [] });
       await recargar();
     } catch (err) {
       console.error('Error al guardar miembro local:', err);
-      toast.error(mensajeError(err, 'No se pudo guardar el integrante en el proyecto'));
+      toast.error(mensajeError(err, 'No se pudo procesar el integrante en el proyecto'));
     } finally {
       setGuardandoMiembro(false);
+    }
+  };
+
+  const handleCancelarInvitacionLocal = async (inv: InvitacionEquipo) => {
+    setCancelandoInvId(inv.id);
+    try {
+      await cancelarInvitacionEquipo(inv.id);
+      toast.success('Invitación local cancelada');
+      await recargar();
+    } catch (err) {
+      toast.error(mensajeError(err, 'No se pudo cancelar la invitación'));
+    } finally {
+      setCancelandoInvId(null);
     }
   };
 
@@ -824,6 +730,12 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
     const editandoMiembroActivo = Boolean(
       miembroSeleccionado && miembroSeleccionado.estado === 'activo'
     );
+    const autoAgregandose = Boolean(
+      !miembroSeleccionado && memberForm.id_usuario && memberForm.id_usuario === uid
+    );
+    const invitacionesPendientesEquipo = invitacionesLocales.filter(
+      inv => inv.id_equipo === equipoAbierto.equipo_id
+    );
 
     const miembrosVisibles = mostrarMiembrosInactivos
       ? equipoAbierto.miembros
@@ -857,11 +769,9 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                   : 'Desvinculado del proyecto'}
               </span>
             </div>
-            {!puedeEditarGlobal && (
-              <p className="text-base text-ink-muted mt-1 max-w-prose">
-                {equipoAbierto.descripcion || 'Sin descripción.'}
-              </p>
-            )}
+            <p className="text-base text-ink-muted mt-1 max-w-prose">
+              {equipoAbierto.descripcion || 'Sin descripción.'}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -910,19 +820,6 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
           </div>
         </div>
 
-        {/* Datos globales del equipo (solo líder global) */}
-        {puedeEditarGlobal && (
-          <FormularioDatosEquipo
-            key={`${equipoAbierto.equipo_id}|${equipoAbierto.nombre}|${
-              equipoAbierto.descripcion ?? ''
-            }`}
-            equipo={equipoAbierto}
-            guardando={guardandoDatos}
-            onGuardar={datos => guardarDatosEquipo(equipoAbierto, datos)}
-            onEliminar={() => handleDeleteTeam(equipoAbierto)}
-          />
-        )}
-
         {/* Formulario para agregar miembro local o editar roles locales */}
         {!puedeGestionarLocal ? (
           <div className="bg-warning-subtle border border-warning-line rounded-ui p-4 flex items-center gap-2.5 text-sm text-warning">
@@ -940,12 +837,14 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                 ? 'Editar roles locales en este proyecto'
                 : miembroSeleccionado
                   ? 'Reactivar integrante en este proyecto'
-                  : 'Agregar miembro local al equipo en este proyecto'}
+                  : autoAgregandose
+                    ? 'Unirte localmente al equipo en este proyecto'
+                    : 'Invitar miembro local al equipo en este proyecto'}
             </h3>
             <p className="text-sm text-ink-subtle mb-4">
               {editandoMiembroActivo
                 ? 'Los cambios de rol aplican únicamente dentro de este proyecto, sin modificar la plantilla global del equipo.'
-                : 'Agrega un integrante exclusivo para este proyecto o selecciona uno existente para ajustar sus roles locales.'}
+                : 'Envía una invitación para que la persona se una al equipo únicamente en este proyecto (sin modificar la plantilla global), o selecciona un integrante existente para ajustar sus roles locales.'}
             </p>
             <form onSubmit={handleGuardarMiembroLocal} noValidate className="space-y-4">
               <BuscadorPersonas
@@ -1006,17 +905,69 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                   </button>
                 )}
                 <button type="submit" disabled={guardandoMiembro} className={btnPrimario}>
-                  <Save size={16} />
+                  {editandoMiembroActivo || miembroSeleccionado || autoAgregandose ? (
+                    <Save size={16} />
+                  ) : (
+                    <Send size={16} />
+                  )}
                   {guardandoMiembro
-                    ? 'Guardando...'
+                    ? editandoMiembroActivo || miembroSeleccionado || autoAgregandose
+                      ? 'Guardando...'
+                      : 'Enviando...'
                     : editandoMiembroActivo
                       ? 'Guardar roles locales'
                       : miembroSeleccionado
                         ? 'Reactivar integrante'
-                        : 'Agregar al proyecto'}
+                        : autoAgregandose
+                          ? 'Unirme al proyecto'
+                          : 'Enviar invitación'}
                 </button>
               </div>
             </form>
+
+            {invitacionesPendientesEquipo.length > 0 && (
+              <div className="mt-5 pt-4 border-t border-line space-y-2">
+                <p className="text-xs font-semibold text-ink-muted flex items-center gap-1.5">
+                  <Clock size={13} aria-hidden />
+                  Invitaciones locales pendientes ({invitacionesPendientesEquipo.length})
+                </p>
+                <ul className="divide-y divide-line rounded-ui border border-line overflow-hidden bg-sunken">
+                  {invitacionesPendientesEquipo.map(inv => {
+                    const invitado = usuarios.find(u => u.id === inv.id_invitado);
+                    const idsRolesInv = inv.id_roles ?? (inv.id_rol ? [inv.id_rol] : []);
+                    const nombresRoles = roles
+                      .filter(r => idsRolesInv.includes(r.id))
+                      .map(r => r.nombre_rol);
+                    return (
+                      <li
+                        key={inv.id}
+                        className="px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <span className="font-semibold text-ink">
+                            {invitado ? nombreDe(invitado) : inv.id_invitado}
+                          </span>
+                          {nombresRoles.length > 0 && (
+                            <span className="text-ink-subtle ml-2">
+                              ({nombresRoles.join(', ')})
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={cancelandoInvId === inv.id}
+                          onClick={() => handleCancelarInvitacionLocal(inv)}
+                          className={btnSecundarioCompacto}
+                        >
+                          <X size={12} />
+                          {cancelandoInvId === inv.id ? 'Cancelando...' : 'Cancelar'}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
