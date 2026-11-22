@@ -12,7 +12,7 @@ const enlaces = [
   // son una subpantalla de Proyectos)
   { nombre: 'Proyectos', href: '/', rutas: ['/', '/requerimientos'] },
   { nombre: 'Equipos', href: '/equipos-global/', rutas: ['/equipos-global'] },
-  { nombre: 'Patrones y Modelos', href: '/patrones/', rutas: ['/patrones'] },
+  { nombre: 'Patrones y modelos', href: '/patrones/', rutas: ['/patrones'] },
   { nombre: 'Ayuda', href: '/ayuda/', rutas: ['/ayuda'] },
 ];
 

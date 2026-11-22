@@ -309,7 +309,7 @@ export default function LoginPage() {
                       : 'text-ink-subtle hover:text-ink'
                   }`}
                 >
-                  Iniciar Sesión
+                  Iniciar sesión
                 </button>
                 <button
                   type="button"
@@ -329,7 +329,7 @@ export default function LoginPage() {
                 {!isLogin && (
                   <div>
                     <label htmlFor="login-nombre" className="block text-sm font-medium text-ink mb-2">
-                      Nombre Completo
+                      Nombre completo
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-subtle">
@@ -364,10 +364,10 @@ export default function LoginPage() {
                   <SelectorPais id="login-pais" valor={pais} onChange={setPais} obligatorio={false} />
                 )}
 
-                {/* Campo Correo Electrónico */}
+                {/* Campo Correo electrónico */}
                 <div>
                   <label htmlFor="login-correo" className="block text-sm font-medium text-ink mb-2">
-                    Correo Electrónico
+                    Correo electrónico
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-subtle">
@@ -530,7 +530,7 @@ export default function LoginPage() {
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
-                      <span>{isLogin ? 'Acceder al Sistema' : 'Crear Cuenta'}</span>
+                      <span>{isLogin ? 'Iniciar sesión' : 'Crear cuenta'}</span>
                       <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
                     </>
                   )}

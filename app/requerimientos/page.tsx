@@ -6,10 +6,10 @@ import { avisoColaToast } from "@/lib/aviso-cola";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ChevronLeft, Plus, Edit2, Trash2, Search, User, Clock, Save,
+  ChevronLeft, Plus, Edit2, Trash2, Search, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, Copy, ListPlus, ListOrdered,
   Check, XCircle, Send, Download, Folder, X, Layers, MessageSquare, Map as MapaIcono,
-  Handshake, GraduationCap, CircleHelp
+  CircleHelp, SlidersHorizontal
 } from 'lucide-react';
 import {
   generateSingleRequirement,
@@ -67,6 +67,7 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
+import MenuAcciones, { type AccionMenu } from '@/components/ui/MenuAcciones';
 import ModalHistorialLogs from '@/components/requerimientos/ModalHistorialLogs';
 import ModalComentarios from '@/components/requerimientos/ModalComentarios';
 import EquiposDelProyecto from '@/components/equipos/EquiposDelProyecto';
@@ -261,6 +262,7 @@ export default function RequerimientosPage() {
   // Filtros
   // Se recuerdan por proyecto mientras dure la sesión del navegador
   const [filtros, setFiltros] = useEstadoSesion(proyectoId ? `easyreq:req:v2:${proyectoId}` : null, FILTROS_INICIALES);
+  const [panelFiltrosAbierto, setPanelFiltrosAbierto] = useState(false);
   const { q: searchTerm, estado: filterEstado, tipo: filterTipo, modelo: filterModelo, orden } = filtros;
   const setSearchTerm = (q: string) => setFiltros(f => ({ ...f, q }));
   const setFilterEstado = (estado: string) => setFiltros(f => ({ ...f, estado }));
@@ -1680,6 +1682,20 @@ export default function RequerimientosPage() {
   const modulosProyecto = [...new Set(requerimientos.map(r => r.modulo?.trim()).filter((m): m is string => !!m))]
     .sort((a, b) => a.localeCompare(b));
   const limpiarFiltros = () => setFiltros(f => ({ ...FILTROS_INICIALES, orden: f.orden, agrupar: f.agrupar }));
+  // Filtros del panel que no están en su valor por defecto, como chips que se quitan con un clic.
+  // El estado no entra: ya se ve en el control segmentado.
+  const filtrosActivos: { clave: string; etiqueta: string; quitar: () => void }[] = [
+    ...(termino !== '' ? [{ clave: 'q', etiqueta: `“${searchTerm.trim()}”`, quitar: () => setSearchTerm('') }] : []),
+    ...(filterTipo !== 'todos'
+      ? [{ clave: 'tipo', etiqueta: tiposReq.find(t => String(t.tipo_req) === String(filterTipo))?.nombre ?? 'Tipo', quitar: () => setFilterTipo('todos') }]
+      : []),
+    ...(filterModelo !== 'todos'
+      ? [{ clave: 'modelo', etiqueta: modelos.find(m => String(m.id) === String(filterModelo))?.nombre ?? 'Modelo', quitar: () => setFilterModelo('todos') }]
+      : []),
+    ...(filterModulo !== 'todos'
+      ? [{ clave: 'modulo', etiqueta: filterModulo === '__sin__' ? 'Sin módulo' : filterModulo, quitar: () => setFilterModulo('todos') }]
+      : []),
+  ];
   // Coincidencia con todo salvo el estado: sirve para contar cuántos hay en cada pestaña de estado
   const numeroBuscado = numeroDesdeBusqueda(termino);
   const coincideSinEstado = (r: Requerimiento) =>
@@ -1821,29 +1837,55 @@ export default function RequerimientosPage() {
   const selectFiltro = campo;
 
   // Una fila de la lista de requerimientos
-  const filaRequerimiento = (req: Requerimiento) => (
+  const filaRequerimiento = (req: Requerimiento) => {
+    const codigo = codigoDe(req);
+    // Clasificación en una sola línea de texto separada por "·" (sin cajitas):
+    // el color se reserva para el estado, que es lo que se busca de un vistazo.
+    const clasificacion = [
+      req.modulo,
+      req.tipo_requerimiento?.nombre,
+      req.prioridad ? (req.prioridad === 'Wont' ? "Won't" : req.prioridad) : null,
+      req.modelo?.nombre,
+      req.modalidad?.nombre_modalidad,
+    ].filter((v): v is string => !!v);
+
+    const accionesMenu: AccionMenu[] = [
+      { etiqueta: 'Copiar enunciado', icono: <Copy size={16} />, onSelect: () => copiarEnunciado(req) },
+    ];
+    if (codigo) {
+      accionesMenu.push({ etiqueta: `Copiar ${codigo}`, icono: <Copy size={16} />, onSelect: () => copiarCodigo(codigo) });
+    }
+    if (esMiembroProyecto) {
+      accionesMenu.push({ etiqueta: 'Ver historial de cambios', icono: <History size={16} />, onSelect: () => handleViewLogs(req) });
+      if (req.numero != null) {
+        accionesMenu.push({ etiqueta: `Insertar uno después de ${codigo}`, icono: <ListPlus size={16} />, onSelect: () => openInsertModal(req) });
+      }
+      accionesMenu.push({ etiqueta: 'Eliminar', icono: <Trash2 size={16} />, onSelect: () => handleDeleteReq(req), peligro: true });
+    }
+
+    return (
     <li
               key={req.id}
-              className="px-5 py-5 hover:bg-sunken/60 transition-colors flex flex-col md:flex-row md:items-start justify-between gap-4"
+              className="px-5 py-5 hover:bg-sunken/60 transition-colors flex flex-col md:flex-row md:items-start justify-between gap-3 md:gap-4 first:rounded-t-ui last:rounded-b-ui"
             >
-              <div className="space-y-2.5 flex-1 min-w-0">
-                {/* Badges de clasificación */}
-                <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                  {codigoDe(req) && (
+              <div className="space-y-2 flex-1 min-w-0">
+                {/* Código y estado; las notas de estado van como texto, no como etiqueta */}
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm">
+                  {codigo && (
                     <button
                       type="button"
-                      onClick={() => copiarCodigo(codigoDe(req)!)}
+                      onClick={() => copiarCodigo(codigo)}
                       title="Copiar identificador"
-                      aria-label={`Copiar identificador ${codigoDe(req)}`}
-                      className="px-2 py-0.5 rounded-ui border border-line-strong bg-surface font-mono font-semibold text-ink hover:bg-sunken transition-colors cursor-pointer"
+                      aria-label={`Copiar identificador ${codigo}`}
+                      className="font-semibold tabular-nums text-ink rounded-ui hover:underline underline-offset-2 cursor-pointer"
                     >
-                      {codigoDe(req)}
+                      {codigo}
                     </button>
                   )}
                   {/* El estado ya no es un desplegable (KAN-18). Antes cualquiera con permiso de
                     edición podía elegir "Aprobado" sobre su propio requerimiento.
                     Ahora es una etiqueta y lo mueve el líder o el autor. */}
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-medium border ${getBadgeColorEstado(req.estado?.nombre_estado)}`}>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${getBadgeColorEstado(req.estado?.nombre_estado)}`}>
                     <span className="w-1.5 h-1.5 rounded-full bg-current" />
                     {req.estado?.nombre_estado || 'Sin estado'}
                   </span>
@@ -1853,72 +1895,37 @@ export default function RequerimientosPage() {
                       dice a qué equipo pertenecían. */}
                   {!req.id_equipo && (
                     <span
-                      className="px-2 py-0.5 rounded-ui bg-sunken text-ink-muted font-medium border border-line"
+                      className="text-ink-subtle"
                       title="Creado antes de la aprobación por líder: no tiene equipo, así que nadie puede aprobarlo. Se puede editar como cualquier otro requerimiento del proyecto."
                     >
                       Sin equipo
                     </span>
                   )}
                   {estaPendienteDeAprobacion(req.estado?.nombre_estado) && (
-                    <span className="px-2 py-0.5 rounded-ui bg-sunken text-ink-muted font-medium border border-line">
+                    <span className="text-ink-subtle">
                       Esperando al líder de {nombreEquipoDe(req.id_equipo) ?? 'su equipo'}
                     </span>
                   )}
                   {estaRechazado(req.estado?.nombre_estado) && (
-                    <span className="px-2 py-0.5 rounded-ui bg-sunken text-ink-muted font-medium border border-line">
+                    <span className="text-ink-subtle">
                       {req.id_autor === uid ? 'Corrígelo y vuelve a enviarlo' : 'Corregido por su autor, pendiente de reenvío'}
                     </span>
                   )}
+                </div>
 
-                  {req.modulo && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-ui bg-surface text-ink-muted font-medium border border-line" title="Módulo">
-                      <Layers size={11} aria-hidden />
-                      {req.modulo}
-                    </span>
-                  )}
-                  {req.tipo_requerimiento && (
-                    <span className="px-2 py-0.5 rounded-ui bg-sunken text-ink-muted font-medium border border-line">
-                      {req.tipo_requerimiento.nombre}
-                    </span>
-                  )}
-                  {req.prioridad && (
-                    <span className="px-2 py-0.5 rounded-ui bg-surface text-ink-muted font-medium border border-line" title="Prioridad MoSCoW">
-                      {req.prioridad === 'Wont' ? "Won't" : req.prioridad}
-                    </span>
-                  )}
-                  {req.modelo && (
-                    <span className="px-2 py-0.5 rounded-ui bg-brand-subtle text-brand-text font-medium border border-brand-line">
-                      {req.modelo.nombre}
-                    </span>
-                  )}
-                  {req.modalidad && (
-                    <span className="px-2 py-0.5 rounded-ui bg-warning-subtle text-warning font-medium border border-warning-line">
-                      {req.modalidad.nombre_modalidad}
-                    </span>
-                  )}
-                  {req.elementos_sintaxis?.length ? (
-                    <BotonDesgloseSintaxis
-                      abierto={desglosesListaAbiertos.has(req.id)}
-                      onAlternar={() => alternarDesgloseLista(req.id)}
-                      cantidad={req.elementos_sintaxis.length}
+                {/* El enunciado es lo que se viene a leer: va en la fuente del texto y a tamaño de lectura */}
+                <p className="text-ink text-base leading-relaxed whitespace-pre-wrap break-words max-w-[75ch]">
+                  {mostrarSintaxisLista && req.elementos_sintaxis?.length ? (
+                    <TextoConSintaxis
+                      texto={req.enunciado}
+                      elementos={req.elementos_sintaxis}
+                      mapaTonos={mapaTonosLista}
+                      claveEnfocada={focoSintaxisLista.claveActiva}
                     />
-                  ) : null}
-                </div>
-
-                <div className="border-l-2 border-line-strong pl-3 py-0.5">
-                  <p className="text-ink font-mono text-sm leading-relaxed whitespace-pre-wrap break-words">
-                    {mostrarSintaxisLista && req.elementos_sintaxis?.length ? (
-                      <TextoConSintaxis
-                        texto={req.enunciado}
-                        elementos={req.elementos_sintaxis}
-                        mapaTonos={mapaTonosLista}
-                        claveEnfocada={focoSintaxisLista.claveActiva}
-                      />
-                    ) : (
-                      req.enunciado
-                    )}
-                  </p>
-                </div>
+                  ) : (
+                    req.enunciado
+                  )}
+                </p>
 
                 {desglosesListaAbiertos.has(req.id) && req.elementos_sintaxis?.length ? (
                   <DesgloseSintaxis
@@ -1929,53 +1936,81 @@ export default function RequerimientosPage() {
                   />
                 ) : null}
 
-                <div className="flex flex-wrap items-center gap-3 text-xs text-ink-subtle pt-1">
-                  {req.autor && (
-                    <span className="flex items-center gap-1">
-                      <User size={12} />
-                      Autor: <strong className="text-ink-muted font-medium">{req.autor.nombre || req.autor.correo}</strong>
-                    </span>
-                  )}
-                  {req.aprobador && (
-                    <span className="flex items-center gap-1">
-                      <CheckCheck size={12} className="text-success" />
-                      Aprobado por: <strong className="text-ink-muted font-medium">{req.aprobador.nombre || req.aprobador.correo}</strong>
-                    </span>
-                  )}
-                  {req.created_at && (
-                    <time dateTime={req.created_at} title={fechaCompleta(req.created_at)} className="flex items-center gap-1">
-                      <Clock size={12} />
-                      {fechaRelativa(req.created_at)}
-                    </time>
-                  )}
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-subtle">
+                  {[
+                    clasificacion.length > 0 ? (
+                      <span key="clasificacion" className="text-ink-muted">{clasificacion.join(' · ')}</span>
+                    ) : null,
+                    req.autor ? <span key="autor">Por {req.autor.nombre || req.autor.correo}</span> : null,
+                    req.aprobador ? (
+                      <span key="aprobador" className="inline-flex items-center gap-1">
+                        <CheckCheck size={14} className="text-success" aria-hidden />
+                        Aprobó {req.aprobador.nombre || req.aprobador.correo}
+                      </span>
+                    ) : null,
+                    req.created_at ? (
+                      <time key="fecha" dateTime={req.created_at} title={fechaCompleta(req.created_at)}>
+                        {fechaRelativa(req.created_at)}
+                      </time>
+                    ) : null,
+                  ]
+                    .filter(Boolean)
+                    // El "·" va al final de cada dato para que, al partirse la línea en móvil,
+                    // ninguna línea empiece con un separador
+                    .map((nodo, i, lista) => (
+                      <span key={i} className="inline-flex items-center">
+                        {nodo}
+                        {i < lista.length - 1 && <span aria-hidden className="ml-2">·</span>}
+                      </span>
+                    ))}
+                  {req.elementos_sintaxis?.length ? (
+                    <BotonDesgloseSintaxis
+                      abierto={desglosesListaAbiertos.has(req.id)}
+                      onAlternar={() => alternarDesgloseLista(req.id)}
+                      cantidad={req.elementos_sintaxis.length}
+                    />
+                  ) : null}
                 </div>
               </div>
 
-              {/* Acciones */}
-              <div className="flex flex-wrap items-center gap-1 border-t md:border-t-0 pt-3 md:pt-0 border-line">
-                <button
-                  onClick={() => copiarEnunciado(req)}
-                  title="Copiar enunciado"
-                  aria-label="Copiar enunciado"
-                  className={btnIcono}
-                >
-                  <Copy size={16} />
-                </button>
-                {esMiembroProyecto && (
+              {/* Acciones: a la vista solo las del flujo (decidir, reenviar, editar, comentar);
+                  el resto en el menú "⋯" */}
+              <div className="flex flex-wrap items-center gap-1 -ml-2 md:ml-0">
+                {puedeDecidir(req) && (
+                  <>
+                    <button
+                      onClick={() => handleDecision(req, 'aprobar')}
+                      title="Aprobar requerimiento"
+                      aria-label={`Aprobar requerimiento ${codigo ?? ''}`.trim()}
+                      className={`${btnIcono} text-success`}
+                    >
+                      <Check size={16} />
+                    </button>
+                    <button
+                      onClick={() => handleDecision(req, 'rechazar')}
+                      title="Devolver requerimiento"
+                      aria-label={`Devolver requerimiento ${codigo ?? ''}`.trim()}
+                      className={`${btnIcono} text-danger`}
+                    >
+                      <XCircle size={16} />
+                    </button>
+                  </>
+                )}
+                {puedeReenviarEste(req) && (
                   <button
-                    onClick={() => handleViewLogs(req)}
-                    title="Ver historial de cambios"
-                    aria-label="Ver historial de cambios"
+                    onClick={() => handleReenviar(req)}
+                    title="Reenviar a aprobación"
+                    aria-label={`Reenviar a aprobación el requerimiento ${codigo ?? ''}`.trim()}
                     className={btnIcono}
                   >
-                    <History size={16} />
+                    <Send size={16} />
                   </button>
                 )}
                 {puedeComentar && (
                   <button
                     onClick={() => abrirComentarios(req)}
                     title={`Ver comentarios (${req.total_comentarios ?? 0})`}
-                    aria-label={`Ver comentarios de ${codigoDe(req) ?? ''}`.trim()}
+                    aria-label={`Ver comentarios de ${codigo ?? ''} (${req.total_comentarios ?? 0})`.trim()}
                     className={`${btnIcono} relative`}
                   >
                     <MessageSquare size={16} />
@@ -1992,71 +2027,25 @@ export default function RequerimientosPage() {
                     )}
                   </button>
                 )}
-                {puedeDecidir(req) && (
-                  <>
-                    <button
-                      onClick={() => handleDecision(req, 'aprobar')}
-                      title="Aprobar requerimiento"
-                      aria-label={`Aprobar requerimiento ${codigoDe(req) ?? ''}`.trim()}
-                      className={`${btnIcono} text-success`}
-                    >
-                      <Check size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleDecision(req, 'rechazar')}
-                      title="Devolver requerimiento"
-                      aria-label={`Devolver requerimiento ${codigoDe(req) ?? ''}`.trim()}
-                      className={`${btnIcono} text-danger`}
-                    >
-                      <XCircle size={16} />
-                    </button>
-                  </>
-                )}
-                {puedeReenviarEste(req) && (
+                {esMiembroProyecto && puedeAbrirEditor(req) && (
                   <button
-                    onClick={() => handleReenviar(req)}
-                    title="Reenviar a aprobación"
-                    aria-label={`Reenviar a aprobación el requerimiento ${codigoDe(req) ?? ''}`.trim()}
+                    onClick={() => openEditModal(req)}
+                    title="Editar requerimiento"
+                    aria-label={`Editar requerimiento ${codigo ?? ''}`.trim()}
                     className={btnIcono}
                   >
-                    <Send size={16} />
+                    <Edit2 size={16} />
                   </button>
                 )}
-                {esMiembroProyecto && (
-                  <>
-                    {req.numero != null && (
-                      <button
-                        onClick={() => openInsertModal(req)}
-                        title={`Insertar un requerimiento después de ${codigoDe(req)}`}
-                        aria-label={`Insertar un requerimiento después de ${codigoDe(req)}`}
-                        className={btnIcono}
-                      >
-                        <ListPlus size={16} />
-                      </button>
-                    )}
-                    {puedeAbrirEditor(req) && (
-                      <button
-                        onClick={() => openEditModal(req)}
-                        title="Editar requerimiento"
-                        aria-label="Editar requerimiento"
-                        className={btnIcono}
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleDeleteReq(req)}
-                      title="Eliminar requerimiento"
-                      aria-label="Eliminar requerimiento"
-                      className={btnIconoPeligro}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </>
-                )}
+                <MenuAcciones
+                  acciones={accionesMenu}
+                  label={`Más acciones de ${codigo ?? 'este requerimiento'}`}
+                />
               </div>
             </li>
-  );
+    );
+  };
+
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -2080,33 +2069,29 @@ export default function RequerimientosPage() {
                   {proyecto.estado_proyecto.nombre_estado}
                 </span>
               )}
-              {proyecto.tipos_sistema?.nombre && (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-sunken text-ink-muted border border-line">
-                  {proyecto.tipos_sistema.nombre}
-                </span>
-              )}
-              {proyecto.naturaleza_proyecto?.nombre_naturaleza && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sunken text-ink-muted border border-line">
-                  <GraduationCap size={12} aria-hidden />
-                  {proyecto.naturaleza_proyecto.nombre_naturaleza}
-                </span>
-              )}
-              {(proyecto.colaboraciones ?? []).map(c => (
-                <span
-                  key={c.id}
-                  title={`Campaña de colaboración: ${c.nombre}`}
-                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-subtle text-brand-text border border-brand-line"
-                >
-                  <Handshake size={12} aria-hidden />
-                  {c.nombre}
-                </span>
-              ))}
             </span>
           ) : (
             <span className="block h-8 w-64 max-w-full bg-sunken-strong rounded-ui animate-pulse" />
           )
         }
-        description={proyecto ? proyecto.descripcion || 'Sin descripción' : undefined}
+        description={
+          proyecto ? (
+            <>
+              {(() => {
+                // Tipo, naturaleza y campañas como una línea de texto: el color queda solo para el estado
+                const meta = [
+                  proyecto.tipos_sistema?.nombre,
+                  proyecto.naturaleza_proyecto?.nombre_naturaleza,
+                  ...(proyecto.colaboraciones ?? []).map(c => `Campaña: ${c.nombre}`),
+                ].filter((v): v is string => !!v);
+                return meta.length > 0 ? (
+                  <span className="block text-sm text-ink-subtle mb-1">{meta.join(' · ')}</span>
+                ) : null;
+              })()}
+              <span className="block">{proyecto.descripcion || 'Sin descripción'}</span>
+            </>
+          ) : undefined
+        }
         actions={
           vista === 'requerimientos' && (
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
@@ -2178,39 +2163,42 @@ export default function RequerimientosPage() {
         </div>
       )}
 
-      {/* Navegación por estado: un clic muestra solo los requerimientos de ese estado */}
+      {/* Estados: control segmentado (no pestañas), para no confundirse con
+          las secciones del proyecto que van justo arriba */}
       {!loading && requerimientos.length > 0 && (
-        <div
-          role="group"
-          aria-label="Filtrar por estado"
-          className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line custom-scrollbar"
-        >
-          {pestanasEstado.map((p) => {
-            const activa = filterEstado === p.id;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setFilterEstado(p.id)}
-                aria-pressed={activa}
-                className={`shrink-0 px-4 min-h-11 text-sm whitespace-nowrap border-b-2 transition-colors cursor-pointer ${
-                  activa
-                    ? 'border-ink text-ink font-semibold'
-                    : 'border-transparent text-ink-muted font-medium hover:text-ink'
-                }`}
-              >
-                {p.nombre}
-                <span className="ml-2 text-xs tabular-nums text-ink-subtle">{conteoEstado(p.id)}</span>
-              </button>
-            );
-          })}
+        <div className="overflow-x-auto custom-scrollbar -mx-1 px-1">
+          <div
+            role="group"
+            aria-label="Filtrar por estado"
+            className="inline-flex gap-1 p-1 rounded-ui bg-sunken"
+          >
+            {pestanasEstado.map((p) => {
+              const activa = filterEstado === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setFilterEstado(p.id)}
+                  aria-pressed={activa}
+                  className={`shrink-0 px-3 min-h-9 pointer-coarse:min-h-11 rounded-ui text-sm whitespace-nowrap transition-colors cursor-pointer ${
+                    activa
+                      ? 'bg-surface text-ink font-semibold'
+                      : 'text-ink-muted font-medium hover:text-ink'
+                  }`}
+                >
+                  {p.nombre}
+                  <span className="ml-1.5 text-xs tabular-nums text-ink-subtle">{conteoEstado(p.id)}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* Barra de Búsqueda y Filtros */}
-      <div className="space-y-2">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-          <div className="relative">
+      {/* Búsqueda y filtros: una sola fila; el detalle se abre bajo demanda */}
+      <div className="space-y-3">
+        <div className="flex gap-2">
+          <div className="relative flex-1 min-w-0">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
               <Search size={14} />
             </div>
@@ -2223,79 +2211,103 @@ export default function RequerimientosPage() {
               className={buscador}
             />
           </div>
-
-          <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} aria-label="Filtrar por tipo" className={selectFiltro}>
-            <option value="todos">Todos los tipos</option>
-            {tiposReq.map((t) => (
-              <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
-            ))}
-          </select>
-
-          <select value={filterModelo} onChange={(e) => setFilterModelo(e.target.value)} aria-label="Filtrar por modelo" className={selectFiltro}>
-            <option value="todos">Todos los modelos</option>
-            {modelos.map((m) => (
-              <option key={m.id} value={m.id}>{m.nombre}</option>
-            ))}
-          </select>
-
-          {(modulosProyecto.length > 0 || filterModulo !== 'todos') && (
-            <select value={filterModulo} onChange={(e) => setFilterModulo(e.target.value)} aria-label="Filtrar por módulo" className={selectFiltro}>
-              <option value="todos">Todos los módulos</option>
-              {modulosProyecto.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-              <option value="__sin__">Sin módulo</option>
-            </select>
-          )}
+          <button
+            type="button"
+            onClick={() => setPanelFiltrosAbierto((a) => !a)}
+            aria-expanded={panelFiltrosAbierto}
+            aria-controls="panel-filtros-req"
+            className={`${btnSecundario} shrink-0`}
+          >
+            <SlidersHorizontal size={16} aria-hidden />
+            <span className="hidden sm:inline">Filtros</span>
+            {filtrosActivos.length > 0 && (
+              <span className="min-w-5 h-5 px-1.5 rounded-full bg-brand-solid text-on-solid text-xs font-semibold leading-5 tabular-nums">
+                {filtrosActivos.length}
+              </span>
+            )}
+          </button>
         </div>
+
+        {panelFiltrosAbierto && (
+          <div id="panel-filtros-req" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-3 rounded-ui bg-sunken">
+            <label className="text-sm text-ink-muted space-y-1">
+              <span className="block font-medium">Tipo</span>
+              <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} className={selectFiltro}>
+                <option value="todos">Todos los tipos</option>
+                {tiposReq.map((t) => (
+                  <option key={t.tipo_req} value={t.tipo_req}>{t.nombre}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm text-ink-muted space-y-1">
+              <span className="block font-medium">Modelo</span>
+              <select value={filterModelo} onChange={(e) => setFilterModelo(e.target.value)} className={selectFiltro}>
+                <option value="todos">Todos los modelos</option>
+                {modelos.map((m) => (
+                  <option key={m.id} value={m.id}>{m.nombre}</option>
+                ))}
+              </select>
+            </label>
+            {(modulosProyecto.length > 0 || filterModulo !== 'todos') && (
+              <label className="text-sm text-ink-muted space-y-1">
+                <span className="block font-medium">Módulo</span>
+                <select value={filterModulo} onChange={(e) => setFilterModulo(e.target.value)} className={selectFiltro}>
+                  <option value="todos">Todos los módulos</option>
+                  {modulosProyecto.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                  <option value="__sin__">Sin módulo</option>
+                </select>
+              </label>
+            )}
+            <label className="text-sm text-ink-muted space-y-1">
+              <span className="block font-medium">Agrupar</span>
+              <select value={agrupar} onChange={(e) => setAgrupar(e.target.value as Agrupar)} className={selectFiltro}>
+                <option value="ninguno">Sin agrupar</option>
+                <option value="tipo">Por tipo</option>
+                <option value="modelo">Por modelo</option>
+              </select>
+            </label>
+            <label className="text-sm text-ink-muted space-y-1">
+              <span className="block font-medium">Ordenar</span>
+              <select value={orden} onChange={(e) => setOrden(e.target.value as Orden)} className={selectFiltro}>
+                <option value="numero">Por número</option>
+                <option value="recientes">Más recientes</option>
+                <option value="antiguos">Más antiguos</option>
+                <option value="estado">Por estado</option>
+              </select>
+            </label>
+          </div>
+        )}
+
         {!loading && requerimientos.length > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 text-sm text-ink-subtle px-1 py-3 sm:py-0 mt-2 bg-sunken sm:bg-transparent rounded-ui border border-line sm:border-none min-w-0">
-            <span aria-live="polite" className="font-medium px-2 sm:px-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-ink-subtle">
+            <span aria-live="polite" className="font-medium">
               {hayFiltros
-                ? `Mostrando ${filteredRequerimientos.length} de ${requerimientos.length} requerimientos`
+                ? `Mostrando ${filteredRequerimientos.length} de ${requerimientos.length}`
                 : `${requerimientos.length} ${requerimientos.length === 1 ? 'requerimiento' : 'requerimientos'}`}
             </span>
-            
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 px-2 sm:px-0 min-w-0">
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 min-w-0">
-                <label className="flex items-center gap-2">
-                  <span>Agrupar</span>
-                  <select
-                    value={agrupar}
-                    onChange={(e) => setAgrupar(e.target.value as Agrupar)}
-                    aria-label="Agrupar requerimientos"
-                    className="bg-transparent text-ink font-semibold text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
-                  >
-                    <option value="ninguno">Sin agrupar</option>
-                    <option value="tipo">Por tipo</option>
-                    <option value="modelo">Por modelo</option>
-                  </select>
-                </label>
-                <label className="flex items-center gap-2">
-                  <span>Ordenar</span>
-                  <select
-                    value={orden}
-                    onChange={(e) => setOrden(e.target.value as Orden)}
-                    aria-label="Ordenar requerimientos"
-                    className="bg-transparent text-ink font-semibold text-sm cursor-pointer rounded-ui focus:outline-none focus-visible:outline-2"
-                  >
-                    <option value="numero">Por número</option>
-                    <option value="recientes">Más recientes</option>
-                    <option value="antiguos">Más antiguos</option>
-                    <option value="estado">Por estado</option>
-                  </select>
-                </label>
-              </div>
-              
-              {hayFiltros && (
-                <button 
-                  onClick={limpiarFiltros} 
-                  className="font-semibold text-brand-text hover:underline cursor-pointer text-left sm:text-right pt-2 sm:pt-0 border-t border-surface-border/50 sm:border-none w-full sm:w-auto mt-1 sm:mt-0"
-                >
-                  Quitar filtros
-                </button>
-              )}
-            </div>
+            {filtrosActivos.map((f) => (
+              <button
+                key={f.clave}
+                type="button"
+                onClick={f.quitar}
+                aria-label={`Quitar filtro ${f.etiqueta}`}
+                className="inline-flex items-center gap-1 pl-2.5 pr-1.5 min-h-7 pointer-coarse:min-h-10 rounded-full bg-sunken text-ink text-xs font-medium hover:bg-sunken-strong transition-colors cursor-pointer"
+              >
+                {f.etiqueta}
+                <X size={12} aria-hidden />
+              </button>
+            ))}
+            {hayFiltros && (
+              <button
+                type="button"
+                onClick={limpiarFiltros}
+                className="font-semibold text-brand-text hover:underline cursor-pointer"
+              >
+                Quitar filtros
+              </button>
+            )}
           </div>
         )}
         {!loading && leyendaLista.length > 0 && (
@@ -2334,14 +2346,14 @@ export default function RequerimientosPage() {
             {!hayFiltros && esMiembroProyecto && (
               <button onClick={openCreateModal} className={btnPrimario}>
                 <Plus size={15} />
-                Redactar Requerimiento
+                Nuevo requerimiento
               </button>
             )}
           </div>
         </div>
       ) : (
         agrupar === 'ninguno' ? (
-          <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+          <ul className="bg-surface border border-line rounded-ui divide-y divide-line">
             {requerimientosOrdenados.map(filaRequerimiento)}
           </ul>
         ) : (
@@ -2355,7 +2367,7 @@ export default function RequerimientosPage() {
                   {grupo.nombre}
                   <span className="ml-2 text-sm font-normal text-ink-subtle">{grupo.items.length}</span>
                 </h2>
-                <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+                <ul className="bg-surface border border-line rounded-ui divide-y divide-line">
                   {grupo.items.map(filaRequerimiento)}
                 </ul>
               </section>
@@ -2367,17 +2379,17 @@ export default function RequerimientosPage() {
       </>
       )}
 
-      {/* Modal Redactar / Editar Requerimiento */}
+      {/* Modal Redactar / Editar requerimiento */}
       <Modal
         open={isModalOpen}
         onClose={intentarCerrar}
         cerrarConFondo={!hayCambios}
         title={
           editingReq ? (
-            'Editar Requerimiento'
+            'Editar requerimiento'
           ) : (
             <span className="inline-flex items-center gap-1.5">
-              {insertarDespuesDe ? `Nuevo requerimiento después de ${insertarDespuesDe.codigo}` : 'Nuevo Requerimiento'}
+              {insertarDespuesDe ? `Nuevo requerimiento después de ${insertarDespuesDe.codigo}` : 'Nuevo requerimiento'}
               <button
                 type="button"
                 onClick={tutorial.abrir}
@@ -2431,7 +2443,7 @@ export default function RequerimientosPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="req-modelo" className={etiqueta}>Modelo de Requisitos</label>
+                  <label htmlFor="req-modelo" className={etiqueta}>Modelo de requisitos</label>
                   <select
                     id="req-modelo"
                     value={formData.id_modelo}

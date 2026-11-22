@@ -208,8 +208,8 @@ export default function PatronesPage() {
       <PageHeader
         title={
           <span className="inline-flex items-center gap-1.5">
-            Patrones y Modelos
-            <BotonAyudaTour onClick={tutorial.abrir} label="Ver la guía de Patrones y Modelos" />
+            Patrones y modelos
+            <BotonAyudaTour onClick={tutorial.abrir} label="Ver la guía de Patrones y modelos" />
           </span>
         }
         description="Catálogo de sintaxis estructuradas para redactar requerimientos (EARS, Sistemas Embebidos, Lenguaje Natural)."
@@ -286,7 +286,7 @@ export default function PatronesPage() {
             {!termino && puedeEditar && (
               <button onClick={() => openModal()} className={btnPrimario}>
                 <Plus size={15} />
-                Nuevo Patrón
+                Nuevo patrón
               </button>
             )}
           </div>
@@ -361,12 +361,12 @@ export default function PatronesPage() {
         </div>
       )}
 
-      {/* Modal Crear / Editar Patrón */}
+      {/* Modal Crear / Editar patrón */}
       <Modal
         open={isModalOpen}
         onClose={intentarCerrar}
         cerrarConFondo={!hayCambios}
-        title={editingPattern ? 'Editar Patrón' : 'Nuevo Patrón'}
+        title={editingPattern ? 'Editar patrón' : 'Nuevo patrón'}
         size="lg"
       >
         <form onSubmit={handleSave} noValidate className="flex flex-col flex-1 min-h-0">
@@ -423,7 +423,7 @@ export default function PatronesPage() {
             </button>
             <button type="submit" disabled={saving} className={btnPrimario}>
               <Save size={14} />
-              {saving ? 'Guardando...' : editingPattern ? 'Guardar cambios' : 'Crear Patrón'}
+              {saving ? 'Guardando...' : editingPattern ? 'Guardar cambios' : 'Crear patrón'}
             </button>
           </ModalFooter>
         </form>

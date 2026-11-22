@@ -30,7 +30,7 @@ interface ProfileModalProps {
 export default function ProfileModal({
   open,
   onClose,
-  title = 'Configuración del Perfil',
+  title = 'Configuración del perfil',
   description = 'Actualiza tu información personal y especialidades profesionales.',
   obligatorio = false
 }: ProfileModalProps) {
@@ -128,7 +128,7 @@ export default function ProfileModal({
           {/* Correo (solo lectura) */}
           <div>
             <label htmlFor="perfil-correo" className={etiqueta}>
-              {obligatorio ? 'Cuenta' : 'Correo Electrónico'}
+              {obligatorio ? 'Cuenta' : 'Correo electrónico'}
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-subtle">
@@ -148,7 +148,7 @@ export default function ProfileModal({
           {/* Nombre */}
           <div>
             <label htmlFor="perfil-nombre" className={etiqueta}>
-              Nombre Completo <span className="text-danger">*</span>
+              Nombre completo <span className="text-danger">*</span>
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-ink-subtle">

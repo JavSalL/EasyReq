@@ -13,14 +13,8 @@ import {
   Layers,
   Users,
   Save,
-  Cpu,
-  Smartphone,
-  Globe,
-  Laptop,
-  Server,
   Lock,
   Handshake,
-  GraduationCap,
   Check,
 } from 'lucide-react';
 import type {
@@ -129,7 +123,7 @@ export default function Home() {
 
   const puedeEditarProyecto = (proyectoId: string) => proyectosPermitidos.includes(proyectoId);
 
-  // Modal Crear / Editar Proyecto
+  // Modal Crear / Editar proyecto
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isColabModalOpen, setIsColabModalOpen] = useState(false);
 
@@ -430,18 +424,6 @@ export default function Home() {
 
   const abrirProyecto = (id: string) => router.push(`/requerimientos/?id=${id}`);
 
-  const getTipoSistemaIcon = (nombre?: string) => {
-    const n = (nombre || '').toLowerCase();
-    if (n.includes('móvil') || n.includes('movil'))
-      return <Smartphone size={14} className="text-brand-text" />;
-    if (n.includes('embebido') || n.includes('iot'))
-      return <Cpu size={14} className="text-warning" />;
-    if (n.includes('escritorio')) return <Laptop size={14} className="text-success" />;
-    if (n.includes('api') || n.includes('microservicio'))
-      return <Server size={14} className="text-danger" />;
-    return <Globe size={14} className="text-brand-text" />;
-  };
-
   const termino = searchTerm.trim().toLowerCase();
   const hayFiltrosActivos = Boolean(termino || filtroEstado || filtroNaturaleza || filtroColaboracion);
 
@@ -671,43 +653,23 @@ export default function Home() {
                                   {proj.estado_proyecto.nombre_estado}
                                 </span>
                               )}
-                              {proj.tipos_sistema && (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-sunken border border-line text-xs font-medium text-ink-muted">
-                                  {getTipoSistemaIcon(proj.tipos_sistema.nombre)}
-                                  {proj.tipos_sistema.nombre}
-                                </span>
-                              )}
-                              {proj.naturaleza_proyecto && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sunken border border-line text-xs font-medium text-ink-muted">
-                                  <GraduationCap size={12} aria-hidden />
-                                  {proj.naturaleza_proyecto.nombre_naturaleza}
-                                </span>
-                              )}
-                              {colabs.map(c => (
-                                <span
-                                  key={c.id}
-                                  title={`Campaña de colaboración: ${c.nombre}`}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-subtle text-brand-text border border-brand-line text-xs font-medium"
-                                >
-                                  <Handshake size={12} aria-hidden />
-                                  {c.nombre}
-                                </span>
-                              ))}
-                              {proj.en_colaboracion && colabs.length === 0 && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-subtle text-brand-text border border-brand-line text-xs font-medium">
-                                  <Handshake size={12} aria-hidden />
-                                  En colaboración
-                                </span>
-                              )}
-                              {uid !== null && proj.id_creador === uid && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sunken text-ink-subtle text-xs font-medium border border-line">
-                                  Creado por ti
-                                </span>
-                              )}
                             </div>
                             <p className="text-sm text-ink-muted mt-1 line-clamp-1">
                               {proj.descripcion || 'Sin descripción.'}
                             </p>
+                            {/* Clasificación como texto: el color queda solo para el estado */}
+                            {(() => {
+                              const meta = [
+                                proj.tipos_sistema?.nombre,
+                                proj.naturaleza_proyecto?.nombre_naturaleza,
+                                ...colabs.map(c => `Campaña: ${c.nombre}`),
+                                proj.en_colaboracion && colabs.length === 0 ? 'En colaboración' : null,
+                                uid !== null && proj.id_creador === uid ? 'Creado por ti' : null,
+                              ].filter((v): v is string => !!v);
+                              return meta.length > 0 ? (
+                                <p className="text-sm text-ink-subtle mt-1">{meta.join(' · ')}</p>
+                              ) : null;
+                            })()}
                           </div>
 
                           <div className="hidden sm:flex items-center gap-6 text-sm text-ink-muted tabular-nums shrink-0">
@@ -772,19 +734,19 @@ export default function Home() {
         </div>
       )}
 
-      {/* Modal Crear / Editar Proyecto */}
+      {/* Modal Crear / Editar proyecto */}
       <Modal
         open={isModalOpen}
         onClose={intentarCerrar}
         cerrarConFondo={!hayCambios}
-        title={editingProject ? 'Editar Proyecto' : 'Nuevo Proyecto'}
+        title={editingProject ? 'Editar proyecto' : 'Nuevo proyecto'}
         size="xl"
       >
         <form onSubmit={handleSave} noValidate className="flex flex-col flex-1 min-h-0">
           <ModalBody className="space-y-5">
             <div>
               <label htmlFor="proyecto-nombre" className={etiqueta}>
-                Nombre del Proyecto <span className="text-danger">*</span>
+                Nombre del proyecto <span className="text-danger">*</span>
               </label>
               <input
                 id="proyecto-nombre"
@@ -800,7 +762,7 @@ export default function Home() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label htmlFor="proyecto-tipo" className={etiqueta}>
-                  Tipo de Sistema
+                  Tipo de sistema
                 </label>
                 <select
                   id="proyecto-tipo"
@@ -819,7 +781,7 @@ export default function Home() {
 
               <div>
                 <label htmlFor="proyecto-estado" className={etiqueta}>
-                  Estado del Proyecto
+                  Estado del proyecto
                 </label>
                 <select
                   id="proyecto-estado"
@@ -1003,7 +965,7 @@ export default function Home() {
               ) : (
                 <Save size={14} />
               )}
-              {saving ? 'Guardando...' : editingProject ? 'Guardar cambios' : 'Crear Proyecto'}
+              {saving ? 'Guardando...' : editingProject ? 'Guardar cambios' : 'Crear proyecto'}
             </button>
           </ModalFooter>
         </form>

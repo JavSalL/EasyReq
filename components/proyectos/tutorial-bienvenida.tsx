@@ -12,7 +12,7 @@ export const PASOS_TUTORIAL_BIENVENIDA: PasoTour[] = [
   {
     objetivo: 'tour-nav-principal',
     titulo: 'Bienvenido a EasyReq',
-    texto: 'Desde aquí navegas entre tus Proyectos, Equipos globales, Patrones y Modelos de especificación y la sección de Ayuda.',
+    texto: 'Desde aquí navegas entre tus Proyectos, Equipos globales, Patrones y modelos de especificación y la sección de Ayuda.',
   },
   {
     objetivo: 'tour-nuevo-proyecto',
