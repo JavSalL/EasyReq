@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import toast from "react-hot-toast";
 import { accionConDeshacer } from '@/lib/deshacer';
+import { elementosSegunPatron, patronReconocible } from '@/lib/sintaxis-en-vivo';
 import { avisoColaToast } from "@/lib/aviso-cola";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -551,6 +552,18 @@ export default function RequerimientosPage() {
   // Filtrar patrones según el modelo seleccionado
   const patronesFiltrados = patrones.filter(p => p.id_modelo === formData.id_modelo);
   const patronSeleccionado = patrones.find(p => p.patron_id === formData.id_patron_seleccionado);
+  // Partes del enunciado reconocidas al escribir, comparando con la plantilla (sin IA).
+  // Si el texto no sigue la estructura se usan las que marcó la IA al generar.
+  const elementosEnVivo = useMemo(
+    () => elementosSegunPatron(formData.enunciado, patronSeleccionado?.promt),
+    [formData.enunciado, patronSeleccionado?.promt]
+  );
+  const elementosEnunciado = elementosEnVivo ?? (elementosSintaxisForm?.length ? elementosSintaxisForm : null);
+  const enunciadoFueraDePatron =
+    !elementosEnunciado &&
+    patronReconocible(patronSeleccionado?.promt) &&
+    formData.enunciado.trim().length >= 25 &&
+    formData.enunciado.trim() !== patronSeleccionado?.promt.trim();
   const nombreUsuario = (id: string | null | undefined) => {
     const u = usuarios.find(x => x.id === id);
     return u ? (u.nombre || u.correo) : null;
@@ -902,7 +915,7 @@ export default function RequerimientosPage() {
     // mandaran aquí, `datosDeAlta` los sobrescribiría igualmente y el historial
     // describiría un cambio que no ocurrió.
     const elementosVigentes = formData.id_patron_seleccionado
-      ? filtrarElementosPresentes(formData.enunciado.trim(), elementosSintaxisForm)
+      ? filtrarElementosPresentes(formData.enunciado.trim(), elementosEnunciado)
       : null;
 
     const datos = {
@@ -2731,11 +2744,17 @@ export default function RequerimientosPage() {
                   Escríbelo a mano o edita lo que generó la IA. Es el único campo obligatorio.
                 </PistaCampo>
                 <p className="text-xs text-ink-subtle mt-1">Ctrl + Enter para guardar.</p>
-                {elementosSintaxisForm && elementosSintaxisForm.length > 0 && formData.enunciado.trim() && (
+                {enunciadoFueraDePatron && (
+                  <p className="mt-1.5 text-sm text-ink-muted" role="status">
+                    Aún no reconozco la estructura del patrón en este texto. Revisa que tenga sus palabras fijas
+                    (por ejemplo «Cuando…, el sistema deberá…») o usa la plantilla.
+                  </p>
+                )}
+                {elementosEnunciado && formData.enunciado.trim() && (
                   <div id="vista-previa-sintaxis-form">
                     <VistaPreviaSintaxis
                       texto={formData.enunciado}
-                      elementos={elementosSintaxisForm}
+                      elementos={elementosEnunciado}
                       patron={patronSeleccionado?.promt}
                     />
                   </div>
