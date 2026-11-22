@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, Check, ChevronDown, ChevronUp, CircleDashed, Copy, Loader2, Map as MapaIcono, Plus, Search, SlidersHorizontal, Square, X, XCircle
+  AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDashed, Copy, Loader2, Map as MapaIcono, Plus, Search, SlidersHorizontal, Square, X, XCircle
 } from 'lucide-react';
 import {
   AIError,
@@ -617,8 +617,9 @@ export type GeneracionIterativa = ReturnType<typeof useGeneracionIterativa>;
 // ==========================================
 
 /** Textarea que crece con su contenido: el enunciado se lee entero, sin scroll interno. */
-function TextareaAutoajustable({ value, onChange, disabled, autoFocus, onBlur, onKeyDown, ...rest }: {
+function TextareaAutoajustable({ value, onChange, disabled, autoFocus, onBlur, onKeyDown, grande, ...rest }: {
   value: string;
+  grande?: boolean;
   onChange: (valor: string) => void;
   disabled?: boolean;
   autoFocus?: boolean;
@@ -665,7 +666,7 @@ function TextareaAutoajustable({ value, onChange, disabled, autoFocus, onBlur, o
       onBlur={onBlur}
       onKeyDown={onKeyDown}
       {...rest}
-      className="block w-full px-2 py-1 bg-transparent border border-transparent hover:border-line focus:border-brand-text rounded-ui text-sm text-ink leading-relaxed resize-none overflow-hidden focus:outline-none"
+      className={`block w-full px-2 py-1 bg-transparent border border-transparent hover:border-line focus:border-brand-text rounded-ui ${grande ? 'text-lg' : 'text-sm'} text-ink leading-relaxed resize-none overflow-hidden focus:outline-none`}
     />
   );
 }
@@ -682,10 +683,12 @@ function CampoEnunciadoPropuesta({
   elementos,
   mapaTonos,
   claveEnfocada,
+  grande = false,
 }: {
   value: string;
   onChange: (valor: string) => void;
   disabled?: boolean;
+  grande?: boolean;
   mostrarSintaxis: boolean;
   elementos?: ReadonlyArray<ElementoSintactico> | null;
   mapaTonos: ReadonlyMap<string, TonoSintaxis>;
@@ -716,6 +719,7 @@ function CampoEnunciadoPropuesta({
           }
         }}
         onChange={onChange}
+        grande={grande}
         aria-label="Texto de la propuesta"
       />
     );
@@ -729,7 +733,7 @@ function CampoEnunciadoPropuesta({
       tabIndex={disabled ? -1 : 0}
       onClick={() => { if (!disabled) setEditando(true); }}
       onFocus={() => { if (!disabled) setEditando(true); }}
-      className={`block w-full px-2 py-1 bg-transparent border border-transparent rounded-ui text-sm text-ink leading-relaxed whitespace-pre-wrap break-words ${
+      className={`block w-full px-2 py-1 bg-transparent border border-transparent rounded-ui ${grande ? 'text-lg' : 'text-sm'} text-ink leading-relaxed whitespace-pre-wrap break-words ${
         disabled ? '' : 'hover:border-line cursor-text'
       }`}
     >
@@ -879,6 +883,10 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
   const [mostrarSintaxis, setMostrarSintaxis] = useEstadoSesion('easyreq:sintaxis:visible', true);
   const focoSintaxis = useFocoSintaxis();
   const [desglosesAbiertos, setDesglosesAbiertos] = useState<Set<string>>(() => new Set());
+  // Revisión una por una: una propuesta a la vez, con seleccionar o descartar y paso a la siguiente
+  const [modoRevision, setModoRevision] = useEstadoSesion<'una' | 'lista'>('easyreq:gen:modo-revision', 'una');
+  const [indiceActual, setIndiceActual] = useState(0);
+  const [revisadas, setRevisadas] = useState<ReadonlySet<string>>(() => new Set());
 
   const alternarDesglose = useCallback((clave: string) => {
     setDesglosesAbiertos(prev => {
@@ -1027,6 +1035,88 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
         : resultado.estado === 'error' && resultado.motivo
           ? hayPropuestas ? `${resultado.motivo} Se conserva lo generado hasta el fallo.` : resultado.motivo
           : null;
+
+  /** Número, tipo, prioridad, avisos, desglose y duplicado de una propuesta (lista y vista una por una). */
+  const detallesPropuesta = (p: PropuestaRevisable) => (
+    <>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs font-semibold text-ink-subtle tabular-nums" title="Número de la propuesta en la lista">
+          n.º {numeroDe.get(p.clave)}
+        </span>
+        <span className={`${etiquetaChip} bg-sunken text-ink-muted border-line`}>{nombreTipo(p)}</span>
+        {p.prioridad && (
+          <span className={`${etiquetaChip} bg-surface text-ink-muted border-line`} title="Prioridad MoSCoW propuesta">
+            {p.prioridad === 'Wont' ? "Won't" : p.prioridad}
+          </span>
+        )}
+        {p.origen === 'inferido' && (
+          <span className={`${etiquetaChip} bg-brand-subtle text-brand-text border-brand-line`} title="La IA lo dedujo: el pedido y el contexto no lo dicen">
+            Inferido
+          </span>
+        )}
+        {p.cifras_sin_respaldo?.length ? (
+          <span className={`${etiquetaChip} bg-danger-subtle text-danger border-danger-line`} title="Estas cifras no aparecen en el pedido ni en el contexto">
+            <AlertTriangle size={10} aria-hidden />
+            Revisa: {p.cifras_sin_respaldo.join(', ')}
+          </span>
+        ) : null}
+        {p.elementos_sintaxis?.length ? (
+          <BotonDesgloseSintaxis
+            abierto={desglosesAbiertos.has(p.clave)}
+            onAlternar={() => alternarDesglose(p.clave)}
+            cantidad={p.elementos_sintaxis.length}
+          />
+        ) : null}
+      </div>
+      {desglosesAbiertos.has(p.clave) && p.elementos_sintaxis?.length ? (
+        <DesgloseSintaxis
+          texto={p.texto}
+          elementos={p.elementos_sintaxis}
+          patron={patronUsado}
+          mapaTonos={mapaTonosSintaxis}
+        />
+      ) : null}
+      {p.posibleDuplicado && (() => {
+        // Las marcas guardadas antes de KAN-49 no traen la clave: se busca la otra por su texto.
+        const marca = p.posibleDuplicado;
+        const otra = marca.clave
+          ? porClave.get(marca.clave)
+          : areaDeEtiqueta(marca.etiqueta)
+            ? propuestas?.find(x => x.clave !== p.clave && (x.name === marca.texto || x.texto === marca.texto))
+            : undefined;
+        return (
+          <MarcaPosibleDuplicado
+            marca={p.posibleDuplicado}
+            propia={p}
+            otra={otra}
+            numeroOtra={otra ? numeroDe.get(otra.clave) : undefined}
+            bloqueado={bloqueado}
+            onAlternar={(clave, elegida) => actualizar(clave, { elegida })}
+            onVerOtra={verPropuesta}
+          />
+        );
+      })()}
+      {justificacionUtil(p.justificacion) && <p className="text-xs text-ink-subtle leading-snug">{p.justificacion}</p>}
+    </>
+  );
+
+  // Vista una por una: recorre las propuestas visibles (respeta filtros y búsqueda)
+  const indiceSeguro = Math.min(indiceActual, Math.max(0, visibles.length - 1));
+  const actual = visibles[indiceSeguro];
+  const revisadasVisibles = visibles.filter(p => revisadas.has(p.clave)).length;
+  const terminoRevision = visibles.length > 0 && revisadasVisibles === visibles.length;
+
+  /** Decide la propuesta actual y pasa a la siguiente que falte revisar. */
+  const decidir = (p: PropuestaRevisable, elegida: boolean) => {
+    if (bloqueado || (elegida && !esSeleccionable(p))) return;
+    actualizar(p.clave, { elegida });
+    const nuevas = new Set(revisadas).add(p.clave);
+    setRevisadas(nuevas);
+    const desde = visibles.indexOf(p);
+    const orden = [...visibles.slice(desde + 1), ...visibles.slice(0, desde)];
+    const siguiente = orden.find(x => !nuevas.has(x.clave));
+    if (siguiente) setIndiceActual(visibles.indexOf(siguiente));
+  };
 
   return (
     <div ref={contenedorRef} className="space-y-4 scroll-mt-4">
@@ -1388,8 +1478,128 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
             foco={focoSintaxis}
           />
 
+          <div role="group" aria-label="Forma de revisar" className="inline-flex bg-sunken rounded-ui p-1 gap-1">
+            {([['una', 'Una por una'], ['lista', 'Lista']] as const).map(([valor, nombre]) => (
+              <button
+                key={valor}
+                type="button"
+                onClick={() => setModoRevision(valor)}
+                aria-pressed={modoRevision === valor}
+                className={`px-3 min-h-8 rounded-[calc(var(--radius-ui)-2px)] text-sm font-medium transition-colors cursor-pointer ${
+                  modoRevision === valor ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                {nombre}
+              </button>
+            ))}
+          </div>
+
           {grupos.length === 0 ? (
             <p className="text-sm text-ink-subtle py-6 text-center border border-line rounded-ui">Ninguna propuesta coincide con los filtros.</p>
+          ) : modoRevision === 'una' && actual ? (
+            <div className="rounded-ui border border-line bg-surface" aria-label="Revisión una por una">
+              <div className="px-4 pt-3 space-y-2">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-ink-muted min-w-0 truncate">
+                    <span className="font-semibold text-ink tabular-nums">{indiceSeguro + 1} de {visibles.length}</span>
+                    <span className="text-ink-subtle"> · {actual.area}</span>
+                  </span>
+                  <span className="shrink-0 text-ink-subtle tabular-nums">
+                    {revisadasVisibles} revisadas
+                  </span>
+                </div>
+                <div className="h-1 rounded-full bg-sunken overflow-hidden" aria-hidden>
+                  <div
+                    className="h-full bg-brand-solid transition-[width] duration-300"
+                    style={{ width: `${(revisadasVisibles / visibles.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {terminoRevision ? (
+                <div className="px-4 py-8 text-center space-y-2" role="status">
+                  <p className="text-base font-semibold text-ink">Revisaste todas las propuestas</p>
+                  <p className="text-sm text-ink-muted">
+                    {elegidas} {elegidas === 1 ? 'quedó seleccionada' : 'quedaron seleccionadas'}. Regístralas con el botón de abajo,
+                    o vuelve a cualquiera con las flechas para cambiar tu decisión.
+                  </p>
+                </div>
+              ) : null}
+
+              <div key={actual.clave} className={`px-4 py-4 space-y-3 animate-in fade-in ${terminoRevision ? 'border-t border-line' : ''}`}>
+                <div className="flex items-center gap-2 text-sm">
+                  {revisadas.has(actual.clave) ? (
+                    actual.elegida ? (
+                      <span className="inline-flex items-center gap-1 font-medium text-success"><Check size={14} aria-hidden />Seleccionada</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-medium text-ink-subtle"><X size={14} aria-hidden />Descartada</span>
+                    )
+                  ) : (
+                    <span className="text-ink-subtle">Sin revisar</span>
+                  )}
+                </div>
+                <CampoEnunciadoPropuesta
+                  value={actual.texto}
+                  disabled={bloqueado}
+                  grande
+                  onChange={texto => actualizar(actual.clave, { texto })}
+                  mostrarSintaxis={mostrarSintaxis}
+                  elementos={actual.elementos_sintaxis}
+                  mapaTonos={mapaTonosSintaxis}
+                  claveEnfocada={mostrarSintaxis ? focoSintaxis.claveActiva : null}
+                />
+                <p className="text-xs text-ink-subtle">Haz clic en el texto para editarlo antes de decidir.</p>
+                {!esSeleccionable(actual) && (
+                  <p className="text-xs text-warning">Escribe el enunciado para poder seleccionarlo.</p>
+                )}
+                <div className="space-y-1">{detallesPropuesta(actual)}</div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-line">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setIndiceActual(Math.max(0, indiceSeguro - 1))}
+                    disabled={indiceSeguro === 0}
+                    aria-label="Propuesta anterior"
+                    title="Anterior"
+                    className={btnSecundarioCompacto}
+                  >
+                    <ChevronLeft size={16} aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIndiceActual(Math.min(visibles.length - 1, indiceSeguro + 1))}
+                    disabled={indiceSeguro >= visibles.length - 1}
+                    aria-label="Propuesta siguiente"
+                    title="Siguiente"
+                    className={btnSecundarioCompacto}
+                  >
+                    <ChevronRight size={16} aria-hidden />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => decidir(actual, false)}
+                    disabled={bloqueado}
+                    className={btnSecundario}
+                  >
+                    <X size={16} aria-hidden />
+                    Descartar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => decidir(actual, true)}
+                    disabled={bloqueado || !esSeleccionable(actual)}
+                    className={btnPrimario}
+                  >
+                    <Check size={16} aria-hidden />
+                    Seleccionar
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="sm:max-h-112 sm:overflow-y-auto rounded-ui border border-line custom-scrollbar">
               {grupos.map(([area, lista]) => {
@@ -1464,64 +1674,7 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                                   Escribe el enunciado para poder seleccionarlo.
                                 </p>
                               )}
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="text-xs font-semibold text-ink-subtle tabular-nums" title="Número de la propuesta en la lista">
-                                  n.º {numeroDe.get(p.clave)}
-                                </span>
-                                <span className={`${etiquetaChip} bg-sunken text-ink-muted border-line`}>{nombreTipo(p)}</span>
-                                {p.prioridad && (
-                                  <span className={`${etiquetaChip} bg-surface text-ink-muted border-line`} title="Prioridad MoSCoW propuesta">
-                                    {p.prioridad === 'Wont' ? "Won't" : p.prioridad}
-                                  </span>
-                                )}
-                                {p.origen === 'inferido' && (
-                                  <span className={`${etiquetaChip} bg-brand-subtle text-brand-text border-brand-line`} title="La IA lo dedujo: el pedido y el contexto no lo dicen">
-                                    Inferido
-                                  </span>
-                                )}
-                                {p.cifras_sin_respaldo?.length ? (
-                                  <span className={`${etiquetaChip} bg-danger-subtle text-danger border-danger-line`} title="Estas cifras no aparecen en el pedido ni en el contexto">
-                                    <AlertTriangle size={10} aria-hidden />
-                                    Revisa: {p.cifras_sin_respaldo.join(', ')}
-                                  </span>
-                                ) : null}
-                                {p.elementos_sintaxis?.length ? (
-                                  <BotonDesgloseSintaxis
-                                    abierto={desglosesAbiertos.has(p.clave)}
-                                    onAlternar={() => alternarDesglose(p.clave)}
-                                    cantidad={p.elementos_sintaxis.length}
-                                  />
-                                ) : null}
-                              </div>
-                              {desglosesAbiertos.has(p.clave) && p.elementos_sintaxis?.length ? (
-                                <DesgloseSintaxis
-                                  texto={p.texto}
-                                  elementos={p.elementos_sintaxis}
-                                  patron={patronUsado}
-                                  mapaTonos={mapaTonosSintaxis}
-                                />
-                              ) : null}
-                              {p.posibleDuplicado && (() => {
-                                // Las marcas guardadas antes de KAN-49 no traen la clave: se busca la otra por su texto.
-                                const marca = p.posibleDuplicado;
-                                const otra = marca.clave
-                                  ? porClave.get(marca.clave)
-                                  : areaDeEtiqueta(marca.etiqueta)
-                                    ? propuestas?.find(x => x.clave !== p.clave && (x.name === marca.texto || x.texto === marca.texto))
-                                    : undefined;
-                                return (
-                                  <MarcaPosibleDuplicado
-                                    marca={p.posibleDuplicado}
-                                    propia={p}
-                                    otra={otra}
-                                    numeroOtra={otra ? numeroDe.get(otra.clave) : undefined}
-                                    bloqueado={bloqueado}
-                                    onAlternar={(clave, elegida) => actualizar(clave, { elegida })}
-                                    onVerOtra={verPropuesta}
-                                  />
-                                );
-                              })()}
-                              {justificacionUtil(p.justificacion) && <p className="text-xs text-ink-subtle leading-snug">{p.justificacion}</p>}
+                              {detallesPropuesta(p)}
                             </div>
                           </li>
                         );
