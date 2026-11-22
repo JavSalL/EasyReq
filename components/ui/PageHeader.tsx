@@ -15,7 +15,7 @@ export default function PageHeader({ title, description, actions, back }: PageHe
       {back && <div className="mb-4">{back}</div>}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-semibold text-ink">{title}</h1>
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-ink">{title}</h1>
           {description && <p className="text-base text-ink-muted mt-2 max-w-prose">{description}</p>}
         </div>
         {actions && <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 shrink-0 w-full sm:w-auto mt-4 sm:mt-0">{actions}</div>}

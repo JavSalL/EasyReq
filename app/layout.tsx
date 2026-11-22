@@ -1,13 +1,22 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { IBM_Plex_Sans } from "next/font/google";
 import { Toaster } from 'react-hot-toast';
 import AppLayoutClient from "@/components/AppLayoutClient";
 import PwaRegistrar from "@/components/PwaRegistrar";
 import { SCRIPT_TEMA } from "@/lib/theme";
 
+// Una sola familia con números tabulares (REQ-001) y buen soporte de acentos.
+const plex = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex",
+  display: "swap",
+});
+
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: light)", color: "#f4f4f7" },
     { media: "(prefers-color-scheme: dark)", color: "#121217" },
   ],
   width: "device-width",
@@ -44,7 +53,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" data-theme="light" suppressHydrationWarning>
+    <html lang="es" data-theme="light" className={plex.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA }} />
       </head>

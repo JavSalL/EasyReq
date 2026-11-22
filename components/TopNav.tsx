@@ -12,7 +12,7 @@ const enlaces = [
   // son una subpantalla de Proyectos)
   { nombre: 'Proyectos', href: '/', rutas: ['/', '/requerimientos'] },
   { nombre: 'Equipos', href: '/equipos-global/', rutas: ['/equipos-global'] },
-  { nombre: 'Patrones y Modelos', href: '/patrones/', rutas: ['/patrones'] },
+  { nombre: 'Patrones y modelos', href: '/patrones/', rutas: ['/patrones'] },
   { nombre: 'Ayuda', href: '/ayuda/', rutas: ['/ayuda'] },
 ];
 
@@ -39,7 +39,7 @@ export default function TopNav() {
               }`}
             >
               {e.nombre}
-              {activo && <span aria-hidden className="absolute left-3 right-3 -bottom-px h-0.5 bg-brand-text" />}
+              {activo && <span aria-hidden className="absolute left-3 right-3 bottom-0 h-0.5 bg-brand-solid" />}
             </Link>
           </li>
         );
@@ -48,7 +48,7 @@ export default function TopNav() {
   );
 
   return (
-    <header id="tour-nav-principal" className="sticky top-0 z-40 bg-surface border-b border-line pwa-wco-header">
+    <header className="sticky top-0 z-40 bg-surface border-b border-line pwa-wco-header">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-6">
         <Link href="/" aria-label="EasyReq, ir a Proyectos" className="flex items-center gap-3 shrink-0 rounded-ui text-ink">
           <Logo variante="marca" className="h-8 w-auto" />
@@ -57,12 +57,12 @@ export default function TopNav() {
         <nav aria-label="Navegación principal" className="hidden md:block h-full">
           {lista}
         </nav>
-        <div id="tour-invitaciones" className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1">
           <InvitacionesBell />
           <UserMenu />
         </div>
       </div>
-      <nav aria-label="Navegación principal" className="md:hidden border-t border-line overflow-x-auto custom-scrollbar">
+      <nav aria-label="Navegación principal" className="md:hidden bg-surface overflow-x-auto custom-scrollbar">
         <div className="px-3 h-11 min-w-max">{lista}</div>
       </nav>
     </header>

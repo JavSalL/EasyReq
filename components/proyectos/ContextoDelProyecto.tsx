@@ -29,6 +29,7 @@ import { fechaCompleta, fechaRelativa } from '@/lib/fechas';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { btnIcono, btnIconoPeligro, btnPrimario, btnSecundario, campo, etiqueta } from '@/components/ui/estilos';
+import ListaEsqueleto from '@/components/ui/Esqueleto';
 
 const LIMITE_MB = MAX_BYTES_ARCHIVO / (1024 * 1024);
 
@@ -507,9 +508,7 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
         className={`rounded-ui transition-colors ${arrastrando ? 'ring-2 ring-brand-text ring-offset-2 ring-offset-canvas' : ''}`}
       >
         {loading ? (
-          <div role="status" aria-label="Cargando" className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
-            {[1, 2, 3].map(i => <div key={i} className="h-16 bg-sunken animate-pulse" />)}
-          </div>
+          <ListaEsqueleto forma="tarjeta" etiqueta="Cargando el contexto" />
         ) : visibles.length === 0 ? (
           <div className="text-center py-16 bg-surface border border-dashed border-line-strong rounded-ui">
             <FileText size={28} className="mx-auto text-ink-subtle" aria-hidden />
@@ -523,7 +522,7 @@ export default function ContextoDelProyecto({ proyecto, onCantidad }: ContextoDe
             </p>
           </div>
         ) : (
-          <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+          <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
             {visibles.map(i => (i.tipo === 'carpeta' ? filaCarpeta(i) : filaArchivo(i)))}
           </ul>
         )}

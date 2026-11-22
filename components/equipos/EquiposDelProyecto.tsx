@@ -79,6 +79,7 @@ import {
 import ModalFormEquipo from '@/components/equipos/ModalFormEquipo';
 import { HistorialMiembrosModal } from '@/components/equipos/HistorialMiembrosModal';
 import BuscadorPersonas from '@/components/proyectos/BuscadorPersonas';
+import ListaEsqueleto from '@/components/ui/Esqueleto';
 
 interface MiembroLocalDetallado {
   usuario: PerfilUsuario;
@@ -1039,7 +1040,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
             )}
           </div>
 
-          <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+          <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
             {miembrosVisibles.length === 0 ? (
               <li className="p-8 text-center text-sm text-ink-subtle">
                 Este equipo no tiene integrantes activos en el proyecto.
@@ -1079,7 +1080,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                             )}
                           </p>
                           <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
                               m.esLocal
                                 ? 'bg-brand-subtle text-brand-text border-brand-line'
                                 : 'bg-sunken text-ink-subtle border-line'
@@ -1098,7 +1099,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
                             )}
                           </span>
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                            className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
                               inactivo
                                 ? 'bg-danger-subtle text-danger border-danger-line'
                                 : 'bg-success-subtle text-success border-success-line'
@@ -1242,15 +1243,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
       )}
 
       {loading ? (
-        <div
-          role="status"
-          aria-label="Cargando"
-          className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden"
-        >
-          {[1, 2].map(i => (
-            <div key={i} className="h-28 bg-sunken animate-pulse" />
-          ))}
-        </div>
+        <ListaEsqueleto forma="tarjeta" filas={2} etiqueta="Cargando equipos" />
       ) : equiposMostrados.length === 0 ? (
         <div className="text-center py-20">
           <h3 className="text-lg font-semibold text-ink">
@@ -1282,7 +1275,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
           )}
         </div>
       ) : (
-        <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+        <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
           {equiposMostrados.map(team => {
             const gestionable = puedeGestionarLocalmente(team.equipo_id);
             const miembrosActivos = team.miembros.filter(m => m.estado === 'activo');
