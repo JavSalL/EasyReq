@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import {
   ChevronLeft, Plus, Edit2, Trash2, Search, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, Copy, ListPlus, ListOrdered,
-  Check, XCircle, Send, Download, Folder, X, Layers, MessageSquare, Map as MapaIcono,
+  Check, XCircle, Send, Download, Folder, X, Layers, MessageSquare, ArrowRight, Map as MapaIcono,
   SlidersHorizontal, Keyboard
 } from 'lucide-react';
 import {
@@ -51,6 +51,8 @@ import {
   ESTADO_APROBADO,
   ESTADO_RECHAZADO,
   ESTADO_PENDIENTE_APROBACION,
+  marcarRequerimientoImplementado,
+  reabrirRequerimientoAprobado,
   getContextoProyecto,
   construirContextoIA,
   suscribirComentariosRequerimiento,
@@ -108,7 +110,9 @@ import {
   puedeAprobarRequerimientos,
   puedeEditarRequerimiento,
   puedeReenviarRequerimiento,
-  puedeComentarRequerimiento
+  puedeComentarRequerimiento,
+  puedeMarcarImplementado,
+  puedeReabrirRequerimiento
 } from '@/lib/permisos';
 import {
   prepararItems,
@@ -1377,6 +1381,50 @@ export default function RequerimientosPage() {
     }
   };
 
+  /** Marca un requerimiento aprobado como implementado: el desarrollo terminó. */
+  const handleMarcarImplementado = async (req: Requerimiento) => {
+    if (!puedeMarcarImplementado(esMiembroProyecto, nombreEstadoDe(req))) {
+      toast.error('Solo los miembros del proyecto pueden marcar como implementado.');
+      return;
+    }
+    const ok = await confirmar({
+      titulo: '¿Marcar como implementado?',
+      mensaje: '¿Estás seguro de que el desarrollo/programación de este requerimiento ha finalizado? Esta acción cambia el estado a "Implementado" y registra la transición en el historial.',
+      textoConfirmar: 'Marcar como implementado',
+      textoCancelar: 'Cancelar'
+    });
+    if (!ok) return;
+    try {
+      await marcarRequerimientoImplementado(req.id, uid!);
+      toast.success('Requerimiento marcado como implementado');
+      fetchRequerimientos();
+    } catch (e) {
+      toast.error(mensajeError(e, 'No se pudo marcar el requerimiento como implementado'));
+    }
+  };
+
+  /** Reabre un requerimiento implementado y lo devuelve a "Aprobado". */
+  const handleReabrirRequerimiento = async (req: Requerimiento) => {
+    if (!puedeReabrirRequerimiento(esMiembroProyecto, nombreEstadoDe(req))) {
+      toast.error('Solo los miembros del proyecto pueden reabrir un requerimiento.');
+      return;
+    }
+    const ok = await confirmar({
+      titulo: '¿Reabrir requerimiento?',
+      mensaje: '¿El requerimiento tiene un error o queda trabajo pendiente? Esta acción regresa el estado a "Aprobado" y permite retomar el desarrollo.',
+      textoConfirmar: 'Reabrir',
+      textoCancelar: 'Cancelar'
+    });
+    if (!ok) return;
+    try {
+      await reabrirRequerimientoAprobado(req.id, uid!);
+      toast.success('Requerimiento regresado a aprobado');
+      fetchRequerimientos();
+    } catch (e) {
+      toast.error(mensajeError(e, 'No se pudo reabrir el requerimiento'));
+    }
+  };
+
   // Eliminar Requerimiento
   const handleDeleteReq = (req: Requerimiento) => {
     // Borrar sigue igual que antes de KAN-18: lo que las reglas permiten es a
@@ -2083,6 +2131,26 @@ export default function RequerimientosPage() {
                     className={btnIcono}
                   >
                     <Edit2 size={16} />
+                  </button>
+                )}
+                {puedeMarcarImplementado(esMiembroProyecto, nombreEstadoDe(req)) && (
+                  <button
+                    onClick={() => handleMarcarImplementado(req)}
+                    title="Marcar como implementado"
+                    aria-label={`Marcar como implementado el requerimiento ${codigo ?? ''}`.trim()}
+                    className={`${btnIcono} text-success`}
+                  >
+                    <Check size={16} />
+                  </button>
+                )}
+                {puedeReabrirRequerimiento(esMiembroProyecto, nombreEstadoDe(req)) && (
+                  <button
+                    onClick={() => handleReabrirRequerimiento(req)}
+                    title="Reabrir"
+                    aria-label={`Reabrir el requerimiento ${codigo ?? ''}`.trim()}
+                    className={`${btnIcono} text-brand`}
+                  >
+                    <ArrowRight size={16} />
                   </button>
                 )}
                 <MenuAcciones

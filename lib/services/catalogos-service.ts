@@ -27,6 +27,13 @@ export const ESTADO_PENDIENTE_APROBACION = 'Pendiente de aprobación';
 export const ESTADO_APROBADO = 'Aprobado';
 /** Estado al que pasa cuando el líder lo rechaza. */
 export const ESTADO_RECHAZADO = 'Rechazado';
+/**
+ * Estado final del desarrollo: el requerimiento aprobado ya se programó. Se mueve a
+ * mano desde la tarjeta (marcar como implementado) y se puede deshacer (reabrir).
+ * `firestore.rules` lo admite en la lista blanca de `match /estados` y el seed lo
+ * siembra; los tres textos tienen que seguir coincidiendo.
+ */
+export const ESTADO_IMPLEMENTADO = 'Implementado';
 /** Modalidad que el botón de generar con IA marca solo. */
 export const MODALIDAD_GENERADO_IA = 'Generado con IA';
 
@@ -143,7 +150,7 @@ export async function seedCatalogsIfEmpty(): Promise<void> {
         'En Revisión',
         'Aprobado',
         'Rechazado',
-        'Implementado',
+        ESTADO_IMPLEMENTADO,
         // KAN-18: estado de espera. Nace aquí todo requerimiento nuevo y solo avanza
         // cuando el líder del equipo lo aprueba. `firestore.rules` compara este texto
         // literalmente, así que también tiene que estar en la lista blanca de

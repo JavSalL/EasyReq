@@ -26,7 +26,8 @@ import {
   idCatalogoPorNombre,
   ESTADO_PENDIENTE_APROBACION,
   ESTADO_APROBADO,
-  ESTADO_RECHAZADO
+  ESTADO_RECHAZADO,
+  ESTADO_IMPLEMENTADO
 } from './catalogos-service';
 import { getAllUsers } from './usuarios-service';
 import { getPatrones } from './patrones-service';
@@ -684,6 +685,102 @@ export async function decidirAprobacionRequerimiento(
     id_estado: idEstado,
     id_aprobador: decision === 'aprobar' ? uid : null
   });
+}
+
+// ==========================================
+// IMPLEMENTACIÓN DEL REQUERIMIENTO
+// ==========================================
+// Aprobado ➔ Implementado y vuelta. No es una decisión de aprobación: el
+// requerimiento ya pasó por el líder y aquí solo se deja constancia de que el
+// desarrollo terminó (o de que hay que retomarlo). Por eso la autorización es la
+// de `esEdicionEnFlujoNormal` en `firestore.rules` (miembro activo del proyecto o
+// del equipo) y no la de `esDecisionDelAprobador`.
+//
+// El estado y su entrada en el historial se escriben en la MISMA transacción. Si
+// se hicieran por separado, un fallo entre las dos dejaría un cambio de estado sin
+// rastro en `logs_requerimientos`, que es justo lo que el ticket pide evitar.
+
+/**
+ * Cambia el estado entre "Aprobado" e "Implementado" y registra la transición.
+ *
+ * `origen` y `destino` son los nombres exactos del catálogo. Se comprueba que el
+ * documento esté de verdad en `origen` antes de escribir: una tarjeta vieja o dos
+ * pestañas abiertas no pueden saltarse el flujo ni duplicar la entrada del
+ * historial. El mensaje de error lo explica para que no llegue como un
+ * `permission-denied` mudo.
+ */
+async function cambiarEstadoImplementacion(
+  id: string,
+  uid: string,
+  origen: string,
+  destino: string,
+  accion: string
+): Promise<void> {
+  const [idOrigen, idDestino] = await Promise.all([
+    idCatalogoPorNombre('estados', 'nombre_estado', origen),
+    idCatalogoPorNombre('estados', 'nombre_estado', destino)
+  ]);
+  if (!idOrigen || !idDestino) {
+    const faltante = !idOrigen ? origen : destino;
+    throw new Error(
+      `Falta el estado "${faltante}" en el catálogo de estados. ` +
+      'Pídeselo a quien administre el proyecto.'
+    );
+  }
+
+  const requerimientoRef = doc(db, 'requerimiento', id);
+  const logRef = doc(collection(db, 'logs_requerimientos'));
+  const fecha_hora = new Date().toISOString();
+
+  await runTransaction(db, async transaction => {
+    const requerimiento = await transaction.get(requerimientoRef);
+    if (!requerimiento.exists()) {
+      throw new Error('No se encontró el requerimiento que intentas actualizar.');
+    }
+    if (requerimiento.data().id_estado !== idOrigen) {
+      throw new Error(
+        `Solo se puede pasar de "${origen}" a "${destino}". ` +
+        'Recarga la página: el requerimiento cambió de estado mientras lo mirabas.'
+      );
+    }
+
+    transaction.update(requerimientoRef, { id_estado: idDestino });
+    transaction.set(logRef, {
+      id_requerimiento: id,
+      accion,
+      id_autor: uid,
+      fecha_hora,
+      detalles: { estado_anterior: origen, estado_nuevo: destino }
+    });
+  });
+}
+
+/**
+ * Marca como implementado un requerimiento aprobado: el desarrollo terminó.
+ * Deja la entrada en el historial con el autor, la fecha y los dos estados.
+ */
+export async function marcarRequerimientoImplementado(id: string, uid: string): Promise<void> {
+  await cambiarEstadoImplementacion(
+    id,
+    uid,
+    ESTADO_APROBADO,
+    ESTADO_IMPLEMENTADO,
+    'Implementación de requerimiento'
+  );
+}
+
+/**
+ * Reabre un requerimiento implementado y lo devuelve a "Aprobado" para retomarlo.
+ * El aprobador original no se toca: la aprobación sigue siendo válida.
+ */
+export async function reabrirRequerimientoAprobado(id: string, uid: string): Promise<void> {
+  await cambiarEstadoImplementacion(
+    id,
+    uid,
+    ESTADO_IMPLEMENTADO,
+    ESTADO_APROBADO,
+    'Reapertura de requerimiento'
+  );
 }
 
 export async function deleteRequerimiento(id: string, id_autor: string): Promise<number> {

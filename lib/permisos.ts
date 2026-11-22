@@ -10,6 +10,8 @@
 import { MENSAJE_SIN_PERMISOS } from './errores';
 import {
   ESTADO_PENDIENTE_APROBACION,
+  ESTADO_APROBADO,
+  ESTADO_IMPLEMENTADO,
   ESTADO_RECHAZADO
 } from './services/catalogos-service';
 
@@ -69,6 +71,16 @@ export function estaRechazado(estadoNombre: string | null | undefined): boolean 
   return estadoNombre === ESTADO_RECHAZADO;
 }
 
+/** ¿Está en "Aprobado" y por tanto se puede marcar como implementado? */
+export function estaAprobado(estadoNombre: string | null | undefined): boolean {
+  return estadoNombre === ESTADO_APROBADO;
+}
+
+/** ¿Está en "Implementado" y por tanto se puede reabrir? */
+export function estaImplementado(estadoNombre: string | null | undefined): boolean {
+  return estadoNombre === ESTADO_IMPLEMENTADO;
+}
+
 /**
  * ¿Puede este usuario aprobar o rechazar este requerimiento? Regla:
  * `esDecisionDelAprobador`.
@@ -122,6 +134,38 @@ export function puedeReenviarRequerimiento(
   estadoNombre: string | null | undefined
 ): boolean {
   return esAutor && estaRechazado(estadoNombre);
+}
+
+/**
+ * ¿Puede marcar este requerimiento como implementado? Regla:
+ * `esEdicionEnFlujoNormal`.
+ *
+ * Basta con ser miembro activo del proyecto o del equipo del requerimiento: no es
+ * una decisión de aprobación, es dejar constancia de que el desarrollo terminó. El
+ * ticket lo abre a Desarrollador, Tester QA y Líder, y hoy el repositorio no tiene
+ * roles enchufados a esta vista; la membresía es la puerta que sí existe y la que
+ * replica la regla. Solo desde "Aprobado": un pendiente aún no se ha aprobado y un
+ * rechazado no ha entrado al desarrollo.
+ */
+export function puedeMarcarImplementado(
+  esMiembroProyecto: boolean,
+  estadoNombre: string | null | undefined
+): boolean {
+  return esMiembroProyecto && estaAprobado(estadoNombre);
+}
+
+/**
+ * ¿Puede reabrir este requerimiento? Regla: `esEdicionEnFlujoNormal`.
+ *
+ * Misma puerta que marcar como implementado, y solo desde "Implementado". El
+ * aprobador original se conserva: reabrir no deshace la aprobación, solo devuelve
+ * el requerimiento al estado del que salió.
+ */
+export function puedeReabrirRequerimiento(
+  esMiembroProyecto: boolean,
+  estadoNombre: string | null | undefined
+): boolean {
+  return esMiembroProyecto && estaImplementado(estadoNombre);
 }
 
 // ==========================================
