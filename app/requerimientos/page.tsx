@@ -90,7 +90,7 @@ import {
   BotonDesgloseSintaxis,
   DesgloseSintaxis,
   TextoConSintaxis,
-  VistaPreviaSintaxis,
+  EditorEnunciadoConSintaxis,
   useFocoSintaxis
 } from '@/components/requerimientos/SintaxisRequerimiento';
 import { construirLeyendaSintaxis, filtrarElementosPresentes } from '@/lib/sintaxis-requerimiento';
@@ -1143,7 +1143,7 @@ export default function RequerimientosPage() {
         }));
         setElementosSintaxisForm(generated.elementos_sintaxis ?? null);
         requestAnimationFrame(() => {
-          document.getElementById('vista-previa-sintaxis-form')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          document.getElementById('req-enunciado')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         });
         toast.success(
           idIA
@@ -2768,13 +2768,16 @@ export default function RequerimientosPage() {
                 <label htmlFor="req-enunciado" className={etiqueta}>
                   Enunciado del requerimiento <span className="text-danger">*</span>
                 </label>
-                <textarea
+                {/* Las partes del patrón se marcan dentro del propio campo mientras se escribe */}
+                <EditorEnunciadoConSintaxis
                   id="req-enunciado"
                   rows={4}
                   placeholder={patronSeleccionado?.promt || "Escribe el enunciado siguiendo la estructura del patrón..."}
                   value={formData.enunciado}
-                  onChange={(e) => setFormData({ ...formData, enunciado: e.target.value })}
-                  className={`${campo} font-mono leading-relaxed`}
+                  onChange={(enunciado) => setFormData({ ...formData, enunciado })}
+                  elementos={formData.enunciado.trim() ? elementosEnunciado : null}
+                  patron={patronSeleccionado?.promt}
+                  className={`${campo} min-h-28 leading-relaxed`}
                 />
                 <PistaCampo visible={pistaCrear.visible}>
                   Escríbelo a mano o edita lo que generó la IA. Es el único campo obligatorio.
@@ -2785,15 +2788,6 @@ export default function RequerimientosPage() {
                     Aún no reconozco la estructura del patrón en este texto. Revisa que tenga sus palabras fijas
                     (por ejemplo «Cuando…, el sistema deberá…») o usa la plantilla.
                   </p>
-                )}
-                {elementosEnunciado && formData.enunciado.trim() && (
-                  <div id="vista-previa-sintaxis-form">
-                    <VistaPreviaSintaxis
-                      texto={formData.enunciado}
-                      elementos={elementosEnunciado}
-                      patron={patronSeleccionado?.promt}
-                    />
-                  </div>
                 )}
               </div>
             )}

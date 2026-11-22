@@ -17,6 +17,7 @@ const FRASES: ReadonlyArray<[string, string[]]> = [
 
 // Grupos de palabras equivalentes. Una palabra fija de la plantilla acepta cualquiera de su grupo.
 const EQUIVALENTES: ReadonlyArray<string[]> = [
+  // El índice 5 (artículos) se usa también para meter el artículo dentro del elemento
   ['when', 'cuando'],
   ['while', 'mientras', 'mientras que'],
   ['if', 'si'],
@@ -126,10 +127,14 @@ function compilar(patron: string): PlantillaCompilada | null {
       literales.forEach((lit, i) => {
         const esUltimo = i === literales.length - 1;
         // El punto final es opcional mientras se escribe
-        const { regex, tienePalabras } = regexLiteral(esUltimo ? lit.replace(/\.\s*$/, '') : lit, estricto);
-        hayPalabras ||= tienePalabras;
+        let texto = esUltimo ? lit.replace(/\.\s*$/, '') : lit;
+        // "the <system name>": el artículo va dentro del elemento ("el sistema"), como lo marca la IA
+        const articulo = !esUltimo && /(^|\s)(the|el|la|los|las)\s*$/i.test(texto);
+        if (articulo) texto = texto.replace(/(the|el|la|los|las)\s*$/i, '');
+        const { regex, tienePalabras } = regexLiteral(texto, estricto);
+        hayPalabras ||= tienePalabras || articulo;
         cuerpo += regex;
-        if (!esUltimo) cuerpo += '(.+?)';
+        if (!esUltimo) cuerpo += articulo ? `(${alternativas(EQUIVALENTES[5])}\\s+.+?)` : '(.+?)';
       });
       return hayPalabras ? new RegExp(`^\\s*${cuerpo}\\s*\\.?\\s*$`, 'iu') : null;
     };
@@ -163,7 +168,7 @@ export function elementosSegunPatron(texto: string, patron?: string | null): Ele
     const elementos = plantilla.elementos
       .map((elemento, i) => ({ elemento, fragmento: (m[i + 1] ?? '').trim() }))
       // Un marcador que sigue tal cual ("<trigger>") todavía no es contenido
-      .filter(e => e.fragmento && !/^[<\[].*[>\]]$/.test(e.fragmento));
+      .filter(e => e.fragmento && !/[<\[][^<>\[\]]*[>\]]/.test(e.fragmento));
     return elementos.length > 0 ? elementos : null;
   }
   return null;
