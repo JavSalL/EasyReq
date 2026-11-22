@@ -50,11 +50,7 @@ import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { ModalColaboraciones } from '@/components/proyectos/ModalColaboraciones';
-import TourGuiado, { BotonAyudaTour, esCuentaNueva } from '@/components/ui/TourGuiado';
-import {
-  PASOS_TUTORIAL_BIENVENIDA,
-  useTutorialBienvenida,
-} from '@/components/proyectos/tutorial-bienvenida';
+import { BotonPista, Pista, usePista } from '@/components/ui/Pista';
 import {
   btnPrimario,
   btnSecundario,
@@ -117,7 +113,7 @@ function claseInsigniaEstadoProyecto(nombreEstado?: string): string {
 
 export default function Home() {
   const confirmar = useConfirm();
-  const { user, profile, profileLoaded } = useAuth();
+  const { user } = useAuth();
   const uid = user?.uid ?? null;
 
   const [projects, setProjects] = useState<Array<ProyectoConStats>>([]);
@@ -158,21 +154,8 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isColabModalOpen, setIsColabModalOpen] = useState(false);
 
-  // Guía de bienvenida: solo se abre sola en cuentas nuevas sin proyectos; los demás pueden abrirla con (?)
-  const tutorial = useTutorialBienvenida(
-    uid,
-    Boolean(
-      user &&
-        profileLoaded &&
-        profile &&
-        !loading &&
-        !loadingPermisos &&
-        !isModalOpen &&
-        !isColabModalOpen &&
-        esCuentaNueva(user.metadata?.creationTime) &&
-        projects.length === 0
-    )
-  );
+  // Pista de la sección: explica qué es un proyecto sin tapar la pantalla
+  const pista = usePista('proyectos');
   const [editingProject, setEditingProject] = useState<Proyecto | null>(null);
 
   const [formData, setFormData] = useState({
@@ -518,14 +501,14 @@ export default function Home() {
         title={
           <span className="inline-flex items-center gap-1.5">
             Proyectos
-            <BotonAyudaTour onClick={tutorial.abrir} label="¿Cómo empezar? Ver la guía" />
+            <BotonPista activo={pista.visible} onClick={pista.alternar} />
           </span>
         }
         description="Sistemas de software y la especificación de sus requerimientos."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button
-              id="tour-colaboraciones"
+             
               type="button"
               onClick={() => setIsColabModalOpen(true)}
               className={btnSecundario}
@@ -538,13 +521,19 @@ export default function Home() {
                 </span>
               )}
             </button>
-            <button id="tour-nuevo-proyecto" onClick={openCreateModal} className={btnPrimario}>
+            <button onClick={openCreateModal} className={btnPrimario}>
               <Plus size={16} />
               Nuevo proyecto
             </button>
           </div>
         }
       />
+
+      <Pista visible={pista.visible} onOcultar={pista.ocultar} titulo="Cómo empezar" className="mb-6">
+        Un proyecto es el sistema de software que vas a especificar. Entra a uno para redactar sus
+        requerimientos con o sin IA, asignar equipos y aprobarlos. Si tus proyectos son de una materia,
+        beca o campaña, agrúpalos en <strong className="font-semibold text-ink">Colaboraciones</strong>.
+      </Pista>
 
       {/* Búsqueda y Filtros */}
       <div className="space-y-3 mb-10">
@@ -669,7 +658,7 @@ export default function Home() {
                 )
               ) : (
                 <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
-                  {proyectos.map((proj, idxProj) => {
+                  {proyectos.map((proj) => {
                     const editable = puedeEditarProyecto(proj.proyecto_id);
                     const reqs = proj.requerimientos_count || 0;
                     const eqs = proj.equipos_count || 0;
@@ -677,7 +666,6 @@ export default function Home() {
                     return (
                       <li
                         key={proj.proyecto_id}
-                        id={idxGrupo === 0 && idxProj === 0 ? 'tour-lista-proyectos' : undefined}
                       >
                         {/* Toda la fila es clicable gracias al enlace del nombre (su ::after la cubre),
                             así funciona el clic central, "abrir en pestaña nueva" y el lector de pantalla
@@ -1027,8 +1015,6 @@ export default function Home() {
         proyectosPermitidos={proyectosPermitidos}
         onCambio={fetchProjects}
       />
-
-      <TourGuiado abierto={tutorial.abierto} pasos={PASOS_TUTORIAL_BIENVENIDA} onTerminar={tutorial.cerrar} />
     </div>
   );
 }

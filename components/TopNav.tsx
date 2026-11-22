@@ -48,7 +48,7 @@ export default function TopNav() {
   );
 
   return (
-    <header id="tour-nav-principal" className="sticky top-0 z-40 bg-surface border-b border-line pwa-wco-header">
+    <header className="sticky top-0 z-40 bg-surface border-b border-line pwa-wco-header">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-6">
         <Link href="/" aria-label="EasyReq, ir a Proyectos" className="flex items-center gap-3 shrink-0 rounded-ui text-ink">
           <Logo variante="marca" className="h-8 w-auto" />
@@ -57,7 +57,7 @@ export default function TopNav() {
         <nav aria-label="Navegación principal" className="hidden md:block h-full">
           {lista}
         </nav>
-        <div id="tour-invitaciones" className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1">
           <InvitacionesBell />
           <UserMenu />
         </div>

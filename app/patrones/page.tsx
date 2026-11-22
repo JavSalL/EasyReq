@@ -21,18 +21,11 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
-import { useAuth } from '@/lib/firebase-auth-provider';
-import TourGuiado, {
-  BotonAyudaTour,
-  esCuentaNueva,
-  useTutorialSeccion,
-} from '@/components/ui/TourGuiado';
-import { PASOS_TUTORIAL_PATRONES } from '@/lib/tutoriales';
+import { BotonPista, Pista, usePista } from '@/components/ui/Pista';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 
 export default function PatronesPage() {
-  const { user, profile, profileLoaded } = useAuth();
   const confirmar = useConfirm();
   // KAN-17: `false` para todos los usuarios por ahora, así que los botones de
   // editar y eliminar no se renderizan. El JSX sigue aquí detrás de la condición
@@ -43,11 +36,7 @@ export default function PatronesPage() {
   const [modelos, setModelos] = useState<Array<Modelo>>([]);
   const [patrones, setPatrones] = useState<Array<Patron>>([]);
   const [loading, setLoading] = useState(true);
-  const tutorial = useTutorialSeccion(
-    'patrones',
-    user?.uid ?? null,
-    Boolean(user && profileLoaded && profile && !loading && esCuentaNueva(user.metadata?.creationTime))
-  );
+  const pista = usePista('patrones');
   const [selectedModeloFilter, setSelectedModeloFilter] = useEstadoSesion<string>("easyreq:patrones:modelo", "todos");
   const [searchTerm, setSearchTerm] = useEstadoSesion("easyreq:patrones:buscar", "");
   const [copiadoId, setCopiadoId] = useState<string | null>(null);
@@ -209,13 +198,13 @@ export default function PatronesPage() {
         title={
           <span className="inline-flex items-center gap-1.5">
             Patrones y modelos
-            <BotonAyudaTour onClick={tutorial.abrir} label="Ver la guía de Patrones y modelos" />
+            <BotonPista activo={pista.visible} onClick={pista.alternar} />
           </span>
         }
         description="Catálogo de sintaxis estructuradas para redactar requerimientos (EARS, Sistemas Embebidos, Lenguaje Natural)."
         actions={
           puedeEditar && (
-            <button id="tour-pat-nuevo" onClick={() => openModal()} className={btnPrimario}>
+            <button onClick={() => openModal()} className={btnPrimario}>
               <Plus size={16} />
               Nuevo patrón
             </button>
@@ -223,8 +212,14 @@ export default function PatronesPage() {
         }
       />
 
+      <Pista visible={pista.visible} onOcultar={pista.ocultar} titulo="Para qué sirven los patrones">
+        Un patrón es una plantilla con la estructura que debe seguir un requerimiento. Filtra por modelo
+        (EARS, Sistemas Embebidos o Lenguaje Natural), busca por nombre o palabra clave y copia la sintaxis
+        con un clic. Al crear un requerimiento puedes elegir el patrón y la IA lo respetará.
+      </Pista>
+
       {/* Filtros por Modelo */}
-      <div id="tour-pat-modelos" className="space-y-2">
+      <div className="space-y-2">
         <div role="group" aria-label="Filtrar por modelo" className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={() => setSelectedModeloFilter('todos')}
@@ -250,7 +245,7 @@ export default function PatronesPage() {
       </div>
 
       {/* Buscador */}
-      <div id="tour-pat-buscar" className="relative">
+      <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ink-subtle">
           <Search size={14} />
         </div>
@@ -293,7 +288,7 @@ export default function PatronesPage() {
         </div>
       ) : (
         <div className="space-y-12">
-          {gruposPatrones.map((grupo, idxGrupo) => (
+          {gruposPatrones.map((grupo) => (
             <section key={grupo.id} aria-labelledby={`grupo-${grupo.id}`}>
               <div className="pb-3 mb-5 border-b-2 border-line-strong">
                 <h2 id={`grupo-${grupo.id}`} className="text-xl font-semibold text-ink">
@@ -308,10 +303,10 @@ export default function PatronesPage() {
               </div>
 
               <ul className="space-y-4">
-                {grupo.patrones.map((pat, idxPat) => (
+                {grupo.patrones.map((pat) => (
                   <li
                     key={pat.patron_id}
-                    id={idxGrupo === 0 && idxPat === 0 ? 'tour-pat-lista' : undefined}
+                   
                     className={`${tarjeta} p-5`}
                   >
                     <div className="flex items-start justify-between gap-3 mb-4">
@@ -428,8 +423,6 @@ export default function PatronesPage() {
           </ModalFooter>
         </form>
       </Modal>
-
-      <TourGuiado abierto={tutorial.abierto} pasos={PASOS_TUTORIAL_PATRONES} onTerminar={tutorial.cerrar} />
     </div>
   );
 }

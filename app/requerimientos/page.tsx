@@ -9,7 +9,7 @@ import {
   ChevronLeft, Plus, Edit2, Trash2, Search, Save,
   Sparkles, CheckCheck, History, Lock, Wand2, Copy, ListPlus, ListOrdered,
   Check, XCircle, Send, Download, Folder, X, Layers, MessageSquare, Map as MapaIcono,
-  CircleHelp, SlidersHorizontal
+  SlidersHorizontal
 } from 'lucide-react';
 import {
   generateSingleRequirement,
@@ -74,13 +74,7 @@ import ModalComentarios from '@/components/requerimientos/ModalComentarios';
 import EquiposDelProyecto from '@/components/equipos/EquiposDelProyecto';
 import ContextoDelProyecto from '@/components/proyectos/ContextoDelProyecto';
 import ControlEstrictez from '@/components/requerimientos/ControlEstrictez';
-import TourGuiado, {
-  BotonAyudaTour,
-  esCuentaNueva,
-  useTutorialSeccion,
-} from '@/components/ui/TourGuiado';
-import { PASOS_TUTORIAL_PROYECTO } from '@/lib/tutoriales';
-import { PASOS_TUTORIAL_CREAR, useTutorialCrear } from '@/components/requerimientos/tutorial-crear';
+import { BotonPista, Pista, PistaCampo, usePista } from '@/components/ui/Pista';
 import PanelGeneracionIterativa, {
   useGeneracionIterativa,
   type OpcionesGuardadas,
@@ -415,13 +409,9 @@ export default function RequerimientosPage() {
   const [insertarDespuesDe, setInsertarDespuesDe] = useState<{ numero: number; codigo: string } | null>(null);
   const ultimaClasificacionRef = useRef<Partial<typeof FORM_VACIO> | null>(null);
 
-  // Guía que resalta cada parte del formulario: sale sola la primera vez que se crea un requerimiento y luego con el botón (?)
-  const tutorial = useTutorialCrear(isModalOpen && !editingReq);
-  const tutorialProyecto = useTutorialSeccion(
-    'proyecto',
-    user?.uid ?? null,
-    Boolean(user && proyecto && !loading && !isModalOpen && esCuentaNueva(user.metadata?.creationTime))
-  );
+  // Pistas en su sitio (sin tapar la pantalla): una para el proyecto y otras debajo de cada parte del formulario
+  const pistaProyecto = usePista('proyecto');
+  const pistaCrear = usePista('crear-requerimiento');
 
   // Cambios sin guardar: el enunciado, el texto de la IA y, al editar, el resto de campos
   const { hayCambios, intentarCerrar } = useCierreSeguro(
@@ -2064,7 +2054,7 @@ export default function RequerimientosPage() {
           proyecto ? (
             <span className="flex flex-wrap items-center gap-2.5">
               {proyecto.nombre}
-              <BotonAyudaTour onClick={tutorialProyecto.abrir} label="Ver la guía del proyecto" />
+              <BotonPista activo={pistaProyecto.visible} onClick={pistaProyecto.alternar} />
               {proyecto.estado_proyecto?.nombre_estado && (
                 <span className="px-2.5 py-0.5 rounded-full tracking-normal text-xs font-semibold bg-brand-subtle text-brand-text border border-brand-line">
                   {proyecto.estado_proyecto.nombre_estado}
@@ -2097,7 +2087,7 @@ export default function RequerimientosPage() {
           vista === 'requerimientos' && (
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               <button
-                id="tour-req-exportar"
+               
                 onClick={() => setShowExportModal(true)}
                 className={btnSecundario}
                 title="Exportar requerimientos a PDF, Markdown o Word"
@@ -2106,7 +2096,7 @@ export default function RequerimientosPage() {
                 Exportar
               </button>
               {esMiembroProyecto && (
-                <button id="tour-req-nuevo" onClick={openCreateModal} className={btnPrimario}>
+                <button onClick={openCreateModal} className={btnPrimario}>
                   <Plus size={16} />
                   Nuevo requerimiento
                 </button>
@@ -2118,7 +2108,7 @@ export default function RequerimientosPage() {
 
       {/* Secciones del proyecto */}
       {proyecto && proyectoId && (
-        <nav id="tour-req-tabs" aria-label="Secciones del proyecto" className="flex gap-1 border-b border-line overflow-x-auto overflow-y-hidden custom-scrollbar">
+        <nav aria-label="Secciones del proyecto" className="flex gap-1 border-b border-line overflow-x-auto overflow-y-hidden custom-scrollbar">
           {[
             { id: 'requerimientos' as const, nombre: 'Requerimientos', cantidad: loading ? null : requerimientos.length },
             { id: 'equipos' as const, nombre: 'Equipos', cantidad: cantidadEquipos },
@@ -2141,6 +2131,15 @@ export default function RequerimientosPage() {
             );
           })}
         </nav>
+      )}
+
+      {proyecto && vista === 'requerimientos' && (
+        <Pista visible={pistaProyecto.visible} onOcultar={pistaProyecto.ocultar} titulo="Cómo funciona un proyecto" className="mt-6">
+          Aquí viven los requerimientos del sistema. Crea uno con IA o a mano desde{' '}
+          <strong className="font-semibold text-ink">Nuevo requerimiento</strong> y descarga la especificación con{' '}
+          <strong className="font-semibold text-ink">Exportar</strong>. En <strong className="font-semibold text-ink">Equipos</strong>{' '}
+          decides quién aprueba, y en <strong className="font-semibold text-ink">Contexto</strong> lo que la IA toma como referencia.
+        </Pista>
       )}
 
       {vista === 'equipos' || vista === 'contexto' ? (
@@ -2400,15 +2399,7 @@ export default function RequerimientosPage() {
           ) : (
             <span className="inline-flex items-center gap-1.5">
               {insertarDespuesDe ? `Nuevo requerimiento después de ${insertarDespuesDe.codigo}` : 'Nuevo requerimiento'}
-              <button
-                type="button"
-                onClick={tutorial.abrir}
-                aria-label="Ver la guía del formulario"
-                title="¿Cómo se usa? Ver la guía"
-                className="inline-flex items-center justify-center size-7 rounded-full text-ink-subtle hover:text-brand-text hover:bg-sunken transition-colors cursor-pointer"
-              >
-                <CircleHelp size={17} />
-              </button>
+              <BotonPista activo={pistaCrear.visible} onClick={pistaCrear.alternar} />
             </span>
           )
         }
@@ -2435,7 +2426,7 @@ export default function RequerimientosPage() {
             )}
 
             {/* Tipo, modelo y patrón: lo primero que se elige; la IA los respeta al redactar */}
-            <div id="tour-clasificacion" className="space-y-4">
+            <div className="space-y-4">
               <div>
                 <label htmlFor="req-tipo" className={etiqueta}>Tipo de requerimiento</label>
                 <select
@@ -2504,6 +2495,9 @@ export default function RequerimientosPage() {
                   )}
                 </div>
               )}
+              <PistaCampo visible={pistaCrear.visible}>
+                Todo es opcional. El patrón es una plantilla con la estructura que debe seguir el enunciado, y la IA la respeta al redactar.
+              </PistaCampo>
             </div>
 
             {/* Prompt para la IA */}
@@ -2513,7 +2507,7 @@ export default function RequerimientosPage() {
                 Generar con IA
               </label>
 
-              <div id="tour-ia" className="rounded-ui border border-line-strong bg-surface focus-within:border-brand-text focus-within:ring-1 focus-within:ring-brand-text transition-colors">
+              <div className="rounded-ui border border-line-strong bg-surface focus-within:border-brand-text focus-within:ring-1 focus-within:ring-brand-text transition-colors">
                 <textarea
                   id="req-ia"
                   rows={esMasivo ? 4 : 3}
@@ -2595,7 +2589,7 @@ export default function RequerimientosPage() {
                 )}
 
                 {/* Barra inferior: modo masivo a la izquierda; estrictez y generar a la derecha */}
-                <div id="tour-ia-opciones" className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-t border-line">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-t border-line">
                   {masivoDisponible ? (
                     <label className="inline-flex items-center gap-2 px-1 min-h-8 text-xs font-semibold text-ink-muted cursor-pointer select-none">
                       <span className="relative inline-flex">
@@ -2645,11 +2639,20 @@ export default function RequerimientosPage() {
                 </div>
               </div>
 
+              <PistaCampo visible={pistaCrear.visible}>
+                {esMasivo
+                  ? 'Pide un módulo o el sistema entero; la IA decide cuántos requerimientos proponer. La estrictez decide cuánto se apega a lo que escribiste.'
+                  : 'Describe en pocas palabras lo que necesitas y pulsa Generar (o Enter). Si no sabes qué estrictez elegir, déjala como está.'}
+              </PistaCampo>
+
               {/* Ejemplos (few-shot) */}
 
-              <div id="tour-ejemplos" className="mt-4 space-y-2">
+              <div className="mt-4 space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-ink-muted">Ejemplos para la IA (opcional)</span>
+                  <span className="text-sm text-ink-muted">
+                    Ejemplos para la IA (opcional)
+                    {pistaCrear.visible && <span className="text-ink-subtle">: la IA imitará su estilo</span>}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setEjemplos(prev => [...prev, ''])}
@@ -2701,7 +2704,7 @@ export default function RequerimientosPage() {
               /* 4. Enunciado */
               <div id="seccion-enunciado" className="scroll-mt-4">
                 <label htmlFor="req-enunciado" className={etiqueta}>
-                  Enunciado del Requerimiento <span className="text-danger">*</span>
+                  Enunciado del requerimiento <span className="text-danger">*</span>
                 </label>
                 <textarea
                   id="req-enunciado"
@@ -2711,6 +2714,9 @@ export default function RequerimientosPage() {
                   onChange={(e) => setFormData({ ...formData, enunciado: e.target.value })}
                   className={`${campo} font-mono leading-relaxed`}
                 />
+                <PistaCampo visible={pistaCrear.visible}>
+                  Escríbelo a mano o edita lo que generó la IA. Es el único campo obligatorio.
+                </PistaCampo>
                 <p className="text-xs text-ink-subtle mt-1">Ctrl + Enter para guardar.</p>
                 {elementosSintaxisForm && elementosSintaxisForm.length > 0 && formData.enunciado.trim() && (
                   <div id="vista-previa-sintaxis-form">
@@ -2725,7 +2731,7 @@ export default function RequerimientosPage() {
             )}
 
             {/* Modalidad y equipo: decide qué líder aprueba (KAN-18) */}
-            <div id="tour-equipo">
+            <div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {!esMasivo && (
                 <div>
@@ -2772,7 +2778,7 @@ export default function RequerimientosPage() {
 
             {/* Módulo y prioridad (KAN-44): se ven y se editan tanto al crear como al editar.
                 El módulo sugiere los que ya usa el proyecto y permite escribir uno nuevo. */}
-            <div id="tour-modulo" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="req-modulo" className={etiqueta}>Módulo</label>
                 <div className="relative">
@@ -2927,7 +2933,7 @@ export default function RequerimientosPage() {
                     {insertarDespuesDe ? 'Insertar y añadir otro' : 'Guardar y añadir otro'}
                   </button>
                 )}
-                <button id="tour-guardar" type="submit" disabled={saving} className={btnPrimario}>
+                <button type="submit" disabled={saving} className={btnPrimario}>
                   <Save size={16} />
                   {saving ? 'Guardando...' : editingReq ? 'Guardar cambios' : insertarDespuesDe ? 'Insertar requerimiento' : 'Registrar requerimiento'}
                 </button>
@@ -2936,9 +2942,6 @@ export default function RequerimientosPage() {
           </ModalFooter>
         </form>
       </Modal>
-
-      <TourGuiado abierto={tutorial.abierto} pasos={PASOS_TUTORIAL_CREAR} onTerminar={tutorial.cerrar} />
-      <TourGuiado abierto={tutorialProyecto.abierto} pasos={PASOS_TUTORIAL_PROYECTO} onTerminar={tutorialProyecto.cerrar} />
 
       {/* Modal Historial */}
       <ModalHistorialLogs
