@@ -1,0 +1,14 @@
+OK    sistema-tienda     una aplicación para una tienda de ropa en línea
+        → sistema, 11 áreas (Catálogo de Productos, Gestión de Carrito, Proceso de Pago, Seguridad, Rendimiento, Disponibilidad y confiabilidad, Usabilidad, Accesibilidad, Mantenibilidad y soporte, Legal y privacidad, Integraciones); lote de "Catálogo de Productos": 20 requerimientos, completo=true
+OK    modulo-pagos       los requerimientos del módulo de pagos de la tienda en línea
+        → modulo, 1 áreas (Modulo de Pagos); lote de "Modulo de Pagos": 12 requerimientos, completo=false
+OK    no-duplicar        el módulo de inicio de sesión
+        → modulo, 3 áreas (Inicio de sesión, Recuperación de contraseña, Cierre de sesión); lote de "Inicio de sesión": 10 requerimientos, completo=true
+OK    sin-cifras         el módulo de reportes de ventas, que se generen rápido
+        → modulo, 2 áreas (Módulo de Reportes de Ventas, Rendimiento); lote de "Módulo de Reportes de Ventas": 2 requerimientos, completo=true
+OK    estrictez-baja     una app móvil para que los socios de un gimnasio reserven clases
+        → sistema, 13 áreas (Acceso y Registro, Pantalla Principal y Dashboard, Catálogo y Búsqueda de Clases, Gestión de Reservas, Perfil y Configuración, Seguridad, Rendimiento, Disponibilidad y confiabilidad, Usabilidad, Accesibilidad, Mantenibilidad y soporte, Legal y privacidad, Integraciones); lote de "Acceso y Registro": 12 requerimientos, completo=true
+OK    estrictez-maxima   un sistema donde los alumnos consultan sus calificaciones
+        → sistema, 1 áreas (Consulta de Calificaciones); lote de "Consulta de Calificaciones": 1 requerimientos, completo=true
+
+6/6 casos correctos

@@ -50,6 +50,8 @@ import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import PageHeader from '@/components/ui/PageHeader';
+import ListaEsqueleto from '@/components/ui/Esqueleto';
+import { BotonPista, Pista, usePista } from '@/components/ui/Pista';
 import ModalFormEquipo from '@/components/equipos/ModalFormEquipo';
 import { HistorialMiembrosModal } from '@/components/equipos/HistorialMiembrosModal';
 import BuscadorPersonas from '@/components/proyectos/BuscadorPersonas';
@@ -162,6 +164,7 @@ export default function EquiposGlobalPage() {
   const [roles, setRoles] = useState<Rol[]>([]);
   const [proyectosMap, setProyectosMap] = useState<Map<string, Proyecto>>(new Map());
   const [loading, setLoading] = useState(true);
+  const pista = usePista('equipos');
 
   const [searchTerm, setSearchTerm] = useEstadoSesion('easyreq:equipos:buscar', '');
   const [filtroMios, setFiltroMios] = useEstadoSesion('easyreq:equipos:filtro', 'todos');
@@ -589,7 +592,7 @@ export default function EquiposGlobalPage() {
                 >
                   <span className="font-semibold text-ink">{proyecto.nombre}</span>
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                    className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
                       estado === 'activo'
                         ? 'bg-success-subtle text-success border-success-line'
                         : 'bg-sunken text-ink-subtle border-line'
@@ -710,7 +713,7 @@ export default function EquiposGlobalPage() {
               {equipoAbierto.miembros.length}
             </span>
           </h3>
-          <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+          <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
             {equipoAbierto.miembros.length === 0 ? (
               <li className="p-8 text-center text-sm text-ink-subtle">
                 Este equipo aún no tiene integrantes en su plantilla global.
@@ -829,7 +832,12 @@ export default function EquiposGlobalPage() {
   return (
     <div className="animate-in fade-in">
       <PageHeader
-        title="Equipos"
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            Equipos
+            <BotonPista activo={pista.visible} onClick={pista.alternar} />
+          </span>
+        }
         description="Entidades globales de trabajo que pueden asignarse a uno o varios proyectos."
         actions={
           <button onClick={openModal} className={btnPrimario}>
@@ -838,6 +846,12 @@ export default function EquiposGlobalPage() {
           </button>
         }
       />
+
+      <Pista visible={pista.visible} onOcultar={pista.ocultar} titulo="Para qué sirven los equipos" className="mb-6">
+        Un equipo global agrupa integrantes y roles para reutilizarlos en uno o varios proyectos sin volver
+        a armarlo. Abre un equipo para invitar personas por correo, asignar líderes (son quienes aprueban
+        los requerimientos) y consultar el historial de cambios.
+      </Pista>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-8">
         <div className="relative flex-1">
@@ -876,15 +890,7 @@ export default function EquiposGlobalPage() {
       </div>
 
       {loading ? (
-        <div
-          role="status"
-          aria-label="Cargando"
-          className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden"
-        >
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-28 bg-sunken animate-pulse" />
-          ))}
-        </div>
+        <ListaEsqueleto forma="tarjeta" etiqueta="Cargando equipos" />
       ) : equiposFiltrados.length === 0 ? (
         <div className="text-center py-20">
           <h3 className="text-lg font-semibold text-ink">
@@ -903,8 +909,8 @@ export default function EquiposGlobalPage() {
           </div>
         </div>
       ) : (
-        <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
-          {equiposFiltrados.map(team => {
+        <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
+          {equiposFiltrados.map((team) => {
             const gestionable = puedeGestionarEquipo(team.equipo_id);
             const lideres = team.miembros.filter(m => m.esLider);
             const proyectosActivos = team.proyectosVinculados.filter(

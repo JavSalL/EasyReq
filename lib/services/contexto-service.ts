@@ -211,6 +211,8 @@ export async function eliminarContextoDeProyecto(id_proyecto: string): Promise<v
   ]);
   for (const d of fragmentos.docs) await deleteDoc(d.ref);
   for (const d of archivos.docs) await deleteDoc(d.ref);
+  // El resumen que hizo la IA (KAN-43); si no existe, no pasa nada.
+  await deleteDoc(doc(db, 'contexto_resumen', id_proyecto)).catch(() => {});
 }
 
 /**
@@ -239,4 +241,36 @@ export function construirContextoIA(
   return contexto.length > MAX_CONTEXTO_IA
     ? `${contexto.slice(0, MAX_CONTEXTO_IA - 100)}\n\n[El contexto se recortó por su tamaño.]`
     : contexto;
+}
+
+// ==========================================
+// RESUMEN DEL CONTEXTO PARA LA IA (KAN-43)
+// ==========================================
+// El plan de la generación iterativa resume el contexto completo; los lotes usan ese resumen más
+// los fragmentos de su área. Se guarda un resumen por proyecto con la huella del contexto del que
+// salió: si el contexto cambia (otro archivo, otra carpeta elegida), deja de valer y se pide otro.
+
+const COL_RESUMEN = 'contexto_resumen';
+
+/** Resumen guardado para este contexto (misma huella), o null si no hay o es de otro contexto. */
+export async function getResumenContexto(id_proyecto: string, huella: string): Promise<string | null> {
+  try {
+    const snap = await getDoc(doc(db, COL_RESUMEN, id_proyecto));
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    return data.huella === huella && typeof data.resumen === 'string' && data.resumen.trim() ? data.resumen : null;
+  } catch {
+    // Sin resumen guardado la corrida sigue: el plan escribe uno nuevo.
+    return null;
+  }
+}
+
+/** Guarda (o reemplaza) el resumen del contexto del proyecto. */
+export async function guardarResumenContexto(id_proyecto: string, huella: string, resumen: string): Promise<void> {
+  await setDoc(doc(db, COL_RESUMEN, id_proyecto), {
+    id_proyecto,
+    huella,
+    resumen: resumen.slice(0, 8_000),
+    updated_at: new Date().toISOString()
+  });
 }

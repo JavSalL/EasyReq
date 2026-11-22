@@ -97,15 +97,15 @@ const FAQS = [
   },
   {
     pregunta: '¿Cómo copio la sintaxis de un patrón?',
-    respuesta: 'Ve a Patrones y Modelos, localiza la tarjeta del patrón y pulsa el icono de copiar (Copy). Verás un aviso de “Sintaxis copiada al portapapeles” y podrás pegarla en el editor del requerimiento.',
+    respuesta: 'Ve a Patrones y modelos, localiza la tarjeta del patrón y pulsa el icono de copiar (Copy). Verás un aviso de “Sintaxis copiada al portapapeles” y podrás pegarla en el editor del requerimiento.',
   },
   {
     pregunta: '¿Cómo creo un patrón nuevo?',
-    respuesta: 'En Patrones y Modelos pulsa “Nuevo Patrón”, elige el modelo al que pertenece, escribe un nombre descriptivo (por ejemplo “Timing Constraint”) y la sintaxis o prompt con placeholders entre < >. Guarda y aparecerá en el catálogo.',
+    respuesta: 'En Patrones y modelos pulsa “Nuevo patrón”, elige el modelo al que pertenece, escribe un nombre descriptivo (por ejemplo “Timing Constraint”) y la sintaxis o prompt con placeholders entre < >. Guarda y aparecerá en el catálogo.',
   },
   {
     pregunta: '¿Qué hago si un modelo no tiene patrones?',
-    respuesta: 'Verifica que el filtro de pestaña sea el correcto y limpia el buscador. Si el catálogo aún está vacío, es probable que falte la siembra inicial (seed) de Firestore; pide a un administrador que ejecute la inicialización de catálogos o crea los patrones manualmente con “Nuevo Patrón”.',
+    respuesta: 'Verifica que el filtro de pestaña sea el correcto y limpia el buscador. Si el catálogo aún está vacío, es probable que falte la siembra inicial (seed) de Firestore; pide a un administrador que ejecute la inicialización de catálogos o crea los patrones manualmente con “Nuevo patrón”.',
   },
   {
     pregunta: '¿Cómo se vincula un modelo a un requerimiento?',

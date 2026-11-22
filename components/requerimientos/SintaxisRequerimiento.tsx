@@ -172,7 +172,7 @@ export function BarraSintaxis({ activo, onCambiarActivo, items, foco }: BarraSin
 
       {activo ? (
         <>
-          <span className="text-[11px] font-medium text-ink-subtle select-none">Simbología:</span>
+          <span className="text-xs font-medium text-ink-subtle select-none">Simbología:</span>
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Elementos del patrón">
             {items.map(item => {
               const estilos = ESTILOS_TONO[item.tono];
@@ -187,7 +187,7 @@ export function BarraSintaxis({ activo, onCambiarActivo, items, foco }: BarraSin
                   onClick={() => foco.alternarFija(item.clave)}
                   onMouseEnter={() => foco.setClaveTemporal(item.clave)}
                   onMouseLeave={() => foco.setClaveTemporal(null)}
-                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-ui border text-[11px] font-medium transition-all cursor-pointer ${
+                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-ui border text-xs font-medium transition-all cursor-pointer ${
                     fijado ? estilos.chipFijo : estilos.chip
                   } ${atenuado ? 'opacity-50' : ''}`}
                 >
@@ -201,14 +201,14 @@ export function BarraSintaxis({ activo, onCambiarActivo, items, foco }: BarraSin
             <button
               type="button"
               onClick={foco.limpiar}
-              className="text-[11px] font-semibold text-brand-text hover:underline cursor-pointer ml-auto"
+              className="text-xs font-semibold text-brand-text hover:underline cursor-pointer ml-auto"
             >
               Ver todos
             </button>
           )}
         </>
       ) : (
-        <span className="text-[11px] text-ink-subtle">
+        <span className="text-xs text-ink-subtle">
           Activa el resaltado para distinguir los elementos del patrón en cada enunciado.
         </span>
       )}
@@ -271,7 +271,7 @@ export function TextoConSintaxis({
           <mark
             key={idx}
             title={`${seg.etiqueta}: ${seg.texto}`}
-            className={`px-1 py-px rounded-[3px] font-normal transition-opacity ${
+            className={`px-[3px] -mx-[3px] py-px rounded-[3px] box-decoration-clone font-normal transition-opacity ${
               esEnfocado ? estilos.marcaEnfocada : estilos.marca
             } ${atenuado ? 'opacity-35' : ''}`}
           >
@@ -298,7 +298,7 @@ export function BotonDesgloseSintaxis({ abierto, onAlternar, cantidad }: BotonDe
       aria-expanded={abierto}
       onClick={onAlternar}
       title={abierto ? 'Ocultar el desglose de elementos del patrón' : 'Ver el desglose de elementos del patrón'}
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-ui text-[11px] font-medium border transition-colors cursor-pointer ${
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-ui text-xs font-medium border transition-colors cursor-pointer ${
         abierto
           ? 'bg-brand-subtle text-brand-text border-brand-line'
           : 'bg-surface text-ink-muted border-line hover:bg-sunken hover:text-ink'
@@ -418,7 +418,7 @@ export function VistaPreviaSintaxis({ texto, elementos, patron }: VistaPreviaSin
   return (
     <div className="mt-2 rounded-ui border border-line bg-sunken/35 p-3 space-y-2 animate-in fade-in">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ink-muted mr-1">
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-ink-muted mr-1">
           <Highlighter size={12} className="text-brand-text" aria-hidden />
           Elementos del patrón:
         </span>
@@ -434,7 +434,7 @@ export function VistaPreviaSintaxis({ texto, elementos, patron }: VistaPreviaSin
               onClick={() => foco.alternarFija(item.clave)}
               onMouseEnter={() => foco.setClaveTemporal(item.clave)}
               onMouseLeave={() => foco.setClaveTemporal(null)}
-              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-ui border text-[11px] font-medium transition-all cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-ui border text-xs font-medium transition-all cursor-pointer ${
                 fijado ? estilos.chipFijo : estilos.chip
               }`}
             >
@@ -473,3 +473,97 @@ export function VistaPreviaSintaxis({ texto, elementos, patron }: VistaPreviaSin
   );
 }
 
+
+export interface EditorEnunciadoConSintaxisProps
+  extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onChange'> {
+  value: string;
+  onChange: (valor: string) => void;
+  elementos?: ReadonlyArray<ElementoSintactico> | null;
+  patron?: string | null;
+  /** Clases del campo (las mismas que se usarían en un textarea normal). */
+  className: string;
+}
+
+/**
+ * Campo del enunciado que marca sus partes (disparador, sistema, respuesta…)
+ * dentro del propio texto mientras se escribe. Detrás del textarea, con la
+ * misma tipografía y relleno, hay una copia del texto con los fondos de color;
+ * el textarea va encima, transparente, así el cursor y la selección son los
+ * de siempre. Debajo, una sola línea dice qué color es cada parte.
+ */
+export function EditorEnunciadoConSintaxis({
+  value,
+  onChange,
+  elementos,
+  patron,
+  className,
+  ...resto
+}: EditorEnunciadoConSintaxisProps) {
+  const fondoRef = React.useRef<HTMLDivElement>(null);
+  const campoRef = React.useRef<HTMLTextAreaElement>(null);
+  // El campo crece con el texto: sin barra de desplazamiento propia, la copia de
+  // detrás parte las líneas exactamente igual
+  React.useLayoutEffect(() => {
+    const el = campoRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [value]);
+  const { items, mapaTonos } = useMemo(
+    () => construirLeyendaSintaxis([elementos], patron),
+    [elementos, patron]
+  );
+  const segmentos = useMemo(
+    () => (elementos?.length ? segmentarTextoSintaxis(value, elementos, mapaTonos) : []),
+    [value, elementos, mapaTonos]
+  );
+  const marcadas = segmentos.filter(s => s.tipo === 'elemento');
+  const presentes = items.filter(i => marcadas.some(m => m.tipo === 'elemento' && m.clave === i.clave));
+
+  return (
+    <div>
+      <div className="relative rounded-ui bg-surface">
+        <div
+          ref={fondoRef}
+          aria-hidden
+          className={`${className} absolute inset-0 overflow-hidden whitespace-pre-wrap break-words border-transparent bg-transparent pointer-events-none`}
+          style={{ color: 'transparent' }}
+        >
+          {segmentos.length > 0
+            ? segmentos.map((seg, i) =>
+                seg.tipo === 'texto' ? (
+                  <span key={i}>{seg.texto}</span>
+                ) : (
+                  <mark key={i} className={`${ESTILOS_TONO[seg.tono].marca} rounded-[2px]`} style={{ color: 'transparent' }}>
+                    {seg.texto}
+                  </mark>
+                )
+              )
+            : value}
+          {/* El salto final del textarea ocupa una línea aunque esté vacía */}
+          {'​'}
+        </div>
+        <textarea
+          {...resto}
+          ref={campoRef}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onScroll={e => {
+            if (fondoRef.current) fondoRef.current.scrollTop = e.currentTarget.scrollTop;
+          }}
+          className={`${className} relative block bg-transparent resize-none overflow-hidden`}
+        />
+      </div>
+      {presentes.length > 0 && (
+        <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-muted" aria-live="polite">
+          {presentes.map(item => (
+            <span key={item.clave} className="inline-flex items-center gap-1.5">
+              <span aria-hidden className={`size-2 rounded-full ${ESTILOS_TONO[item.tono].punto}`} />
+              {item.etiqueta}
+            </span>
+          ))}
+        </p>
+      )}
+    </div>
+  );
+}
