@@ -24,11 +24,12 @@ const MARCA: Record<number, string> = {
   5: 'bg-syntax-5-subtle/80 border-b-2 border-syntax-5-line',
 };
 
+// La leyenda usa el mismo relleno y subrayado que la marca, para que el color coincida
 const PUNTO: Record<number, string> = {
-  1: 'bg-syntax-1',
-  2: 'bg-syntax-2',
-  3: 'bg-syntax-3',
-  5: 'bg-syntax-5',
+  1: 'bg-syntax-1-subtle border-syntax-1-line',
+  2: 'bg-syntax-2-subtle border-syntax-2-line',
+  3: 'bg-syntax-3-subtle border-syntax-3-line',
+  5: 'bg-syntax-5-subtle border-syntax-5-line',
 };
 
 export default function EjemploSintaxis({
@@ -63,7 +64,7 @@ export default function EjemploSintaxis({
       <figcaption className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-ink-muted">
         {elementos.map(e => (
           <span key={e.elemento} className="inline-flex items-center gap-1.5">
-            <span aria-hidden className={`size-2 rounded-full ${PUNTO[e.tono]}`} />
+            <span aria-hidden className={`size-3 rounded-full border-2 ${PUNTO[e.tono]}`} />
             {e.elemento}
           </span>
         ))}
