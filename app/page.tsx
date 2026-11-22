@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { useRouter } from 'next/navigation';
 import {
   Plus,
   Edit2,
@@ -84,7 +84,6 @@ function claseInsigniaEstadoProyecto(nombreEstado?: string): string {
 }
 
 export default function Home() {
-  const router = useRouter();
   const confirmar = useConfirm();
   const { user, profile, profileLoaded } = useAuth();
   const uid = user?.uid ?? null;
@@ -422,8 +421,6 @@ export default function Home() {
     }
   };
 
-  const abrirProyecto = (id: string) => router.push(`/requerimientos/?id=${id}`);
-
   const termino = searchTerm.trim().toLowerCase();
   const hayFiltrosActivos = Boolean(termino || filtroEstado || filtroNaturaleza || filtroColaboracion);
 
@@ -627,23 +624,23 @@ export default function Home() {
                         key={proj.proyecto_id}
                         id={idxGrupo === 0 && idxProj === 0 ? 'tour-lista-proyectos' : undefined}
                       >
-                        <div
-                          role="link"
-                          tabIndex={0}
-                          onClick={() => abrirProyecto(proj.proyecto_id)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter' && e.target === e.currentTarget)
-                              abrirProyecto(proj.proyecto_id);
-                          }}
-                          aria-label={`Abrir requerimientos de ${proj.nombre}`}
-                          className="group flex items-center gap-4 px-5 py-5 cursor-pointer hover:bg-sunken focus-visible:bg-sunken"
-                        >
+                        {/* Toda la fila es clicable gracias al enlace del nombre (su ::after la cubre),
+                            así funciona el clic central, "abrir en pestaña nueva" y el lector de pantalla
+                            lo anuncia como enlace. Los botones de acción quedan por encima (z-10). */}
+                        <div className="group relative flex items-center gap-4 px-5 py-5 hover:bg-sunken has-[a:focus-visible]:bg-sunken has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-brand-text">
                           <span className="hidden sm:flex size-10 shrink-0 items-center justify-center rounded-ui bg-brand-solid text-on-solid">
                             <FolderGit2 size={20} aria-hidden />
                           </span>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                              <h3 className="text-base font-semibold text-ink">{proj.nombre}</h3>
+                              <h3 className="text-base font-semibold text-ink">
+                                <Link
+                                  href={`/requerimientos/?id=${proj.proyecto_id}`}
+                                  className="after:absolute after:inset-0 focus-visible:outline-none"
+                                >
+                                  {proj.nombre}
+                                </Link>
+                              </h3>
                               {proj.estado_proyecto && (
                                 <span
                                   className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold ${claseInsigniaEstadoProyecto(
@@ -683,10 +680,7 @@ export default function Home() {
                             </span>
                           </div>
 
-                          <div
-                            className="flex items-center gap-1 shrink-0"
-                            onClick={e => e.stopPropagation()}
-                          >
+                          <div className="relative z-10 flex items-center gap-1 shrink-0">
                             {editable ? (
                               <>
                                 <button

@@ -561,19 +561,6 @@ export default function LoginPage() {
                 <span>Iniciar sesión con Google</span>
               </button>
 
-              {/* Footer de la tarjeta */}
-              <div className="mt-6 pt-6 border-t border-line text-center">
-                <p className="text-xs text-ink-subtle">
-                  {isLogin ? '¿No tienes una cuenta?' : '¿Ya tienes una cuenta?'}{' '}
-                  <button
-                    type="button"
-                    onClick={() => setIsLogin(!isLogin)}
-                    className="font-semibold text-brand-text hover:underline cursor-pointer"
-                  >
-                    {isLogin ? 'Regístrate aquí' : 'Inicia sesión'}
-                  </button>
-                </p>
-              </div>
         </div>
 
         {/* Info extra */}

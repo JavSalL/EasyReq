@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, Check, ChevronDown, ChevronUp, CircleDashed, Copy, Loader2, Map as MapaIcono, Plus, Search, Square, X, XCircle
+  AlertTriangle, Check, ChevronDown, ChevronUp, CircleDashed, Copy, Loader2, Map as MapaIcono, Plus, Search, SlidersHorizontal, Square, X, XCircle
 } from 'lucide-react';
 import {
   AIError,
@@ -785,45 +785,71 @@ function MarcaPosibleDuplicado({ marca, propia, otra, numeroOtra, bloqueado, onA
       : 'Era de esta generación y ya no está en la lista.';
   const tipo = marca.semantico ? 'Mismo significado' : 'Texto parecido';
   const texto = otra?.texto ?? marca.texto;
+  const [abierto, setAbierto] = useState(false);
+
+  const resumen = !esPropuesta
+    ? `Posible duplicado de ${marca.etiqueta}`
+    : otra && numeroOtra
+      ? `Posible duplicado de la n.º ${numeroOtra}`
+      : 'Posible duplicado de otra propuesta';
 
   return (
-    <div className="rounded-ui border border-warning-line border-l-4 bg-warning-subtle px-3 py-2 space-y-1.5" role="note" aria-label={titulo}>
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-semibold text-ink">
-        <Copy size={14} className="text-warning shrink-0" aria-hidden />
-        {titulo}
-        <span className="text-xs font-normal text-ink-muted">
-          {tipo} · {Math.round(marca.similitud * 100)} % · {donde}
-        </span>
-      </p>
-      {texto && <p className="text-sm text-ink-muted leading-snug pl-5">«{texto}»</p>}
-      <div className="flex flex-wrap gap-1.5 pl-5">
+    <div className="rounded-ui bg-warning-subtle text-sm" role="note" aria-label={titulo}>
+      {/* Una línea con lo esencial; el texto parecido y las demás acciones se abren bajo demanda */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-2 pr-1 py-1">
         <button
           type="button"
-          className={botonMarca}
+          onClick={() => setAbierto(a => !a)}
+          aria-expanded={abierto}
+          className="inline-flex items-center gap-1.5 min-h-8 pointer-coarse:min-h-11 text-left font-semibold text-ink cursor-pointer hover:underline underline-offset-2"
+        >
+          <Copy size={14} className="text-warning shrink-0" aria-hidden />
+          {resumen}
+          <span className="font-normal text-ink-muted tabular-nums">· {Math.round(marca.similitud * 100)} %</span>
+          {abierto ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+        </button>
+        <button
+          type="button"
+          className={`${botonMarca} ml-auto`}
           disabled={bloqueado || (!propia.elegida && !esSeleccionable(propia))}
           onClick={() => onAlternar(propia.clave, !propia.elegida)}
         >
           {propia.elegida ? 'Desmarcar esta' : 'Volver a marcar esta'}
         </button>
-        {otra && (
-          <>
-            <button
-              type="button"
-              className={botonMarca}
-              disabled={bloqueado || (!otra.elegida && !esSeleccionable(otra))}
-              onClick={() => onAlternar(otra.clave, !otra.elegida)}
-            >
-              {otra.elegida ? `Desmarcar la n.º ${numeroOtra}` : `Volver a marcar la n.º ${numeroOtra}`}
-            </button>
-            <button type="button" className={botonMarca} onClick={() => onVerOtra(otra.clave)}>
-              Ver la n.º {numeroOtra}
-            </button>
-          </>
-        )}
       </div>
+      {abierto && (
+        <div className="px-3 pb-2.5 space-y-1.5">
+          <p className="text-xs text-ink-muted">
+            {titulo}. {tipo}. {donde}
+          </p>
+          {texto && <p className="text-sm text-ink leading-snug">«{texto}»</p>}
+          {otra && (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                className={botonMarca}
+                disabled={bloqueado || (!otra.elegida && !esSeleccionable(otra))}
+                onClick={() => onAlternar(otra.clave, !otra.elegida)}
+              >
+                {otra.elegida ? `Desmarcar la n.º ${numeroOtra}` : `Volver a marcar la n.º ${numeroOtra}`}
+              </button>
+              <button type="button" className={botonMarca} onClick={() => onVerOtra(otra.clave)}>
+                Ver la n.º {numeroOtra}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
+/**
+ * La IA a veces justifica con una frase genérica ("Sale del pedido."). Repetida en cada
+ * propuesta es ruido; solo se muestra cuando dice algo concreto.
+ */
+const justificacionUtil = (texto?: string | null) =>
+  !!texto && !/^sale (del|de la|de el) (pedido|contexto|solicitud|descripci[oó]n)\.?$/i.test(texto.trim());
+
 const selectChico = 'px-2 min-h-8 text-xs border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text';
 
 interface FiltrosPropuestas {
@@ -849,6 +875,7 @@ interface PanelProps {
 export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, bloqueado }: PanelProps) {
   const { fase, plan, areasPlan, setAreasPlan, progreso, propuestas, setPropuestas, resultado, patronUsado } = gen;
   const [filtros, setFiltros] = useState<FiltrosPropuestas>(FILTROS_VACIOS);
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
   const [mostrarSintaxis, setMostrarSintaxis] = useEstadoSesion('easyreq:sintaxis:visible', true);
   const focoSintaxis = useFocoSintaxis();
   const [desglosesAbiertos, setDesglosesAbiertos] = useState<Set<string>>(() => new Set());
@@ -981,6 +1008,9 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
   const seleccionables = useMemo(() => (propuestas ?? []).filter(esSeleccionable), [propuestas]);
   const visiblesSeleccionables = useMemo(() => visibles.filter(esSeleccionable), [visibles]);
   const hayFiltros = JSON.stringify(filtros) !== JSON.stringify(FILTROS_VACIOS);
+  // Filtros del panel (sin contar la búsqueda, que ya se ve en su campo)
+  const cantidadFiltros = (['origen', 'prioridad', 'furps', 'duplicados'] as const)
+    .filter(k => filtros[k] !== FILTROS_VACIOS[k]).length;
   const total = propuestas?.length ?? 0;
   const elegidas = contarSeleccionadas(seleccionables);
   const todasElegidas = todasSeleccionadas(seleccionables);
@@ -1231,24 +1261,24 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
               }`}
             >
               <Check size={13} aria-hidden />
-              {elegidas} de {total} {total === 1 ? 'seleccionado' : 'seleccionados'}
+              {elegidas} de {total} {total === 1 ? 'seleccionada' : 'seleccionadas'}
             </p>
           </div>
 
           <div
             role="group"
             aria-label="Selección de propuestas"
-            className="flex flex-wrap items-center gap-2 rounded-ui border border-line bg-sunken/40 p-2"
+            className="flex flex-wrap items-center gap-2"
           >
             <button
               type="button"
               onClick={() => elegirVarias(seleccionables.map(p => p.clave), true)}
               disabled={bloqueado || seleccionables.length === 0 || todasElegidas}
               className={btnSecundarioCompacto}
-              title="Selecciona todos los requerimientos, incluidos los ocultos por los filtros. No los registra."
+              title="Marca todas las propuestas, también las que ocultan los filtros. Se registran con el botón de abajo."
             >
               <Check size={14} aria-hidden />
-              Aprobar todos
+              Seleccionar todas
             </button>
             <button
               type="button"
@@ -1272,53 +1302,82 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                 Seleccionar filtrados ({visiblesSeleccionables.length})
               </button>
             )}
-            <p className="basis-full text-[11px] text-ink-subtle">
-              Aprobar todos solo marca la selección; el registro se confirma con el botón de abajo.
-              {hayFiltros && ' Aprobar todos incluye los ocultos; Seleccionar filtrados solo los visibles.'}
-            </p>
           </div>
 
-          {/* Filtros */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-40">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle" aria-hidden />
-              <input
-                value={filtros.q}
-                onChange={e => setFiltros(f => ({ ...f, q: e.target.value }))}
-                // Enter en el buscador no debe enviar el formulario ni abrir el registro.
-                onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
-                placeholder="Buscar en las propuestas"
-                aria-label="Buscar en las propuestas"
-                className={`${selectChico} w-full pl-7`}
-              />
-            </div>
-            <select value={filtros.origen} onChange={e => setFiltros(f => ({ ...f, origen: e.target.value as FiltrosPropuestas['origen'] }))} aria-label="Filtrar por origen" className={selectChico}>
-              <option value="todos">Explícitos e inferidos</option>
-              <option value="explicito">Solo explícitos</option>
-              <option value="inferido">Solo inferidos</option>
-            </select>
-            <select value={filtros.prioridad} onChange={e => setFiltros(f => ({ ...f, prioridad: e.target.value as FiltrosPropuestas['prioridad'] }))} aria-label="Filtrar por prioridad" className={selectChico}>
-              <option value="todas">Toda prioridad</option>
-              <option value="Must">Must</option>
-              <option value="Should">Should</option>
-              <option value="Could">Could</option>
-              <option value="Wont">Won&apos;t</option>
-            </select>
-            <select value={filtros.furps} onChange={e => setFiltros(f => ({ ...f, furps: e.target.value as FiltrosPropuestas['furps'] }))} aria-label="Filtrar por tipo" className={selectChico}>
-              <option value="todos">Todo tipo</option>
-              {Object.entries(NOMBRES_FURPS).map(([valor, nombre]) => (
-                <option key={valor} value={valor}>{nombre}</option>
-              ))}
-            </select>
-            <select value={filtros.duplicados} onChange={e => setFiltros(f => ({ ...f, duplicados: e.target.value as FiltrosPropuestas['duplicados'] }))} aria-label="Filtrar posibles duplicados" className={selectChico}>
-              <option value="todos">Todos</option>
-              <option value="ocultar">Sin posibles duplicados</option>
-              <option value="solo">Solo posibles duplicados</option>
-            </select>
-            {hayFiltros && (
-              <button type="button" onClick={() => setFiltros(FILTROS_VACIOS)} className="text-xs font-semibold text-brand-text hover:underline cursor-pointer">
-                Quitar filtros
+          {/* Filtros: buscador y un botón en una fila; los desplegables se abren bajo demanda */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 min-w-0">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle" aria-hidden />
+                <input
+                  value={filtros.q}
+                  onChange={e => setFiltros(f => ({ ...f, q: e.target.value }))}
+                  // Enter en el buscador no debe enviar el formulario ni abrir el registro.
+                  onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
+                  placeholder="Buscar en las propuestas"
+                  aria-label="Buscar en las propuestas"
+                  className={`${selectChico} w-full pl-7`}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setFiltrosAbiertos(a => !a)}
+                aria-expanded={filtrosAbiertos}
+                aria-controls="panel-filtros-propuestas"
+                className={`${btnSecundarioCompacto} shrink-0`}
+              >
+                <SlidersHorizontal size={14} aria-hidden />
+                Filtros
+                {cantidadFiltros > 0 && (
+                  <span className="min-w-4 h-4 px-1 rounded-full bg-brand-solid text-on-solid text-[10px] font-bold leading-4 tabular-nums">
+                    {cantidadFiltros}
+                  </span>
+                )}
               </button>
+              {hayFiltros && (
+                <button type="button" onClick={() => setFiltros(FILTROS_VACIOS)} className="shrink-0 text-xs font-semibold text-brand-text hover:underline cursor-pointer">
+                  Quitar filtros
+                </button>
+              )}
+            </div>
+            {filtrosAbiertos && (
+              <div id="panel-filtros-propuestas" className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2 rounded-ui bg-sunken">
+                <label className="text-xs text-ink-muted space-y-1">
+                  <span className="block font-medium">Origen</span>
+                  <select value={filtros.origen} onChange={e => setFiltros(f => ({ ...f, origen: e.target.value as FiltrosPropuestas['origen'] }))} className={`${selectChico} w-full`}>
+                    <option value="todos">Todos</option>
+                    <option value="explicito">Solo explícitos</option>
+                    <option value="inferido">Solo inferidos</option>
+                  </select>
+                </label>
+                <label className="text-xs text-ink-muted space-y-1">
+                  <span className="block font-medium">Prioridad</span>
+                  <select value={filtros.prioridad} onChange={e => setFiltros(f => ({ ...f, prioridad: e.target.value as FiltrosPropuestas['prioridad'] }))} className={`${selectChico} w-full`}>
+                    <option value="todas">Todas</option>
+                    <option value="Must">Must</option>
+                    <option value="Should">Should</option>
+                    <option value="Could">Could</option>
+                    <option value="Wont">Won&apos;t</option>
+                  </select>
+                </label>
+                <label className="text-xs text-ink-muted space-y-1">
+                  <span className="block font-medium">Tipo</span>
+                  <select value={filtros.furps} onChange={e => setFiltros(f => ({ ...f, furps: e.target.value as FiltrosPropuestas['furps'] }))} className={`${selectChico} w-full`}>
+                    <option value="todos">Todos</option>
+                    {Object.entries(NOMBRES_FURPS).map(([valor, nombre]) => (
+                      <option key={valor} value={valor}>{nombre}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs text-ink-muted space-y-1">
+                  <span className="block font-medium">Posibles duplicados</span>
+                  <select value={filtros.duplicados} onChange={e => setFiltros(f => ({ ...f, duplicados: e.target.value as FiltrosPropuestas['duplicados'] }))} className={`${selectChico} w-full`}>
+                    <option value="todos">Mostrarlos</option>
+                    <option value="ocultar">Ocultarlos</option>
+                    <option value="solo">Solo duplicados</option>
+                  </select>
+                </label>
+              </div>
             )}
           </div>
 
@@ -1362,7 +1421,7 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                         title={totalArea === 0 ? `No hay propuestas con texto en ${area}` : `${todasArea ? 'Desmarcar' : 'Seleccionar'} todo el área ${area}: ${detalleArea}`}
                         className="size-4 accent-brand-text shrink-0 cursor-pointer disabled:cursor-not-allowed"
                       />
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted truncate">{area}</span>
+                      <span className="text-sm font-semibold text-ink truncate">{area}</span>
                       {ocultas > 0 && (
                         <span className="text-[10px] text-ink-subtle" title={`Los filtros ocultan ${ocultas} propuestas de esta área`}>
                           {ocultas} ocultas
@@ -1462,7 +1521,7 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                                   />
                                 );
                               })()}
-                              {p.justificacion && <p className="text-[11px] text-ink-subtle leading-snug">{p.justificacion}</p>}
+                              {justificacionUtil(p.justificacion) && <p className="text-xs text-ink-subtle leading-snug">{p.justificacion}</p>}
                             </div>
                           </li>
                         );
