@@ -46,6 +46,7 @@ import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import PageHeader from '@/components/ui/PageHeader';
+import ListaEsqueleto from '@/components/ui/Esqueleto';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -598,15 +599,7 @@ export default function Home() {
       </div>
 
       {loading || loadingPermisos ? (
-        <div
-          className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden"
-          role="status"
-          aria-label="Cargando"
-        >
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-24 animate-pulse bg-sunken" />
-          ))}
-        </div>
+        <ListaEsqueleto forma="proyecto" etiqueta="Cargando proyectos" />
       ) : filteredProjects.length === 0 ? (
         <div className="text-center py-20">
           <h3 className="text-lg font-semibold text-ink">

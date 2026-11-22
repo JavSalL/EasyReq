@@ -79,6 +79,7 @@ import {
 import ModalFormEquipo from '@/components/equipos/ModalFormEquipo';
 import { HistorialMiembrosModal } from '@/components/equipos/HistorialMiembrosModal';
 import BuscadorPersonas from '@/components/proyectos/BuscadorPersonas';
+import ListaEsqueleto from '@/components/ui/Esqueleto';
 
 interface MiembroLocalDetallado {
   usuario: PerfilUsuario;
@@ -1242,15 +1243,7 @@ export default function EquiposDelProyecto({ proyecto, onCantidad }: EquiposDelP
       )}
 
       {loading ? (
-        <div
-          role="status"
-          aria-label="Cargando"
-          className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden"
-        >
-          {[1, 2].map(i => (
-            <div key={i} className="h-28 bg-sunken animate-pulse" />
-          ))}
-        </div>
+        <ListaEsqueleto forma="tarjeta" filas={2} etiqueta="Cargando equipos" />
       ) : equiposMostrados.length === 0 ? (
         <div className="text-center py-20">
           <h3 className="text-lg font-semibold text-ink">

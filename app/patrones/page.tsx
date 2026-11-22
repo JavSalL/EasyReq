@@ -21,6 +21,7 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
+import ListaEsqueleto from '@/components/ui/Esqueleto';
 import { BotonPista, Pista, usePista } from '@/components/ui/Pista';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
@@ -261,11 +262,7 @@ export default function PatronesPage() {
 
       {/* Grid de Patrones */}
       {loading ? (
-        <div role="status" aria-label="Cargando" className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-32 bg-sunken animate-pulse" />
-          ))}
-        </div>
+        <ListaEsqueleto forma="tarjeta" filas={4} etiqueta="Cargando patrones" />
       ) : filteredPatrones.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-lg font-semibold text-ink">

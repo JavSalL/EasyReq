@@ -69,6 +69,7 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
+import ListaEsqueleto from '@/components/ui/Esqueleto';
 import MenuAcciones, { type AccionMenu } from '@/components/ui/MenuAcciones';
 import EjemploSintaxis from '@/components/EjemploSintaxis';
 import ModalHistorialLogs from '@/components/requerimientos/ModalHistorialLogs';
@@ -2348,11 +2349,7 @@ export default function RequerimientosPage() {
 
       {/* Lista de Requerimientos */}
       {loading ? (
-        <div className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden" role="status" aria-label="Cargando">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 bg-sunken animate-pulse" />
-          ))}
-        </div>
+        <ListaEsqueleto filas={4} etiqueta="Cargando requerimientos" />
       ) : filteredRequerimientos.length === 0 ? (
         hayFiltros ? (
           <div className="text-center py-20">

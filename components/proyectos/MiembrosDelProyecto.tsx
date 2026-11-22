@@ -21,6 +21,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import { btnIconoPeligro, btnPrimario, btnSecundario } from '@/components/ui/estilos';
 import BuscadorPersonas from '@/components/proyectos/BuscadorPersonas';
+import ListaEsqueleto from '@/components/ui/Esqueleto';
 
 const nombreDe = (u: PerfilUsuario) => u.nombre || u.correo;
 const iniciales = (u: PerfilUsuario) => nombreDe(u).slice(0, 2).toUpperCase();
@@ -198,11 +199,7 @@ export default function MiembrosDelProyecto({ proyecto, onCambio, onCantidad }: 
       </div>
 
       {loading ? (
-        <div role="status" aria-label="Cargando" className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-20 bg-sunken animate-pulse" />
-          ))}
-        </div>
+        <ListaEsqueleto forma="tarjeta" etiqueta="Cargando miembros" />
       ) : (
         <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
           {filas.map(fila => (
