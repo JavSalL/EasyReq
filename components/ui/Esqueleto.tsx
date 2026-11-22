@@ -1,6 +1,6 @@
 import React from 'react';
 
-const barra = 'block rounded-full bg-sunken-strong/70';
+const barra = 'block rounded-full bg-sunken-strong/70 dark:bg-sunken-strong';
 
 /**
  * Silueta de una lista mientras carga: filas con la misma forma y alto que las
