@@ -372,6 +372,17 @@ export default function RequerimientosPage() {
     return () => { activo = false; };
   }, [uid, proyectoId, cantidadEquipos]);
 
+  // KAN-60: al agregar o quitar un equipo en la pestaña Equipos cambia la cantidad; se vuelve a leer
+  // la lista para que "Nuevo requerimiento" y el selector de equipo la vean sin recargar la página.
+  useEffect(() => {
+    if (!proyectoId || cantidadEquipos === null) return;
+    let activo = true;
+    getEquiposDelProyecto(proyectoId)
+      .then(equipos => { if (activo) setEquiposProyecto(equipos); })
+      .catch(e => console.error('No se pudieron recargar los equipos del proyecto:', e));
+    return () => { activo = false; };
+  }, [proyectoId, cantidadEquipos]);
+
   // AI Generation State
   const [isAILoading, setIsAILoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
