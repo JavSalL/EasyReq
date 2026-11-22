@@ -467,7 +467,8 @@ service cloud.firestore {
           ) ||
           request.resource.data.id_creador == resource.data.id_creador
         );
-      allow delete: if isAuthenticated();
+      allow delete: if isAuthenticated() &&
+        resource.data.get('id_creador', null) == request.auth.uid;
 
       // Puntero de acceso al proyecto y a los hilos de comentarios para quien entra por un
       // equipo activo vinculado. Las reglas revalidan en cada operación que el equipo siga

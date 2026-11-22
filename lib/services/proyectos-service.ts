@@ -276,13 +276,20 @@ export async function quitarMiembroProyecto(
 }
 
 export async function deleteProyecto(id: string): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
+    throw new Error('Debes iniciar sesión para eliminar un proyecto.');
+  }
+  const proyectoSnap = await getDoc(doc(db, 'proyecto', id));
+  if (!proyectoSnap.exists()) return;
+  if (proyectoSnap.data().id_creador !== uid) {
+    throw new Error('Solo el creador del proyecto puede eliminarlo.');
+  }
+
   // El contexto va primero: sus reglas comprueban la membresía leyendo el proyecto, que aún debe existir
   await eliminarContextoDeProyecto(id);
 
-  const uid = auth.currentUser?.uid;
-  if (uid) {
-    await asegurarAccesoComentariosProyecto(id, uid);
-  }
+  await asegurarAccesoComentariosProyecto(id, uid);
 
   const reqSnap = await getDocs(
     query(collection(db, 'requerimiento'), where('id_proyecto', '==', id))

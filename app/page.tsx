@@ -123,6 +123,7 @@ export default function Home() {
   }, [cargarPermisos]);
 
   const puedeEditarProyecto = (proyectoId: string) => proyectosPermitidos.includes(proyectoId);
+  const puedeEliminarProyecto = (proj: Proyecto) => uid !== null && proj.id_creador === uid;
 
   // Modal Crear / Editar Proyecto
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -379,11 +380,12 @@ export default function Home() {
   };
 
   const deleteProject = async (proj: ProyectoConStats) => {
-    if (!puedeEditarProyecto(proj.proyecto_id)) {
-      toast.error('Solo el creador o miembros de un equipo vinculado pueden eliminar este proyecto');
+    if (!puedeEliminarProyecto(proj)) {
+      toast.error('Solo el creador del proyecto puede eliminar este proyecto');
       return;
     }
     const reqs = proj.requerimientos_count || 0;
+    const fraseConfirmacion = `borrar ${proj.nombre.trim()}`;
     const ok = await confirmar({
       titulo: '¿Eliminar proyecto?',
       mensaje: (
@@ -393,7 +395,8 @@ export default function Home() {
           Esta acción no se puede deshacer.
         </>
       ),
-      textoConfirmar: 'Eliminar',
+      confirmacionEscrita: fraseConfirmacion,
+      textoConfirmar: 'Eliminar proyecto',
       peligro: true,
     });
     if (!ok) return;
@@ -401,7 +404,7 @@ export default function Home() {
     try {
       await deleteProyecto(proj.proyecto_id);
       toast.success('Proyecto eliminado');
-      void fetchProjects();
+      await Promise.all([fetchProjects(), cargarPermisos()]);
     } catch (error) {
       toast.error(mensajeError(error, 'No se pudo eliminar el proyecto'));
     }
@@ -705,14 +708,16 @@ export default function Home() {
                                 >
                                   <Edit2 size={16} />
                                 </button>
-                                <button
-                                  onClick={() => deleteProject(proj)}
-                                  title="Eliminar proyecto"
-                                  aria-label={`Eliminar ${proj.nombre}`}
-                                  className={btnIconoPeligro}
-                                >
-                                  <Trash2 size={16} />
-                                </button>
+                                {puedeEliminarProyecto(proj) && (
+                                  <button
+                                    onClick={() => deleteProject(proj)}
+                                    title="Eliminar proyecto"
+                                    aria-label={`Eliminar ${proj.nombre}`}
+                                    className={btnIconoPeligro}
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
                               </>
                             ) : (
                               !loadingPermisos && (
