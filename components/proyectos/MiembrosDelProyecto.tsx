@@ -198,13 +198,13 @@ export default function MiembrosDelProyecto({ proyecto, onCambio, onCantidad }: 
       </div>
 
       {loading ? (
-        <div role="status" aria-label="Cargando" className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+        <div role="status" aria-label="Cargando" className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
           {[1, 2, 3].map(i => (
             <div key={i} className="h-20 bg-sunken animate-pulse" />
           ))}
         </div>
       ) : (
-        <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+        <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
           {filas.map(fila => (
             <li key={fila.usuario.id} className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">

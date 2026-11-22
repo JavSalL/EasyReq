@@ -600,7 +600,7 @@ export default function EquiposGlobalPage() {
                 >
                   <span className="font-semibold text-ink">{proyecto.nombre}</span>
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                    className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
                       estado === 'activo'
                         ? 'bg-success-subtle text-success border-success-line'
                         : 'bg-sunken text-ink-subtle border-line'
@@ -721,7 +721,7 @@ export default function EquiposGlobalPage() {
               {equipoAbierto.miembros.length}
             </span>
           </h3>
-          <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+          <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
             {equipoAbierto.miembros.length === 0 ? (
               <li className="p-8 text-center text-sm text-ink-subtle">
                 Este equipo aún no tiene integrantes en su plantilla global.
@@ -895,7 +895,7 @@ export default function EquiposGlobalPage() {
         <div
           role="status"
           aria-label="Cargando"
-          className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden"
+          className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden"
         >
           {[1, 2, 3].map(i => (
             <div key={i} className="h-28 bg-sunken animate-pulse" />
@@ -919,7 +919,7 @@ export default function EquiposGlobalPage() {
           </div>
         </div>
       ) : (
-        <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+        <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
           {equiposFiltrados.map((team, idx) => {
             const gestionable = puedeGestionarEquipo(team.equipo_id);
             const lideres = team.miembros.filter(m => m.esLider);

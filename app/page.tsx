@@ -7,11 +7,8 @@ import {
   Plus,
   Edit2,
   Trash2,
-  FolderGit2,
   ChevronRight,
   Search,
-  Layers,
-  Users,
   Save,
   Lock,
   Handshake,
@@ -39,6 +36,9 @@ import {
   updateProyecto,
   deleteProyecto,
   getRequerimientos,
+  ESTADO_APROBADO,
+  ESTADO_PENDIENTE_APROBACION,
+  ESTADO_RECHAZADO,
   getProyectoEquipos,
   getProyectosRelacionados,
 } from '@/lib/firestore-service';
@@ -66,9 +66,41 @@ import {
   etiqueta,
 } from '@/components/ui/estilos';
 
+interface ConteoEstados {
+  aprobados: number;
+  pendientes: number;
+  rechazados: number;
+}
+
 interface ProyectoConStats extends Proyecto {
   requerimientos_count?: number;
   equipos_count?: number;
+  estados_count?: ConteoEstados;
+}
+
+/** Barra apilada de estados de los requerimientos; lo que no cae en los tres va en gris. */
+function BarraEstados({ conteo, total }: { conteo?: ConteoEstados; total: number }) {
+  const c = conteo ?? { aprobados: 0, pendientes: 0, rechazados: 0 };
+  const partes = [
+    { n: c.aprobados, clase: 'bg-success', nombre: 'aprobados' },
+    { n: c.pendientes, clase: 'bg-syntax-3-line', nombre: 'pendientes de aprobación' },
+    { n: c.rechazados, clase: 'bg-danger', nombre: 'devueltos' },
+  ];
+  const resumen = total === 0
+    ? 'Sin requerimientos todavía'
+    : partes.filter(p => p.n > 0).map(p => `${p.n} ${p.nombre}`).join(', ') || 'Ninguno aprobado todavía';
+  return (
+    <div className="mt-2">
+      <div className="flex h-1.5 rounded-full overflow-hidden bg-sunken-strong" role="img" aria-label={resumen} title={resumen}>
+        {total > 0 && partes.map(p => p.n > 0 && (
+          <span key={p.nombre} className={p.clase} style={{ width: `${(p.n / total) * 100}%` }} />
+        ))}
+      </div>
+      <p className="mt-1 text-xs text-ink-subtle">
+        {total === 0 ? 'Sin requerimientos' : `${c.aprobados} de ${total} aprobados`}
+      </p>
+    </div>
+  );
 }
 
 const plural = (n: number, singular: string, pluralTxt: string) =>
@@ -185,9 +217,15 @@ export default function Home() {
       setRelacionesColaboracion(relColabs);
 
       const reqCountMap: Record<string, number> = {};
+      const estadosMap: Record<string, ConteoEstados> = {};
       reqs.forEach(r => {
         if (r.id_proyecto) {
           reqCountMap[r.id_proyecto] = (reqCountMap[r.id_proyecto] || 0) + 1;
+          const e = (estadosMap[r.id_proyecto] ??= { aprobados: 0, pendientes: 0, rechazados: 0 });
+          const nombre = r.estado?.nombre_estado;
+          if (nombre === ESTADO_APROBADO) e.aprobados++;
+          else if (nombre === ESTADO_PENDIENTE_APROBACION) e.pendientes++;
+          else if (nombre === ESTADO_RECHAZADO) e.rechazados++;
         }
       });
 
@@ -202,6 +240,7 @@ export default function Home() {
         .map(p => ({
           ...p,
           requerimientos_count: reqCountMap[p.proyecto_id] || 0,
+          estados_count: estadosMap[p.proyecto_id],
           equipos_count: peCountMap[p.proyecto_id] || 0,
         }))
         .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
@@ -571,7 +610,7 @@ export default function Home() {
 
       {loading || loadingPermisos ? (
         <div
-          className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden"
+          className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden"
           role="status"
           aria-label="Cargando"
         >
@@ -611,9 +650,25 @@ export default function Home() {
                 <span className="ml-2 text-sm font-normal text-ink-subtle">{proyectos.length}</span>
               </h2>
               {proyectos.length === 0 ? (
-                <p className="text-sm text-ink-subtle">{mensajeVacio}</p>
+                idxGrupo === 0 && !hayFiltrosActivos ? (
+                  // Sin proyectos propios: una invitación con el siguiente paso, no solo una línea de texto
+                  <div className="bg-surface rounded-ui p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <p className="text-base font-semibold text-ink">Aún no participas en ningún proyecto</p>
+                      <p className="text-sm text-ink-muted mt-1 max-w-[56ch]">
+                        Crea uno para empezar a redactar requerimientos, o pide al líder de un equipo que vincule el tuyo a su proyecto.
+                      </p>
+                    </div>
+                    <button onClick={openCreateModal} className={`${btnPrimario} shrink-0`}>
+                      <Plus size={16} />
+                      Nuevo proyecto
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink-subtle">{mensajeVacio}</p>
+                )
               ) : (
-                <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+                <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
                   {proyectos.map((proj, idxProj) => {
                     const editable = puedeEditarProyecto(proj.proyecto_id);
                     const reqs = proj.requerimientos_count || 0;
@@ -628,9 +683,6 @@ export default function Home() {
                             así funciona el clic central, "abrir en pestaña nueva" y el lector de pantalla
                             lo anuncia como enlace. Los botones de acción quedan por encima (z-10). */}
                         <div className="group relative flex items-center gap-4 px-5 py-5 hover:bg-sunken has-[a:focus-visible]:bg-sunken has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-brand-text">
-                          <span className="hidden sm:flex size-10 shrink-0 items-center justify-center rounded-ui bg-brand-solid text-on-solid">
-                            <FolderGit2 size={20} aria-hidden />
-                          </span>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
                               <h3 className="text-base font-semibold text-ink">
@@ -669,15 +721,14 @@ export default function Home() {
                             })()}
                           </div>
 
-                          <div className="hidden sm:flex items-center gap-6 text-sm text-ink-muted tabular-nums shrink-0">
-                            <span title="Requerimientos" className="flex items-center gap-1.5">
-                              <Layers size={16} aria-hidden />
-                              {plural(reqs, 'requerimiento', 'requerimientos')}
-                            </span>
-                            <span title="Equipos vinculados" className="flex items-center gap-1.5">
-                              <Users size={16} aria-hidden />
-                              {plural(eqs, 'equipo', 'equipos')}
-                            </span>
+                          {/* Avance real del proyecto en lugar de un ícono decorativo: cuántos
+                              requerimientos están aprobados, esperando o devueltos */}
+                          <div className="hidden sm:block w-56 shrink-0 text-sm text-ink-muted tabular-nums">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <span>{plural(reqs, 'requerimiento', 'requerimientos')}</span>
+                              <span className="text-ink-subtle">{plural(eqs, 'equipo', 'equipos')}</span>
+                            </div>
+                            <BarraEstados conteo={proj.estados_count} total={reqs} />
                           </div>
 
                           <div className="relative z-10 flex items-center gap-1 shrink-0">

@@ -172,7 +172,7 @@ export function BarraSintaxis({ activo, onCambiarActivo, items, foco }: BarraSin
 
       {activo ? (
         <>
-          <span className="text-[11px] font-medium text-ink-subtle select-none">Simbología:</span>
+          <span className="text-xs font-medium text-ink-subtle select-none">Simbología:</span>
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Elementos del patrón">
             {items.map(item => {
               const estilos = ESTILOS_TONO[item.tono];
@@ -187,7 +187,7 @@ export function BarraSintaxis({ activo, onCambiarActivo, items, foco }: BarraSin
                   onClick={() => foco.alternarFija(item.clave)}
                   onMouseEnter={() => foco.setClaveTemporal(item.clave)}
                   onMouseLeave={() => foco.setClaveTemporal(null)}
-                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-ui border text-[11px] font-medium transition-all cursor-pointer ${
+                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-ui border text-xs font-medium transition-all cursor-pointer ${
                     fijado ? estilos.chipFijo : estilos.chip
                   } ${atenuado ? 'opacity-50' : ''}`}
                 >
@@ -201,14 +201,14 @@ export function BarraSintaxis({ activo, onCambiarActivo, items, foco }: BarraSin
             <button
               type="button"
               onClick={foco.limpiar}
-              className="text-[11px] font-semibold text-brand-text hover:underline cursor-pointer ml-auto"
+              className="text-xs font-semibold text-brand-text hover:underline cursor-pointer ml-auto"
             >
               Ver todos
             </button>
           )}
         </>
       ) : (
-        <span className="text-[11px] text-ink-subtle">
+        <span className="text-xs text-ink-subtle">
           Activa el resaltado para distinguir los elementos del patrón en cada enunciado.
         </span>
       )}
@@ -298,7 +298,7 @@ export function BotonDesgloseSintaxis({ abierto, onAlternar, cantidad }: BotonDe
       aria-expanded={abierto}
       onClick={onAlternar}
       title={abierto ? 'Ocultar el desglose de elementos del patrón' : 'Ver el desglose de elementos del patrón'}
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-ui text-[11px] font-medium border transition-colors cursor-pointer ${
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-ui text-xs font-medium border transition-colors cursor-pointer ${
         abierto
           ? 'bg-brand-subtle text-brand-text border-brand-line'
           : 'bg-surface text-ink-muted border-line hover:bg-sunken hover:text-ink'
@@ -418,7 +418,7 @@ export function VistaPreviaSintaxis({ texto, elementos, patron }: VistaPreviaSin
   return (
     <div className="mt-2 rounded-ui border border-line bg-sunken/35 p-3 space-y-2 animate-in fade-in">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ink-muted mr-1">
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-ink-muted mr-1">
           <Highlighter size={12} className="text-brand-text" aria-hidden />
           Elementos del patrón:
         </span>
@@ -434,7 +434,7 @@ export function VistaPreviaSintaxis({ texto, elementos, patron }: VistaPreviaSin
               onClick={() => foco.alternarFija(item.clave)}
               onMouseEnter={() => foco.setClaveTemporal(item.clave)}
               onMouseLeave={() => foco.setClaveTemporal(null)}
-              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-ui border text-[11px] font-medium transition-all cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-ui border text-xs font-medium transition-all cursor-pointer ${
                 fijado ? estilos.chipFijo : estilos.chip
               }`}
             >

@@ -68,6 +68,7 @@ import {
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
 import MenuAcciones, { type AccionMenu } from '@/components/ui/MenuAcciones';
+import EjemploSintaxis from '@/components/EjemploSintaxis';
 import ModalHistorialLogs from '@/components/requerimientos/ModalHistorialLogs';
 import ModalComentarios from '@/components/requerimientos/ModalComentarios';
 import EquiposDelProyecto from '@/components/equipos/EquiposDelProyecto';
@@ -2065,7 +2066,7 @@ export default function RequerimientosPage() {
               {proyecto.nombre}
               <BotonAyudaTour onClick={tutorialProyecto.abrir} label="Ver la guía del proyecto" />
               {proyecto.estado_proyecto?.nombre_estado && (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-subtle text-brand-text border border-brand-line">
+                <span className="px-2.5 py-0.5 rounded-full tracking-normal text-xs font-semibold bg-brand-subtle text-brand-text border border-brand-line">
                   {proyecto.estado_proyecto.nombre_estado}
                 </span>
               )}
@@ -2322,38 +2323,47 @@ export default function RequerimientosPage() {
 
       {/* Lista de Requerimientos */}
       {loading ? (
-        <div className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden" role="status" aria-label="Cargando">
+        <div className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden" role="status" aria-label="Cargando">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-32 bg-sunken animate-pulse" />
           ))}
         </div>
       ) : filteredRequerimientos.length === 0 ? (
-        <div className="text-center py-20">
-          <h3 className="text-lg font-semibold text-ink">
-            {hayFiltros ? 'Sin resultados' : 'Todavía no hay requerimientos'}
-          </h3>
-          <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
-            {hayFiltros
-              ? 'Ningún requerimiento coincide con los filtros seleccionados.'
-              : esMiembroProyecto
-                ? 'Redacta el primero usando las sintaxis de los modelos o genéralo con IA. Quedará pendiente de que lo apruebe el líder de su equipo.'
-                : 'Cuando el equipo redacte requerimientos, aparecerán aquí.'}
-          </p>
-          <div className="mt-4 flex justify-center gap-2">
-            {hayFiltros && (
+        hayFiltros ? (
+          <div className="text-center py-20">
+            <h3 className="text-lg font-semibold text-ink">Sin resultados</h3>
+            <p className="text-base text-ink-muted mt-2 max-w-sm mx-auto">
+              Ningún requerimiento coincide con los filtros seleccionados.
+            </p>
+            <div className="mt-4 flex justify-center">
               <button onClick={limpiarFiltros} className={btnSecundario}>Quitar filtros</button>
-            )}
-            {!hayFiltros && esMiembroProyecto && (
-              <button onClick={openCreateModal} className={btnPrimario}>
-                <Plus size={15} />
-                Nuevo requerimiento
-              </button>
-            )}
+            </div>
           </div>
-        </div>
+        ) : (
+          // Proyecto nuevo: se enseña cómo se ve un requerimiento bien escrito y los dos caminos para empezar
+          <div className="grid gap-8 lg:grid-cols-[1fr_1.1fr] lg:items-center bg-surface rounded-ui p-6 sm:p-10">
+            <div>
+              <h3 className="text-2xl font-semibold tracking-tight text-ink">Todavía no hay requerimientos</h3>
+              <p className="text-base text-ink-muted mt-3 max-w-[48ch]">
+                {esMiembroProyecto
+                  ? 'Redacta el primero con un patrón como EARS o describe el sistema y deja que la IA proponga una lista. Cada uno queda pendiente hasta que lo aprueba el líder de su equipo.'
+                  : 'Cuando el equipo redacte requerimientos, aparecerán aquí.'}
+              </p>
+              {esMiembroProyecto && (
+                <div className="mt-6 flex flex-wrap gap-2">
+                  <button onClick={openCreateModal} className={btnPrimario}>
+                    <Plus size={16} />
+                    Nuevo requerimiento
+                  </button>
+                </div>
+              )}
+            </div>
+            <EjemploSintaxis className="bg-sunken" />
+          </div>
+        )
       ) : (
         agrupar === 'ninguno' ? (
-          <ul className="bg-surface border border-line rounded-ui divide-y divide-line">
+          <ul className="bg-surface rounded-ui divide-y divide-canvas">
             {requerimientosOrdenados.map(filaRequerimiento)}
           </ul>
         ) : (
@@ -2367,7 +2377,7 @@ export default function RequerimientosPage() {
                   {grupo.nombre}
                   <span className="ml-2 text-sm font-normal text-ink-subtle">{grupo.items.length}</span>
                 </h2>
-                <ul className="bg-surface border border-line rounded-ui divide-y divide-line">
+                <ul className="bg-surface rounded-ui divide-y divide-canvas">
                   {grupo.items.map(filaRequerimiento)}
                 </ul>
               </section>

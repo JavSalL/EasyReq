@@ -751,7 +751,7 @@ const NOMBRES_FURPS: Record<PropuestaIA['type_furps'], string> = {
   Supportability: 'Soporte'
 };
 
-const etiquetaChip = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-ui text-[11px] font-medium border';
+const etiquetaChip = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-ui text-xs font-medium border';
 const botonMarca = 'inline-flex items-center gap-1 min-h-7 px-2 rounded-ui text-xs font-semibold border border-warning-line bg-surface text-ink hover:bg-warning-subtle cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 
 /** Área de una etiqueta antigua "otra propuesta (Seguridad)", para marcas guardadas antes de KAN-49. */
@@ -1170,7 +1170,7 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
               </button>
             </div>
           </div>
-          <p className="text-[11px] text-ink-subtle">
+          <p className="text-xs text-ink-subtle">
             Toda la generación cuenta como un solo uso de IA del día. Puedes detenerla cuando quieras y conservar lo generado.
           </p>
         </section>
@@ -1423,11 +1423,11 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                       />
                       <span className="text-sm font-semibold text-ink truncate">{area}</span>
                       {ocultas > 0 && (
-                        <span className="text-[10px] text-ink-subtle" title={`Los filtros ocultan ${ocultas} propuestas de esta área`}>
+                        <span className="text-xs text-ink-subtle" title={`Los filtros ocultan ${ocultas} propuestas de esta área`}>
                           {ocultas} ocultas
                         </span>
                       )}
-                      <span className="ml-auto text-[11px] text-ink-subtle tabular-nums" title={detalleArea}>
+                      <span className="ml-auto text-xs text-ink-subtle tabular-nums" title={detalleArea}>
                         {seleccionadasArea}/{totalArea}
                       </span>
                     </div>
@@ -1460,12 +1460,12 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                                 claveEnfocada={mostrarSintaxis ? focoSintaxis.claveActiva : null}
                               />
                               {!disponible && (
-                                <p className="text-[11px] text-warning">
+                                <p className="text-xs text-warning">
                                   Escribe el enunciado para poder seleccionarlo.
                                 </p>
                               )}
                               <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="text-[11px] font-semibold text-ink-subtle tabular-nums" title="Número de la propuesta en la lista">
+                                <span className="text-xs font-semibold text-ink-subtle tabular-nums" title="Número de la propuesta en la lista">
                                   n.º {numeroDe.get(p.clave)}
                                 </span>
                                 <span className={`${etiquetaChip} bg-sunken text-ink-muted border-line`}>{nombreTipo(p)}</span>

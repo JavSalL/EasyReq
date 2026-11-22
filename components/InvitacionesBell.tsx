@@ -216,7 +216,7 @@ export default function InvitacionesBell() {
                   const ocupada = enProceso === invitacion.id;
                   return (
                     <li key={`inv-${invitacion.id}`} className="p-4">
-                      <span className="inline-block px-2 py-0.5 mb-1.5 rounded-full text-[11px] font-semibold bg-brand-subtle text-brand-text border border-brand-line">
+                      <span className="inline-block px-2 py-0.5 mb-1.5 rounded-full text-xs font-semibold bg-brand-subtle text-brand-text border border-brand-line">
                         Invitación a equipo
                       </span>
                       <p className="text-sm text-ink-muted">
@@ -249,7 +249,7 @@ export default function InvitacionesBell() {
                   const ocupada = enProceso === solicitud.id;
                   return (
                     <li key={`sol-${solicitud.id}`} className="p-4">
-                      <span className="inline-block px-2 py-0.5 mb-1.5 rounded-full text-[11px] font-semibold bg-warning-subtle text-warning border border-warning-line">
+                      <span className="inline-block px-2 py-0.5 mb-1.5 rounded-full text-xs font-semibold bg-warning-subtle text-warning border border-warning-line">
                         {solicitud.tipo === 'vincular' ? 'Solicitud de vinculación' : 'Solicitud de desvinculación'}
                       </span>
                       <p className="text-sm text-ink-muted">

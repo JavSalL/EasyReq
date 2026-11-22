@@ -39,7 +39,7 @@ export default function TopNav() {
               }`}
             >
               {e.nombre}
-              {activo && <span aria-hidden className="absolute left-3 right-3 -bottom-px h-0.5 bg-brand-text" />}
+              {activo && <span aria-hidden className="absolute left-3 right-3 bottom-0 h-0.5 bg-brand-solid" />}
             </Link>
           </li>
         );
@@ -62,7 +62,7 @@ export default function TopNav() {
           <UserMenu />
         </div>
       </div>
-      <nav aria-label="Navegación principal" className="md:hidden border-t border-line overflow-x-auto custom-scrollbar">
+      <nav aria-label="Navegación principal" className="md:hidden bg-surface overflow-x-auto custom-scrollbar">
         <div className="px-3 h-11 min-w-max">{lista}</div>
       </nav>
     </header>

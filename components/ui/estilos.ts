@@ -29,4 +29,4 @@ export const campo =
 export const buscador =
   'w-full pl-10 pr-3 min-h-10 pointer-coarse:min-h-11 py-2 bg-surface border border-line-strong rounded-ui text-base text-ink placeholder:text-ink-subtle focus:outline-none focus:border-brand-text focus:ring-1 focus:ring-brand-text';
 
-export const tarjeta = 'bg-surface border border-line rounded-ui';
+export const tarjeta = 'bg-surface rounded-ui';

@@ -200,7 +200,7 @@ export function HistorialMiembrosModal({
                       )}
 
                       {log.detalles?.es_local && (
-                        <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-brand-subtle text-brand-text border border-brand-line">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-brand-subtle text-brand-text border border-brand-line">
                           Miembro local del proyecto
                         </span>
                       )}

@@ -10,7 +10,8 @@
  *  - `brand` (#8e8ea0) es el color del DESIGN.md: acentos, iconos, avatares.
  *    Sobre blanco da 3.2:1, por eso NO se usa para texto ni para relleno de
  *    botones con texto blanco.
- *  - `brand-solid` es el negro de DESIGN.md ("negro y blanco rotundos"): botones
+ *  - `brand-solid` es el acento (azul tinta, el mismo tono que el primer color de
+ *    la sintaxis, que es la firma visual de EasyReq): botones
  *    primarios, logo e iconos de énfasis; en oscuro se invierte (`on-solid` es
  *    el color del texto encima). El gris morado queda solo como acento.
  *  - Las vistas consumen solo estas clases semánticas (bg-surface, text-ink,
@@ -23,10 +24,10 @@
 :root {
   color-scheme: light;
 
-  --canvas: #ffffff;
+  --canvas: #f4f4f7;
   --surface: #ffffff;
-  --sunken: #f5f5f8;
-  --sunken-strong: #e9e9ef;
+  --sunken: #ececf1;
+  --sunken-strong: #e1e1e8;
   --line: #e2e2e9;
   --line-strong: #8e8ea0;
 
@@ -35,12 +36,12 @@
   --ink-subtle: #585870;
 
   --brand: #8e8ea0;
-  --brand-solid: #0d0d12;
-  --brand-solid-hover: #2b2b38;
+  --brand-solid: #1f47b8;
+  --brand-solid-hover: #183a99;
   --on-solid: #ffffff;
-  --brand-text: #3f3f58;
-  --brand-subtle: #eeeef3;
-  --brand-line: #cfcfdb;
+  --brand-text: #1f47b8;
+  --brand-subtle: #eaf0fd;
+  --brand-line: #bccbf3;
 
   --danger: #b42318;
   --danger-solid: #b42318;
@@ -57,9 +58,9 @@
   --warning-line: #f5d9ab;
 
   /* Paleta semántica para elementos sintácticos de patrones de requerimientos */
-  --syntax-1: #1d4ed8;
-  --syntax-1-subtle: #eff6ff;
-  --syntax-1-line: #93c5fd;
+  --syntax-1: #1f47b8;
+  --syntax-1-subtle: #eaf0fd;
+  --syntax-1-line: #9fb5ee;
 
   --syntax-2: #047857;
   --syntax-2-subtle: #ecfdf5;
@@ -103,12 +104,12 @@
   --ink-subtle: #9393a5;
 
   --brand: #8e8ea0;
-  --brand-solid: #f2f2f6;
-  --brand-solid-hover: #d4d4de;
-  --on-solid: #0d0d12;
-  --brand-text: #c4c4d6;
-  --brand-subtle: #23232e;
-  --brand-line: #3f3f50;
+  --brand-solid: #8fb0ff;
+  --brand-solid-hover: #b3c9ff;
+  --on-solid: #0b1020;
+  --brand-text: #a9c1ff;
+  --brand-subtle: #18213a;
+  --brand-line: #2d3d6b;
 
   --danger: #f97066;
   --danger-solid: #b42318;
@@ -217,7 +218,7 @@
      avatares, puntos de estado y spinners. */
   --radius-ui: 5px;
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: var(--font-plex), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* Escala tipográfica: 16px de cuerpo como en DESIGN.md; 13px y 15px para
@@ -236,6 +237,8 @@
   --text-2xl--line-height: 1.33;
   --text-3xl: 2rem;
   --text-3xl--line-height: 1.25;
+  --text-4xl: 2.5rem;
+  --text-4xl--line-height: 1.1;
 
   /* Movimiento: 400ms ease (DESIGN.md). */
   --default-transition-duration: 400ms;

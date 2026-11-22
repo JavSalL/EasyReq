@@ -266,7 +266,7 @@ export default function PatronesPage() {
 
       {/* Grid de Patrones */}
       {loading ? (
-        <div role="status" aria-label="Cargando" className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
+        <div role="status" aria-label="Cargando" className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-32 bg-sunken animate-pulse" />
           ))}

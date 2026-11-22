@@ -19,6 +19,7 @@ import { toast } from 'react-hot-toast';
 import { Lock, Mail, User, ArrowRight, CheckCircle2, Check, Eye, EyeOff } from 'lucide-react';
 import { Profesion } from '@/lib/database.types';
 import ThemeToggle from '@/components/ThemeToggle';
+import EjemploSintaxis from '@/components/EjemploSintaxis';
 import Logo from '@/components/Logo';
 import SelectorProfesiones from '@/components/SelectorProfesiones';
 import SelectorPais from '@/components/SelectorPais';
@@ -284,9 +285,23 @@ export default function LoginPage() {
     <div className="relative min-h-dvh w-full flex items-center justify-center bg-canvas p-4 sm:p-6 lg:p-8">
       <div className="pwa-wco-login-drag" aria-hidden="true" />
       <ThemeToggle className={`absolute top-4 right-4 ${btnIcono} pwa-wco-login-toggle`} />
-      <div className="w-full max-w-md">
-        {/* Logo y Encabezado */}
-        <div className="text-center mb-8">
+      <div className="w-full max-w-md lg:max-w-6xl lg:grid lg:grid-cols-[1.15fr_1fr] lg:gap-20 lg:items-center">
+        {/* En escritorio, la mitad izquierda enseña el producto: un requerimiento con
+            sus partes marcadas, como los marca EasyReq */}
+        <section className="hidden lg:block" aria-label="Qué hace EasyReq">
+          <Logo variante="completo" className="h-20 w-auto text-ink" />
+          <h2 className="mt-10 text-4xl font-semibold tracking-tight text-ink max-w-[16ch]">
+            Del pedido al requerimiento claro
+          </h2>
+          <p className="mt-4 text-lg text-ink-muted max-w-[46ch]">
+            Redacta con patrones como EARS, genéralos con IA a partir de tu descripción y apruébalos con tu equipo.
+          </p>
+          <EjemploSintaxis grande className="mt-10" />
+        </section>
+
+        <div className="w-full max-w-md lg:justify-self-end">
+        {/* Logo y Encabezado (en escritorio lo muestra la mitad izquierda) */}
+        <div className="text-center mb-8 lg:hidden">
           <h1 className="flex justify-center">
             <span className="sr-only">EasyReq</span>
             <Logo variante="completo" className="h-36 w-auto text-ink" />
@@ -297,7 +312,7 @@ export default function LoginPage() {
         </div>
 
         {/* Tarjeta de Autenticación */}
-        <div className="bg-surface border border-line rounded-ui p-6 sm:p-8 shadow-sm">
+        <div className="bg-surface rounded-ui p-6 sm:p-8">
               {/* Tabs Selector */}
               <div className="flex p-1 bg-sunken rounded-ui mb-6">
                 <button
@@ -567,6 +582,7 @@ export default function LoginPage() {
         <div className="mt-8 flex items-center justify-center gap-2 text-xs text-ink-subtle">
           <CheckCircle2 size={14} className="text-success" />
           <span>Acceso seguro con autenticación encriptada</span>
+        </div>
         </div>
       </div>
     </div>
