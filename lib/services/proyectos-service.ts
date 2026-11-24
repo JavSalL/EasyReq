@@ -276,13 +276,20 @@ export async function quitarMiembroProyecto(
 }
 
 export async function deleteProyecto(id: string): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
+    throw new Error('Debes iniciar sesión para eliminar un proyecto.');
+  }
+  const proyectoSnap = await getDoc(doc(db, 'proyecto', id));
+  if (!proyectoSnap.exists()) return;
+  if (proyectoSnap.data().id_creador !== uid) {
+    throw new Error('Solo el creador del proyecto puede eliminarlo.');
+  }
+
   // El contexto va primero: sus reglas comprueban la membresía leyendo el proyecto, que aún debe existir
   await eliminarContextoDeProyecto(id);
 
-  const uid = auth.currentUser?.uid;
-  if (uid) {
-    await asegurarAccesoComentariosProyecto(id, uid);
-  }
+  await asegurarAccesoComentariosProyecto(id, uid);
 
   const reqSnap = await getDocs(
     query(collection(db, 'requerimiento'), where('id_proyecto', '==', id))
@@ -295,17 +302,19 @@ export async function deleteProyecto(id: string): Promise<void> {
   await deleteDoc(doc(db, 'proyecto', id));
 
   // Limpiar relaciones locales del proyecto (sin eliminar los equipos globales independientes)
-  const [peSnap, mpeSnap, colabSnap, requestsSnap] = await Promise.all([
+  const [peSnap, mpeSnap, colabSnap, requestsSnap, invSnap] = await Promise.all([
     getDocs(query(collection(db, 'proyecto_equipos'), where('id_proyecto', '==', id))),
     getDocs(query(collection(db, 'miembros_proyecto_equipo'), where('id_proyecto', '==', id))),
     getDocs(query(collection(db, 'colaboracion_proyecto'), where('id_proyecto', '==', id))),
     getDocs(query(collection(db, 'solicitudes_proyecto_equipo'), where('id_proyecto', '==', id))),
+    getDocs(query(collection(db, 'invitaciones_equipo'), where('id_proyecto', '==', id))),
   ]);
 
   for (const d of peSnap.docs) await deleteDoc(d.ref);
   for (const d of mpeSnap.docs) await deleteDoc(d.ref);
   for (const d of colabSnap.docs) await deleteDoc(d.ref);
   for (const d of requestsSnap.docs) await deleteDoc(d.ref);
+  for (const d of invSnap.docs) await deleteDoc(d.ref);
 
   for (const d of reqSnap.docs) {
     await deleteDoc(d.ref);

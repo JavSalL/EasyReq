@@ -1,26 +1,17 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { useRouter } from 'next/navigation';
 import {
   Plus,
   Edit2,
   Trash2,
-  FolderGit2,
   ChevronRight,
   Search,
-  Layers,
-  Users,
   Save,
-  Cpu,
-  Smartphone,
-  Globe,
-  Laptop,
-  Server,
   Lock,
   Handshake,
-  GraduationCap,
   Check,
 } from 'lucide-react';
 import type {
@@ -45,6 +36,9 @@ import {
   updateProyecto,
   deleteProyecto,
   getRequerimientos,
+  ESTADO_APROBADO,
+  ESTADO_PENDIENTE_APROBACION,
+  ESTADO_RECHAZADO,
   getProyectoEquipos,
   getProyectosRelacionados,
 } from '@/lib/firestore-service';
@@ -52,10 +46,12 @@ import { useAuth } from '@/lib/firebase-auth-provider';
 import { mensajeError } from '@/lib/errores';
 import { Modal, ModalBody, ModalFooter } from '@/components/ui/Modal';
 import PageHeader from '@/components/ui/PageHeader';
+import ListaEsqueleto from '@/components/ui/Esqueleto';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { ModalColaboraciones } from '@/components/proyectos/ModalColaboraciones';
+import { BotonPista, Pista, usePista } from '@/components/ui/Pista';
 import {
   btnPrimario,
   btnSecundario,
@@ -67,9 +63,41 @@ import {
   etiqueta,
 } from '@/components/ui/estilos';
 
+interface ConteoEstados {
+  aprobados: number;
+  pendientes: number;
+  rechazados: number;
+}
+
 interface ProyectoConStats extends Proyecto {
   requerimientos_count?: number;
   equipos_count?: number;
+  estados_count?: ConteoEstados;
+}
+
+/** Barra apilada de estados de los requerimientos; lo que no cae en los tres va en gris. */
+function BarraEstados({ conteo, total }: { conteo?: ConteoEstados; total: number }) {
+  const c = conteo ?? { aprobados: 0, pendientes: 0, rechazados: 0 };
+  const partes = [
+    { n: c.aprobados, clase: 'bg-success', nombre: 'aprobados' },
+    { n: c.pendientes, clase: 'bg-syntax-3-line', nombre: 'pendientes de aprobación' },
+    { n: c.rechazados, clase: 'bg-danger', nombre: 'devueltos' },
+  ];
+  const resumen = total === 0
+    ? 'Sin requerimientos todavía'
+    : partes.filter(p => p.n > 0).map(p => `${p.n} ${p.nombre}`).join(', ') || 'Ninguno aprobado todavía';
+  return (
+    <div className="mt-2">
+      <div className="flex h-1.5 rounded-full overflow-hidden bg-sunken-strong" role="img" aria-label={resumen} title={resumen}>
+        {total > 0 && partes.map(p => p.n > 0 && (
+          <span key={p.nombre} className={p.clase} style={{ width: `${(p.n / total) * 100}%` }} />
+        ))}
+      </div>
+      <p className="mt-1 text-xs text-ink-subtle">
+        {total === 0 ? 'Sin requerimientos' : `${c.aprobados} de ${total} aprobados`}
+      </p>
+    </div>
+  );
 }
 
 const plural = (n: number, singular: string, pluralTxt: string) =>
@@ -85,7 +113,6 @@ function claseInsigniaEstadoProyecto(nombreEstado?: string): string {
 }
 
 export default function Home() {
-  const router = useRouter();
   const confirmar = useConfirm();
   const { user } = useAuth();
   const uid = user?.uid ?? null;
@@ -123,10 +150,14 @@ export default function Home() {
   }, [cargarPermisos]);
 
   const puedeEditarProyecto = (proyectoId: string) => proyectosPermitidos.includes(proyectoId);
+  const puedeEliminarProyecto = (proj: Proyecto) => uid !== null && proj.id_creador === uid;
 
-  // Modal Crear / Editar Proyecto
+  // Modal Crear / Editar proyecto
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isColabModalOpen, setIsColabModalOpen] = useState(false);
+
+  // Pista de la sección: explica qué es un proyecto sin tapar la pantalla
+  const pista = usePista('proyectos');
   const [editingProject, setEditingProject] = useState<Proyecto | null>(null);
 
   const [formData, setFormData] = useState({
@@ -171,9 +202,15 @@ export default function Home() {
       setRelacionesColaboracion(relColabs);
 
       const reqCountMap: Record<string, number> = {};
+      const estadosMap: Record<string, ConteoEstados> = {};
       reqs.forEach(r => {
         if (r.id_proyecto) {
           reqCountMap[r.id_proyecto] = (reqCountMap[r.id_proyecto] || 0) + 1;
+          const e = (estadosMap[r.id_proyecto] ??= { aprobados: 0, pendientes: 0, rechazados: 0 });
+          const nombre = r.estado?.nombre_estado;
+          if (nombre === ESTADO_APROBADO) e.aprobados++;
+          else if (nombre === ESTADO_PENDIENTE_APROBACION) e.pendientes++;
+          else if (nombre === ESTADO_RECHAZADO) e.rechazados++;
         }
       });
 
@@ -188,6 +225,7 @@ export default function Home() {
         .map(p => ({
           ...p,
           requerimientos_count: reqCountMap[p.proyecto_id] || 0,
+          estados_count: estadosMap[p.proyecto_id],
           equipos_count: peCountMap[p.proyecto_id] || 0,
         }))
         .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
@@ -379,11 +417,12 @@ export default function Home() {
   };
 
   const deleteProject = async (proj: ProyectoConStats) => {
-    if (!puedeEditarProyecto(proj.proyecto_id)) {
-      toast.error('Solo el creador o miembros de un equipo vinculado pueden eliminar este proyecto');
+    if (!puedeEliminarProyecto(proj)) {
+      toast.error('Solo el creador del proyecto puede eliminar este proyecto');
       return;
     }
     const reqs = proj.requerimientos_count || 0;
+    const fraseConfirmacion = `borrar ${proj.nombre.trim()}`;
     const ok = await confirmar({
       titulo: '¿Eliminar proyecto?',
       mensaje: (
@@ -393,7 +432,8 @@ export default function Home() {
           Esta acción no se puede deshacer.
         </>
       ),
-      textoConfirmar: 'Eliminar',
+      confirmacionEscrita: fraseConfirmacion,
+      textoConfirmar: 'Eliminar proyecto',
       peligro: true,
     });
     if (!ok) return;
@@ -401,24 +441,10 @@ export default function Home() {
     try {
       await deleteProyecto(proj.proyecto_id);
       toast.success('Proyecto eliminado');
-      void fetchProjects();
+      await Promise.all([fetchProjects(), cargarPermisos()]);
     } catch (error) {
       toast.error(mensajeError(error, 'No se pudo eliminar el proyecto'));
     }
-  };
-
-  const abrirProyecto = (id: string) => router.push(`/requerimientos/?id=${id}`);
-
-  const getTipoSistemaIcon = (nombre?: string) => {
-    const n = (nombre || '').toLowerCase();
-    if (n.includes('móvil') || n.includes('movil'))
-      return <Smartphone size={14} className="text-brand-text" />;
-    if (n.includes('embebido') || n.includes('iot'))
-      return <Cpu size={14} className="text-warning" />;
-    if (n.includes('escritorio')) return <Laptop size={14} className="text-success" />;
-    if (n.includes('api') || n.includes('microservicio'))
-      return <Server size={14} className="text-danger" />;
-    return <Globe size={14} className="text-brand-text" />;
   };
 
   const termino = searchTerm.trim().toLowerCase();
@@ -476,11 +502,17 @@ export default function Home() {
   return (
     <div className="animate-in fade-in">
       <PageHeader
-        title="Proyectos"
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            Proyectos
+            <BotonPista activo={pista.visible} onClick={pista.alternar} />
+          </span>
+        }
         description="Sistemas de software y la especificación de sus requerimientos."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button
+             
               type="button"
               onClick={() => setIsColabModalOpen(true)}
               className={btnSecundario}
@@ -500,6 +532,12 @@ export default function Home() {
           </div>
         }
       />
+
+      <Pista visible={pista.visible} onOcultar={pista.ocultar} titulo="Cómo empezar" className="mb-6">
+        Un proyecto es el sistema de software que vas a especificar. Entra a uno para redactar sus
+        requerimientos con o sin IA, asignar equipos y aprobarlos. Si tus proyectos son de una materia,
+        beca o campaña, agrúpalos en <strong className="font-semibold text-ink">Colaboraciones</strong>.
+      </Pista>
 
       {/* Búsqueda y Filtros */}
       <div className="space-y-3 mb-10">
@@ -564,15 +602,7 @@ export default function Home() {
       </div>
 
       {loading || loadingPermisos ? (
-        <div
-          className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden"
-          role="status"
-          aria-label="Cargando"
-        >
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-24 animate-pulse bg-sunken" />
-          ))}
-        </div>
+        <ListaEsqueleto forma="proyecto" etiqueta="Cargando proyectos" />
       ) : filteredProjects.length === 0 ? (
         <div className="text-center py-20">
           <h3 className="text-lg font-semibold text-ink">
@@ -598,40 +628,55 @@ export default function Home() {
         </div>
       ) : (
         <div className="space-y-12">
-          {gruposProyectos.map(({ titulo, proyectos, mensajeVacio }) => (
+          {gruposProyectos.map(({ titulo, proyectos, mensajeVacio }, idxGrupo) => (
             <section key={titulo}>
               <h2 className="text-lg font-semibold text-ink mb-3">
                 {titulo}
                 <span className="ml-2 text-sm font-normal text-ink-subtle">{proyectos.length}</span>
               </h2>
               {proyectos.length === 0 ? (
-                <p className="text-sm text-ink-subtle">{mensajeVacio}</p>
+                idxGrupo === 0 && !hayFiltrosActivos ? (
+                  // Sin proyectos propios: una invitación con el siguiente paso, no solo una línea de texto
+                  <div className="bg-surface rounded-ui p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <p className="text-base font-semibold text-ink">Aún no participas en ningún proyecto</p>
+                      <p className="text-sm text-ink-muted mt-1 max-w-[56ch]">
+                        Crea uno para empezar a redactar requerimientos, o pide al líder de un equipo que vincule el tuyo a su proyecto.
+                      </p>
+                    </div>
+                    <button onClick={openCreateModal} className={`${btnPrimario} shrink-0`}>
+                      <Plus size={16} />
+                      Nuevo proyecto
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink-subtle">{mensajeVacio}</p>
+                )
               ) : (
-                <ul className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
-                  {proyectos.map(proj => {
+                <ul className="bg-surface rounded-ui divide-y divide-canvas overflow-hidden">
+                  {proyectos.map((proj) => {
                     const editable = puedeEditarProyecto(proj.proyecto_id);
                     const reqs = proj.requerimientos_count || 0;
                     const eqs = proj.equipos_count || 0;
                     const colabs = proj.colaboraciones ?? [];
                     return (
-                      <li key={proj.proyecto_id}>
-                        <div
-                          role="link"
-                          tabIndex={0}
-                          onClick={() => abrirProyecto(proj.proyecto_id)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter' && e.target === e.currentTarget)
-                              abrirProyecto(proj.proyecto_id);
-                          }}
-                          aria-label={`Abrir requerimientos de ${proj.nombre}`}
-                          className="group flex items-center gap-4 px-5 py-5 cursor-pointer hover:bg-sunken focus-visible:bg-sunken"
-                        >
-                          <span className="hidden sm:flex size-10 shrink-0 items-center justify-center rounded-ui bg-brand-solid text-on-solid">
-                            <FolderGit2 size={20} aria-hidden />
-                          </span>
+                      <li
+                        key={proj.proyecto_id}
+                      >
+                        {/* Toda la fila es clicable gracias al enlace del nombre (su ::after la cubre),
+                            así funciona el clic central, "abrir en pestaña nueva" y el lector de pantalla
+                            lo anuncia como enlace. Los botones de acción quedan por encima (z-10). */}
+                        <div className="group relative flex items-center gap-4 px-5 py-5 hover:bg-sunken has-[a:focus-visible]:bg-sunken has-[a:focus-visible]:outline-2 has-[a:focus-visible]:-outline-offset-2 has-[a:focus-visible]:outline-brand-text">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                              <h3 className="text-base font-semibold text-ink">{proj.nombre}</h3>
+                              <h3 className="text-base font-semibold text-ink">
+                                <Link
+                                  href={`/requerimientos/?id=${proj.proyecto_id}`}
+                                  className="after:absolute after:inset-0 focus-visible:outline-none"
+                                >
+                                  {proj.nombre}
+                                </Link>
+                              </h3>
                               {proj.estado_proyecto && (
                                 <span
                                   className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold ${claseInsigniaEstadoProyecto(
@@ -641,60 +686,36 @@ export default function Home() {
                                   {proj.estado_proyecto.nombre_estado}
                                 </span>
                               )}
-                              {proj.tipos_sistema && (
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-sunken border border-line text-xs font-medium text-ink-muted">
-                                  {getTipoSistemaIcon(proj.tipos_sistema.nombre)}
-                                  {proj.tipos_sistema.nombre}
-                                </span>
-                              )}
-                              {proj.naturaleza_proyecto && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sunken border border-line text-xs font-medium text-ink-muted">
-                                  <GraduationCap size={12} aria-hidden />
-                                  {proj.naturaleza_proyecto.nombre_naturaleza}
-                                </span>
-                              )}
-                              {colabs.map(c => (
-                                <span
-                                  key={c.id}
-                                  title={`Campaña de colaboración: ${c.nombre}`}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-subtle text-brand-text border border-brand-line text-xs font-medium"
-                                >
-                                  <Handshake size={12} aria-hidden />
-                                  {c.nombre}
-                                </span>
-                              ))}
-                              {proj.en_colaboracion && colabs.length === 0 && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-subtle text-brand-text border border-brand-line text-xs font-medium">
-                                  <Handshake size={12} aria-hidden />
-                                  En colaboración
-                                </span>
-                              )}
-                              {uid !== null && proj.id_creador === uid && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sunken text-ink-subtle text-xs font-medium border border-line">
-                                  Creado por ti
-                                </span>
-                              )}
                             </div>
                             <p className="text-sm text-ink-muted mt-1 line-clamp-1">
                               {proj.descripcion || 'Sin descripción.'}
                             </p>
+                            {/* Clasificación como texto: el color queda solo para el estado */}
+                            {(() => {
+                              const meta = [
+                                proj.tipos_sistema?.nombre,
+                                proj.naturaleza_proyecto?.nombre_naturaleza,
+                                ...colabs.map(c => `Campaña: ${c.nombre}`),
+                                proj.en_colaboracion && colabs.length === 0 ? 'En colaboración' : null,
+                                uid !== null && proj.id_creador === uid ? 'Creado por ti' : null,
+                              ].filter((v): v is string => !!v);
+                              return meta.length > 0 ? (
+                                <p className="text-sm text-ink-subtle mt-1">{meta.join(' · ')}</p>
+                              ) : null;
+                            })()}
                           </div>
 
-                          <div className="hidden sm:flex items-center gap-6 text-sm text-ink-muted tabular-nums shrink-0">
-                            <span title="Requerimientos" className="flex items-center gap-1.5">
-                              <Layers size={16} aria-hidden />
-                              {plural(reqs, 'requerimiento', 'requerimientos')}
-                            </span>
-                            <span title="Equipos vinculados" className="flex items-center gap-1.5">
-                              <Users size={16} aria-hidden />
-                              {plural(eqs, 'equipo', 'equipos')}
-                            </span>
+                          {/* Avance real del proyecto en lugar de un ícono decorativo: cuántos
+                              requerimientos están aprobados, esperando o devueltos */}
+                          <div className="hidden sm:block w-56 shrink-0 text-sm text-ink-muted tabular-nums">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <span>{plural(reqs, 'requerimiento', 'requerimientos')}</span>
+                              <span className="text-ink-subtle">{plural(eqs, 'equipo', 'equipos')}</span>
+                            </div>
+                            <BarraEstados conteo={proj.estados_count} total={reqs} />
                           </div>
 
-                          <div
-                            className="flex items-center gap-1 shrink-0"
-                            onClick={e => e.stopPropagation()}
-                          >
+                          <div className="relative z-10 flex items-center gap-1 shrink-0">
                             {editable ? (
                               <>
                                 <button
@@ -705,14 +726,16 @@ export default function Home() {
                                 >
                                   <Edit2 size={16} />
                                 </button>
-                                <button
-                                  onClick={() => deleteProject(proj)}
-                                  title="Eliminar proyecto"
-                                  aria-label={`Eliminar ${proj.nombre}`}
-                                  className={btnIconoPeligro}
-                                >
-                                  <Trash2 size={16} />
-                                </button>
+                                {puedeEliminarProyecto(proj) && (
+                                  <button
+                                    onClick={() => deleteProject(proj)}
+                                    title="Eliminar proyecto"
+                                    aria-label={`Eliminar ${proj.nombre}`}
+                                    className={btnIconoPeligro}
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
                               </>
                             ) : (
                               !loadingPermisos && (
@@ -742,19 +765,19 @@ export default function Home() {
         </div>
       )}
 
-      {/* Modal Crear / Editar Proyecto */}
+      {/* Modal Crear / Editar proyecto */}
       <Modal
         open={isModalOpen}
         onClose={intentarCerrar}
         cerrarConFondo={!hayCambios}
-        title={editingProject ? 'Editar Proyecto' : 'Nuevo Proyecto'}
+        title={editingProject ? 'Editar proyecto' : 'Nuevo proyecto'}
         size="xl"
       >
         <form onSubmit={handleSave} noValidate className="flex flex-col flex-1 min-h-0">
           <ModalBody className="space-y-5">
             <div>
               <label htmlFor="proyecto-nombre" className={etiqueta}>
-                Nombre del Proyecto <span className="text-danger">*</span>
+                Nombre del proyecto <span className="text-danger">*</span>
               </label>
               <input
                 id="proyecto-nombre"
@@ -770,7 +793,7 @@ export default function Home() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label htmlFor="proyecto-tipo" className={etiqueta}>
-                  Tipo de Sistema
+                  Tipo de sistema
                 </label>
                 <select
                   id="proyecto-tipo"
@@ -789,7 +812,7 @@ export default function Home() {
 
               <div>
                 <label htmlFor="proyecto-estado" className={etiqueta}>
-                  Estado del Proyecto
+                  Estado del proyecto
                 </label>
                 <select
                   id="proyecto-estado"
@@ -973,7 +996,7 @@ export default function Home() {
               ) : (
                 <Save size={14} />
               )}
-              {saving ? 'Guardando...' : editingProject ? 'Guardar cambios' : 'Crear Proyecto'}
+              {saving ? 'Guardando...' : editingProject ? 'Guardar cambios' : 'Crear proyecto'}
             </button>
           </ModalFooter>
         </form>

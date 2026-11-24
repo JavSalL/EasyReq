@@ -2,12 +2,13 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, Check, ChevronDown, ChevronUp, CircleDashed, Copy, Loader2, Map as MapaIcono, Plus, Search, Square, X, XCircle
+  AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDashed, Copy, Loader2, Map as MapaIcono, Plus, Search, SlidersHorizontal, Square, X, XCircle
 } from 'lucide-react';
 import {
   AIError,
   continuarGeneracion,
   generateBulkRequirements,
+  marcaDesdeCoincidencia,
   runIterativeGeneration,
   type AlcanceGeneracion,
   type AreaGeneracion,
@@ -17,6 +18,7 @@ import {
   type PlanGeneracion,
   type PrioridadMoSCoW,
   type ProgresoGeneracion,
+  type MarcaDuplicado,
   type PropuestaIA,
   type RequerimientoExistente,
   type ResultadoIterativo
@@ -43,6 +45,10 @@ import {
   useFocoSintaxis
 } from '@/components/requerimientos/SintaxisRequerimiento';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
+import { useAtajos } from '@/lib/use-atajos';
+import { avisoColaToast } from '@/lib/aviso-cola';
+import { huellaContexto, UMBRAL_CONTEXTO_RESUMIDO } from '@/lib/contexto-ia';
+import { getResumenContexto, guardarResumenContexto } from '@/lib/services/contexto-service';
 import { btnPrimario, btnSecundario, btnSecundarioCompacto, btnIconoPeligro, campo } from '@/components/ui/estilos';
 
 // ==========================================
@@ -109,6 +115,22 @@ export function ordenarPorArea<T extends { area: string }>(lista: T[], ordenArea
     .map((p, i) => ({ p, i }))
     .sort((a, b) => posicion(a.p.area) - posicion(b.p.area) || a.i - b.i)
     .map(x => x.p);
+}
+
+/** Añade las propuestas nuevas de un lote a la lista, en el orden de las áreas. */
+const agregarPropuestas = (prev: PropuestaRevisable[] | null, nuevas: PropuestaIA[], ordenAreas: string[]) =>
+  ordenarPorArea([...(prev ?? []), ...nuevas.map(aRevisable)], ordenAreas);
+
+/** Un parecido por significado se marca igual que uno léxico; la propuesta sigue elegida. */
+function marcarDuplicadosSemanticos(
+  prev: PropuestaRevisable[] | null,
+  marcas: Array<{ clave: string; marca: MarcaDuplicado }>
+): PropuestaRevisable[] | null {
+  const porClave = new Map(marcas.map(m => [m.clave, m.marca]));
+  return prev?.map(p => {
+    const marca = porClave.get(p.clave);
+    return marca ? { ...p, posibleDuplicado: marca } : p;
+  }) ?? null;
 }
 
 /**
@@ -322,7 +344,17 @@ export function useGeneracionIterativa(proyectoId: string | null) {
     setPropuestas([]);
     setResultado(null);
 
-    const res = await runIterativeGeneration(userPrompt, { ...opciones, signal: controlador.signal }, {
+    // KAN-43: con un contexto largo, los lotes usan un resumen. Si ya hay uno guardado de este mismo
+    // contexto se reutiliza; si no, el plan escribe uno y se guarda para la próxima corrida.
+    const contexto = opciones.contexto?.trim() ?? '';
+    const huella = contexto.length > UMBRAL_CONTEXTO_RESUMIDO ? huellaContexto(contexto) : null;
+    const resumenContexto = huella && proyectoId ? await getResumenContexto(proyectoId, huella) : null;
+
+    const res = await runIterativeGeneration(userPrompt, { ...opciones, resumenContexto: resumenContexto ?? undefined, signal: controlador.signal }, {
+      onResumenContexto: resumen => {
+        if (!huella || !proyectoId) return;
+        guardarResumenContexto(proyectoId, huella, resumen).catch(err => console.warn('No se pudo guardar el resumen del contexto:', err));
+      },
       revisarPlan: planIA =>
         new Promise(resolve => {
           setPlan(planIA);
@@ -332,16 +364,8 @@ export function useGeneracionIterativa(proyectoId: string | null) {
           resolverPlanRef.current = resolve;
         }),
       onProgreso: setProgreso,
-      onPropuestas: nuevas =>
-        setPropuestas(prev => ordenarPorArea([...(prev ?? []), ...nuevas.map(aRevisable)], ordenAreasRef.current)),
-      // Un parecido por significado se marca igual que uno léxico; la propuesta sigue elegida.
-      onDuplicadosSemanticos: marcas => {
-        const porClave = new Map(marcas.map(m => [m.clave, m]));
-        setPropuestas(prev => prev?.map(p => {
-          const m = porClave.get(p.clave);
-          return m ? { ...p, posibleDuplicado: { etiqueta: m.etiqueta, texto: m.texto, similitud: m.similitud, semantico: true } } : p;
-        }) ?? null);
-      }
+      onPropuestas: nuevas => setPropuestas(prev => agregarPropuestas(prev, nuevas, ordenAreasRef.current)),
+      onDuplicadosSemanticos: marcas => setPropuestas(prev => marcarDuplicadosSemanticos(prev, marcas))
     });
 
     resolverPlanRef.current = null;
@@ -355,7 +379,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
     }
     setResultado({ estado: res.estado, motivo: res.motivo });
     return res;
-  }, [limpiarGuardado]);
+  }, [limpiarGuardado, proyectoId]);
 
   /** Generación masiva de una sola pasada (la de antes), con el mismo filtro de repetidos. */
   const iniciarRapida = useCallback(async (
@@ -373,7 +397,7 @@ export function useGeneracionIterativa(proyectoId: string | null) {
     setPropuestas(null);
     setResultado(null);
     try {
-      const r = await generateBulkRequirements(userPrompt, opciones);
+      const r = await generateBulkRequirements(userPrompt, opciones, avisoColaToast());
       if (!r.valido || r.requerimientos.length === 0) {
         setFase('inactivo');
         setResultado({ estado: 'invalido', motivo: r.motivo || 'La IA no encontró requerimientos que respalden el pedido. Detállalo más o agrega contexto al proyecto.' });
@@ -385,14 +409,15 @@ export function useGeneracionIterativa(proyectoId: string | null) {
       r.requerimientos.forEach((req, i) => {
         const v = clasificarDuplicado(indice, req.name);
         if (v.tipo === 'duplicado') return;
-        indice.agregar(req.name, `otra propuesta (${req.area ?? 'General'})`);
+        const clave = `${Date.now()}-${i}`;
+        indice.agregar(req.name, `otra propuesta (${req.area ?? 'General'})`, clave);
         lista.push({
           ...req,
           area: req.area ?? 'General',
-          clave: `${Date.now()}-${i}`,
+          clave,
           texto: req.name,
           elegida: true,
-          ...(v.tipo === 'posible' ? { posibleDuplicado: v.de } : {})
+          ...(v.tipo === 'posible' ? { posibleDuplicado: marcaDesdeCoincidencia(v.de) } : {})
         });
       });
       setPropuestas(ordenarPorArea(lista, r.areas.map(a => a.nombre)));
@@ -477,16 +502,8 @@ export function useGeneracionIterativa(proyectoId: string | null) {
         {
           revisarPlan: async () => areasPlanActual,
           onProgreso: setProgreso,
-          onPropuestas: nuevas =>
-            setPropuestas(prev => ordenarPorArea([...(prev ?? []), ...nuevas.map(aRevisable)], ordenAreasRef.current)),
-          // Un parecido por significado se marca igual que uno léxico; la propuesta sigue elegida.
-          onDuplicadosSemanticos: marcas => {
-            const porClave = new Map(marcas.map(m => [m.clave, m]));
-            setPropuestas(prev => prev?.map(p => {
-              const m = porClave.get(p.clave);
-              return m ? { ...p, posibleDuplicado: { etiqueta: m.etiqueta, texto: m.texto, similitud: m.similitud, semantico: true } } : p;
-            }) ?? null);
-          }
+          onPropuestas: nuevas => setPropuestas(prev => agregarPropuestas(prev, nuevas, ordenAreasRef.current)),
+          onDuplicadosSemanticos: marcas => setPropuestas(prev => marcarDuplicadosSemanticos(prev, marcas))
         },
         planActual, areasPlanActual, progresoActual, propuestasIA
       );
@@ -601,8 +618,9 @@ export type GeneracionIterativa = ReturnType<typeof useGeneracionIterativa>;
 // ==========================================
 
 /** Textarea que crece con su contenido: el enunciado se lee entero, sin scroll interno. */
-function TextareaAutoajustable({ value, onChange, disabled, autoFocus, onBlur, onKeyDown, ...rest }: {
+function TextareaAutoajustable({ value, onChange, disabled, autoFocus, onBlur, onKeyDown, grande, ...rest }: {
   value: string;
+  grande?: boolean;
   onChange: (valor: string) => void;
   disabled?: boolean;
   autoFocus?: boolean;
@@ -649,7 +667,7 @@ function TextareaAutoajustable({ value, onChange, disabled, autoFocus, onBlur, o
       onBlur={onBlur}
       onKeyDown={onKeyDown}
       {...rest}
-      className="block w-full px-2 py-1 bg-transparent border border-transparent hover:border-line focus:border-brand-text rounded-ui text-sm text-ink leading-relaxed resize-none overflow-hidden focus:outline-none"
+      className={`block w-full px-2 py-1 bg-transparent border border-transparent hover:border-line focus:border-brand-text rounded-ui ${grande ? 'text-lg' : 'text-sm'} text-ink leading-relaxed resize-none overflow-hidden focus:outline-none`}
     />
   );
 }
@@ -666,10 +684,12 @@ function CampoEnunciadoPropuesta({
   elementos,
   mapaTonos,
   claveEnfocada,
+  grande = false,
 }: {
   value: string;
   onChange: (valor: string) => void;
   disabled?: boolean;
+  grande?: boolean;
   mostrarSintaxis: boolean;
   elementos?: ReadonlyArray<ElementoSintactico> | null;
   mapaTonos: ReadonlyMap<string, TonoSintaxis>;
@@ -700,6 +720,7 @@ function CampoEnunciadoPropuesta({
           }
         }}
         onChange={onChange}
+        grande={grande}
         aria-label="Texto de la propuesta"
       />
     );
@@ -713,7 +734,7 @@ function CampoEnunciadoPropuesta({
       tabIndex={disabled ? -1 : 0}
       onClick={() => { if (!disabled) setEditando(true); }}
       onFocus={() => { if (!disabled) setEditando(true); }}
-      className={`block w-full px-2 py-1 bg-transparent border border-transparent rounded-ui text-sm text-ink leading-relaxed whitespace-pre-wrap break-words ${
+      className={`block w-full px-2 py-1 bg-transparent border border-transparent rounded-ui ${grande ? 'text-lg' : 'text-sm'} text-ink leading-relaxed whitespace-pre-wrap break-words ${
         disabled ? '' : 'hover:border-line cursor-text'
       }`}
     >
@@ -735,7 +756,105 @@ const NOMBRES_FURPS: Record<PropuestaIA['type_furps'], string> = {
   Supportability: 'Soporte'
 };
 
-const etiquetaChip = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-ui text-[11px] font-medium border';
+const etiquetaChip = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-ui text-xs font-medium border';
+const botonMarca = 'inline-flex items-center gap-1 min-h-7 px-2 rounded-ui text-xs font-semibold border border-warning-line bg-surface text-ink hover:bg-warning-subtle cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+
+/** Área de una etiqueta antigua "otra propuesta (Seguridad)", para marcas guardadas antes de KAN-49. */
+const areaDeEtiqueta = (etiqueta: string) => /^otra propuesta \((.+)\)$/.exec(etiqueta)?.[1];
+
+/**
+ * Marca de posible duplicado (KAN-49): dice con qué se parece (código del existente, o número y
+ * módulo de la otra propuesta), muestra su texto y permite desmarcar esta o la otra sin buscarla.
+ */
+function MarcaPosibleDuplicado({ marca, propia, otra, numeroOtra, bloqueado, onAlternar, onVerOtra }: {
+  marca: MarcaDuplicado;
+  propia: PropuestaRevisable;
+  /** La otra propuesta, si el parecido es de esta misma generación y sigue en la lista. */
+  otra?: PropuestaRevisable;
+  numeroOtra?: number;
+  bloqueado?: boolean;
+  onAlternar: (clave: string, elegida: boolean) => void;
+  onVerOtra: (clave: string) => void;
+}) {
+  const esPropuesta = !!marca.clave || !!areaDeEtiqueta(marca.etiqueta);
+  const area = otra?.area ?? areaDeEtiqueta(marca.etiqueta);
+  const titulo = !esPropuesta
+    ? `Posible duplicado de ${marca.etiqueta}`
+    : otra && numeroOtra
+      ? `Posible duplicado de la propuesta n.º ${numeroOtra}${area ? ` (módulo ${area})` : ''}`
+      : `Posible duplicado de otra propuesta${area ? ` del módulo ${area}` : ''}`;
+  const donde = !esPropuesta
+    ? 'Ya está registrado en el proyecto.'
+    : otra || !marca.clave
+      ? 'Es de esta misma generación.'
+      : 'Era de esta generación y ya no está en la lista.';
+  const tipo = marca.semantico ? 'Mismo significado' : 'Texto parecido';
+  const texto = otra?.texto ?? marca.texto;
+  const [abierto, setAbierto] = useState(false);
+
+  const resumen = !esPropuesta
+    ? `Posible duplicado de ${marca.etiqueta}`
+    : otra && numeroOtra
+      ? `Posible duplicado de la n.º ${numeroOtra}`
+      : 'Posible duplicado de otra propuesta';
+
+  return (
+    <div className="rounded-ui bg-warning-subtle text-sm" role="note" aria-label={titulo}>
+      {/* Una línea con lo esencial; el texto parecido y las demás acciones se abren bajo demanda */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-2 pr-1 py-1">
+        <button
+          type="button"
+          onClick={() => setAbierto(a => !a)}
+          aria-expanded={abierto}
+          className="inline-flex items-center gap-1.5 min-h-8 pointer-coarse:min-h-11 text-left font-semibold text-ink cursor-pointer hover:underline underline-offset-2"
+        >
+          <Copy size={14} className="text-warning shrink-0" aria-hidden />
+          {resumen}
+          <span className="font-normal text-ink-muted tabular-nums">· {Math.round(marca.similitud * 100)} %</span>
+          {abierto ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+        </button>
+        <button
+          type="button"
+          className={`${botonMarca} ml-auto`}
+          disabled={bloqueado || (!propia.elegida && !esSeleccionable(propia))}
+          onClick={() => onAlternar(propia.clave, !propia.elegida)}
+        >
+          {propia.elegida ? 'Desmarcar esta' : 'Volver a marcar esta'}
+        </button>
+      </div>
+      {abierto && (
+        <div className="px-3 pb-2.5 space-y-1.5">
+          <p className="text-xs text-ink-muted">
+            {titulo}. {tipo}. {donde}
+          </p>
+          {texto && <p className="text-sm text-ink leading-snug">«{texto}»</p>}
+          {otra && (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                className={botonMarca}
+                disabled={bloqueado || (!otra.elegida && !esSeleccionable(otra))}
+                onClick={() => onAlternar(otra.clave, !otra.elegida)}
+              >
+                {otra.elegida ? `Desmarcar la n.º ${numeroOtra}` : `Volver a marcar la n.º ${numeroOtra}`}
+              </button>
+              <button type="button" className={botonMarca} onClick={() => onVerOtra(otra.clave)}>
+                Ver la n.º {numeroOtra}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+/**
+ * La IA a veces justifica con una frase genérica ("Sale del pedido."). Repetida en cada
+ * propuesta es ruido; solo se muestra cuando dice algo concreto.
+ */
+const justificacionUtil = (texto?: string | null) =>
+  !!texto && !/^sale (del|de la|de el) (pedido|contexto|solicitud|descripci[oó]n)\.?$/i.test(texto.trim());
+
 const selectChico = 'px-2 min-h-8 text-xs border border-line-strong rounded-ui bg-surface text-ink focus:outline-none focus:border-brand-text';
 
 interface FiltrosPropuestas {
@@ -761,9 +880,14 @@ interface PanelProps {
 export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, bloqueado }: PanelProps) {
   const { fase, plan, areasPlan, setAreasPlan, progreso, propuestas, setPropuestas, resultado, patronUsado } = gen;
   const [filtros, setFiltros] = useState<FiltrosPropuestas>(FILTROS_VACIOS);
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
   const [mostrarSintaxis, setMostrarSintaxis] = useEstadoSesion('easyreq:sintaxis:visible', true);
   const focoSintaxis = useFocoSintaxis();
   const [desglosesAbiertos, setDesglosesAbiertos] = useState<Set<string>>(() => new Set());
+  // Revisión una por una: una propuesta a la vez, con seleccionar o descartar y paso a la siguiente
+  const [modoRevision, setModoRevision] = useEstadoSesion<'una' | 'lista'>('easyreq:gen:modo-revision', 'una');
+  const [indiceActual, setIndiceActual] = useState(0);
+  const [revisadas, setRevisadas] = useState<ReadonlySet<string>>(() => new Set());
 
   const alternarDesglose = useCallback((clave: string) => {
     setDesglosesAbiertos(prev => {
@@ -858,6 +982,27 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
     setPropuestas(prev => prev ? aplicarSeleccion(prev, claves, elegida) : null);
   };
 
+  // KAN-49: número visible de cada propuesta (su posición en la lista completa) para que la marca
+  // de posible duplicado diga cuál es la otra, y acceso por clave para desmarcarla desde ahí.
+  const { numeroDe, porClave } = useMemo(() => {
+    const lista = propuestas ?? [];
+    return {
+      numeroDe: new Map(lista.map((p, i) => [p.clave, i + 1])),
+      porClave: new Map(lista.map(p => [p.clave, p]))
+    };
+  }, [propuestas]);
+  const [resaltada, setResaltada] = useState<string | null>(null);
+
+  /** Lleva la vista a una propuesta (quitando los filtros si la ocultan) y la resalta un momento. */
+  const verPropuesta = (clave: string) => {
+    if (!visibles.some(p => p.clave === clave)) setFiltros(FILTROS_VACIOS);
+    setResaltada(clave);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById(`propuesta-${clave}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }));
+    setTimeout(() => setResaltada(actual => (actual === clave ? null : actual)), 2500);
+  };
+
   // El estado de selección vive en cada propuesta, así que los filtros y los
   // cambios de área no lo tocan. `propuestasPorArea` sirve para que el checkbox
   // de un área seleccione también lo que los filtros ocultan.
@@ -872,6 +1017,9 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
   const seleccionables = useMemo(() => (propuestas ?? []).filter(esSeleccionable), [propuestas]);
   const visiblesSeleccionables = useMemo(() => visibles.filter(esSeleccionable), [visibles]);
   const hayFiltros = JSON.stringify(filtros) !== JSON.stringify(FILTROS_VACIOS);
+  // Filtros del panel (sin contar la búsqueda, que ya se ve en su campo)
+  const cantidadFiltros = (['origen', 'prioridad', 'furps', 'duplicados'] as const)
+    .filter(k => filtros[k] !== FILTROS_VACIOS[k]).length;
   const total = propuestas?.length ?? 0;
   const elegidas = contarSeleccionadas(seleccionables);
   const todasElegidas = todasSeleccionadas(seleccionables);
@@ -888,6 +1036,99 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
         : resultado.estado === 'error' && resultado.motivo
           ? hayPropuestas ? `${resultado.motivo} Se conserva lo generado hasta el fallo.` : resultado.motivo
           : null;
+
+  /** Número, tipo, prioridad, avisos, desglose y duplicado de una propuesta (lista y vista una por una). */
+  const detallesPropuesta = (p: PropuestaRevisable) => (
+    <>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs font-semibold text-ink-subtle tabular-nums" title="Número de la propuesta en la lista">
+          n.º {numeroDe.get(p.clave)}
+        </span>
+        <span className={`${etiquetaChip} bg-sunken text-ink-muted border-line`}>{nombreTipo(p)}</span>
+        {p.prioridad && (
+          <span className={`${etiquetaChip} bg-surface text-ink-muted border-line`} title="Prioridad MoSCoW propuesta">
+            {p.prioridad === 'Wont' ? "Won't" : p.prioridad}
+          </span>
+        )}
+        {p.origen === 'inferido' && (
+          <span className={`${etiquetaChip} bg-brand-subtle text-brand-text border-brand-line`} title="La IA lo dedujo: el pedido y el contexto no lo dicen">
+            Inferido
+          </span>
+        )}
+        {p.cifras_sin_respaldo?.length ? (
+          <span className={`${etiquetaChip} bg-danger-subtle text-danger border-danger-line`} title="Estas cifras no aparecen en el pedido ni en el contexto">
+            <AlertTriangle size={10} aria-hidden />
+            Revisa: {p.cifras_sin_respaldo.join(', ')}
+          </span>
+        ) : null}
+        {p.elementos_sintaxis?.length ? (
+          <BotonDesgloseSintaxis
+            abierto={desglosesAbiertos.has(p.clave)}
+            onAlternar={() => alternarDesglose(p.clave)}
+            cantidad={p.elementos_sintaxis.length}
+          />
+        ) : null}
+      </div>
+      {desglosesAbiertos.has(p.clave) && p.elementos_sintaxis?.length ? (
+        <DesgloseSintaxis
+          texto={p.texto}
+          elementos={p.elementos_sintaxis}
+          patron={patronUsado}
+          mapaTonos={mapaTonosSintaxis}
+        />
+      ) : null}
+      {p.posibleDuplicado && (() => {
+        // Las marcas guardadas antes de KAN-49 no traen la clave: se busca la otra por su texto.
+        const marca = p.posibleDuplicado;
+        const otra = marca.clave
+          ? porClave.get(marca.clave)
+          : areaDeEtiqueta(marca.etiqueta)
+            ? propuestas?.find(x => x.clave !== p.clave && (x.name === marca.texto || x.texto === marca.texto))
+            : undefined;
+        return (
+          <MarcaPosibleDuplicado
+            marca={p.posibleDuplicado}
+            propia={p}
+            otra={otra}
+            numeroOtra={otra ? numeroDe.get(otra.clave) : undefined}
+            bloqueado={bloqueado}
+            onAlternar={(clave, elegida) => actualizar(clave, { elegida })}
+            onVerOtra={verPropuesta}
+          />
+        );
+      })()}
+      {justificacionUtil(p.justificacion) && <p className="text-xs text-ink-subtle leading-snug">{p.justificacion}</p>}
+    </>
+  );
+
+  // Vista una por una: recorre las propuestas visibles (respeta filtros y búsqueda)
+  const indiceSeguro = Math.min(indiceActual, Math.max(0, visibles.length - 1));
+  const actual = visibles[indiceSeguro];
+  const revisadasVisibles = visibles.filter(p => revisadas.has(p.clave)).length;
+  const terminoRevision = visibles.length > 0 && revisadasVisibles === visibles.length;
+
+  /** Decide la propuesta actual y pasa a la siguiente que falte revisar. */
+  const decidir = (p: PropuestaRevisable, elegida: boolean) => {
+    if (bloqueado || (elegida && !esSeleccionable(p))) return;
+    actualizar(p.clave, { elegida });
+    const nuevas = new Set(revisadas).add(p.clave);
+    setRevisadas(nuevas);
+    const desde = visibles.indexOf(p);
+    const orden = [...visibles.slice(desde + 1), ...visibles.slice(0, desde)];
+    const siguiente = orden.find(x => !nuevas.has(x.clave));
+    if (siguiente) setIndiceActual(visibles.indexOf(siguiente));
+  };
+
+  // Atajos de la vista una por una (dentro del formulario, que es un diálogo)
+  useAtajos(
+    {
+      s: () => { if (actual) decidir(actual, true); },
+      x: () => { if (actual) decidir(actual, false); },
+      arrowleft: () => setIndiceActual(Math.max(0, indiceSeguro - 1)),
+      arrowright: () => setIndiceActual(Math.min(visibles.length - 1, indiceSeguro + 1)),
+    },
+    { activo: modoRevision === 'una' && !!actual && !bloqueado, dentroDeDialogo: true }
+  );
 
   return (
     <div ref={contenedorRef} className="space-y-4 scroll-mt-4">
@@ -1031,7 +1272,7 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
               </button>
             </div>
           </div>
-          <p className="text-[11px] text-ink-subtle">
+          <p className="text-xs text-ink-subtle">
             Toda la generación cuenta como un solo uso de IA del día. Puedes detenerla cuando quieras y conservar lo generado.
           </p>
         </section>
@@ -1063,7 +1304,7 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
           </div>
           {progreso.esperando ? (
             <p className="text-xs text-warning" role="status">
-              Se alcanzó el límite de peticiones por minuto: se reanuda solo en {progreso.esperando} s.
+              En cola, continúa en {progreso.esperando} s.
             </p>
           ) : null}
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
@@ -1122,24 +1363,24 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
               }`}
             >
               <Check size={13} aria-hidden />
-              {elegidas} de {total} {total === 1 ? 'seleccionado' : 'seleccionados'}
+              {elegidas} de {total} {total === 1 ? 'seleccionada' : 'seleccionadas'}
             </p>
           </div>
 
           <div
             role="group"
             aria-label="Selección de propuestas"
-            className="flex flex-wrap items-center gap-2 rounded-ui border border-line bg-sunken/40 p-2"
+            className="flex flex-wrap items-center gap-2"
           >
             <button
               type="button"
               onClick={() => elegirVarias(seleccionables.map(p => p.clave), true)}
               disabled={bloqueado || seleccionables.length === 0 || todasElegidas}
               className={btnSecundarioCompacto}
-              title="Selecciona todos los requerimientos, incluidos los ocultos por los filtros. No los registra."
+              title="Marca todas las propuestas, también las que ocultan los filtros. Se registran con el botón de abajo."
             >
               <Check size={14} aria-hidden />
-              Aprobar todos
+              Seleccionar todas
             </button>
             <button
               type="button"
@@ -1163,53 +1404,82 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                 Seleccionar filtrados ({visiblesSeleccionables.length})
               </button>
             )}
-            <p className="basis-full text-[11px] text-ink-subtle">
-              Aprobar todos solo marca la selección; el registro se confirma con el botón de abajo.
-              {hayFiltros && ' Aprobar todos incluye los ocultos; Seleccionar filtrados solo los visibles.'}
-            </p>
           </div>
 
-          {/* Filtros */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-40">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle" aria-hidden />
-              <input
-                value={filtros.q}
-                onChange={e => setFiltros(f => ({ ...f, q: e.target.value }))}
-                // Enter en el buscador no debe enviar el formulario ni abrir el registro.
-                onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
-                placeholder="Buscar en las propuestas"
-                aria-label="Buscar en las propuestas"
-                className={`${selectChico} w-full pl-7`}
-              />
-            </div>
-            <select value={filtros.origen} onChange={e => setFiltros(f => ({ ...f, origen: e.target.value as FiltrosPropuestas['origen'] }))} aria-label="Filtrar por origen" className={selectChico}>
-              <option value="todos">Explícitos e inferidos</option>
-              <option value="explicito">Solo explícitos</option>
-              <option value="inferido">Solo inferidos</option>
-            </select>
-            <select value={filtros.prioridad} onChange={e => setFiltros(f => ({ ...f, prioridad: e.target.value as FiltrosPropuestas['prioridad'] }))} aria-label="Filtrar por prioridad" className={selectChico}>
-              <option value="todas">Toda prioridad</option>
-              <option value="Must">Must</option>
-              <option value="Should">Should</option>
-              <option value="Could">Could</option>
-              <option value="Wont">Won&apos;t</option>
-            </select>
-            <select value={filtros.furps} onChange={e => setFiltros(f => ({ ...f, furps: e.target.value as FiltrosPropuestas['furps'] }))} aria-label="Filtrar por tipo" className={selectChico}>
-              <option value="todos">Todo tipo</option>
-              {Object.entries(NOMBRES_FURPS).map(([valor, nombre]) => (
-                <option key={valor} value={valor}>{nombre}</option>
-              ))}
-            </select>
-            <select value={filtros.duplicados} onChange={e => setFiltros(f => ({ ...f, duplicados: e.target.value as FiltrosPropuestas['duplicados'] }))} aria-label="Filtrar posibles duplicados" className={selectChico}>
-              <option value="todos">Todos</option>
-              <option value="ocultar">Sin posibles duplicados</option>
-              <option value="solo">Solo posibles duplicados</option>
-            </select>
-            {hayFiltros && (
-              <button type="button" onClick={() => setFiltros(FILTROS_VACIOS)} className="text-xs font-semibold text-brand-text hover:underline cursor-pointer">
-                Quitar filtros
+          {/* Filtros: buscador y un botón en una fila; los desplegables se abren bajo demanda */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 min-w-0">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle" aria-hidden />
+                <input
+                  value={filtros.q}
+                  onChange={e => setFiltros(f => ({ ...f, q: e.target.value }))}
+                  // Enter en el buscador no debe enviar el formulario ni abrir el registro.
+                  onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
+                  placeholder="Buscar en las propuestas"
+                  aria-label="Buscar en las propuestas"
+                  className={`${selectChico} w-full pl-7`}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setFiltrosAbiertos(a => !a)}
+                aria-expanded={filtrosAbiertos}
+                aria-controls="panel-filtros-propuestas"
+                className={`${btnSecundarioCompacto} shrink-0`}
+              >
+                <SlidersHorizontal size={14} aria-hidden />
+                Filtros
+                {cantidadFiltros > 0 && (
+                  <span className="min-w-4 h-4 px-1 rounded-full bg-brand-solid text-on-solid text-[10px] font-bold leading-4 tabular-nums">
+                    {cantidadFiltros}
+                  </span>
+                )}
               </button>
+              {hayFiltros && (
+                <button type="button" onClick={() => setFiltros(FILTROS_VACIOS)} className="shrink-0 text-xs font-semibold text-brand-text hover:underline cursor-pointer">
+                  Quitar filtros
+                </button>
+              )}
+            </div>
+            {filtrosAbiertos && (
+              <div id="panel-filtros-propuestas" className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2 rounded-ui bg-sunken">
+                <label className="text-xs text-ink-muted space-y-1">
+                  <span className="block font-medium">Origen</span>
+                  <select value={filtros.origen} onChange={e => setFiltros(f => ({ ...f, origen: e.target.value as FiltrosPropuestas['origen'] }))} className={`${selectChico} w-full`}>
+                    <option value="todos">Todos</option>
+                    <option value="explicito">Solo explícitos</option>
+                    <option value="inferido">Solo inferidos</option>
+                  </select>
+                </label>
+                <label className="text-xs text-ink-muted space-y-1">
+                  <span className="block font-medium">Prioridad</span>
+                  <select value={filtros.prioridad} onChange={e => setFiltros(f => ({ ...f, prioridad: e.target.value as FiltrosPropuestas['prioridad'] }))} className={`${selectChico} w-full`}>
+                    <option value="todas">Todas</option>
+                    <option value="Must">Must</option>
+                    <option value="Should">Should</option>
+                    <option value="Could">Could</option>
+                    <option value="Wont">Won&apos;t</option>
+                  </select>
+                </label>
+                <label className="text-xs text-ink-muted space-y-1">
+                  <span className="block font-medium">Tipo</span>
+                  <select value={filtros.furps} onChange={e => setFiltros(f => ({ ...f, furps: e.target.value as FiltrosPropuestas['furps'] }))} className={`${selectChico} w-full`}>
+                    <option value="todos">Todos</option>
+                    {Object.entries(NOMBRES_FURPS).map(([valor, nombre]) => (
+                      <option key={valor} value={valor}>{nombre}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs text-ink-muted space-y-1">
+                  <span className="block font-medium">Posibles duplicados</span>
+                  <select value={filtros.duplicados} onChange={e => setFiltros(f => ({ ...f, duplicados: e.target.value as FiltrosPropuestas['duplicados'] }))} className={`${selectChico} w-full`}>
+                    <option value="todos">Mostrarlos</option>
+                    <option value="ocultar">Ocultarlos</option>
+                    <option value="solo">Solo duplicados</option>
+                  </select>
+                </label>
+              </div>
             )}
           </div>
 
@@ -1220,8 +1490,130 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
             foco={focoSintaxis}
           />
 
+          <div role="group" aria-label="Forma de revisar" className="inline-flex bg-sunken rounded-ui p-1 gap-1">
+            {([['una', 'Una por una'], ['lista', 'Lista']] as const).map(([valor, nombre]) => (
+              <button
+                key={valor}
+                type="button"
+                onClick={() => setModoRevision(valor)}
+                aria-pressed={modoRevision === valor}
+                className={`px-3 min-h-8 rounded-[calc(var(--radius-ui)-2px)] text-sm font-medium transition-colors cursor-pointer ${
+                  modoRevision === valor ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                {nombre}
+              </button>
+            ))}
+          </div>
+
           {grupos.length === 0 ? (
             <p className="text-sm text-ink-subtle py-6 text-center border border-line rounded-ui">Ninguna propuesta coincide con los filtros.</p>
+          ) : modoRevision === 'una' && actual ? (
+            <div className="rounded-ui border border-line bg-surface" aria-label="Revisión una por una">
+              <div className="px-4 pt-3 space-y-2">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-ink-muted min-w-0 truncate">
+                    <span className="font-semibold text-ink tabular-nums">{indiceSeguro + 1} de {visibles.length}</span>
+                    <span className="text-ink-subtle"> · {actual.area}</span>
+                  </span>
+                  <span className="shrink-0 text-ink-subtle tabular-nums">
+                    {revisadasVisibles} revisadas
+                  </span>
+                </div>
+                <div className="h-1 rounded-full bg-sunken overflow-hidden" aria-hidden>
+                  <div
+                    className="h-full bg-brand-solid transition-[width] duration-300"
+                    style={{ width: `${(revisadasVisibles / visibles.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {terminoRevision ? (
+                <div className="px-4 py-8 text-center space-y-2" role="status">
+                  <p className="text-base font-semibold text-ink">Revisaste todas las propuestas</p>
+                  <p className="text-sm text-ink-muted">
+                    {elegidas} {elegidas === 1 ? 'quedó seleccionada' : 'quedaron seleccionadas'}. Regístralas con el botón de abajo,
+                    o vuelve a cualquiera con las flechas para cambiar tu decisión.
+                  </p>
+                </div>
+              ) : null}
+
+              <div key={actual.clave} className={`px-4 py-4 space-y-3 animate-in fade-in ${terminoRevision ? 'border-t border-line' : ''}`}>
+                <div className="flex items-center gap-2 text-sm">
+                  {revisadas.has(actual.clave) ? (
+                    actual.elegida ? (
+                      <span className="inline-flex items-center gap-1 font-medium text-success"><Check size={14} aria-hidden />Seleccionada</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-medium text-ink-subtle"><X size={14} aria-hidden />Descartada</span>
+                    )
+                  ) : (
+                    <span className="text-ink-subtle">Sin revisar</span>
+                  )}
+                </div>
+                <CampoEnunciadoPropuesta
+                  value={actual.texto}
+                  disabled={bloqueado}
+                  grande
+                  onChange={texto => actualizar(actual.clave, { texto })}
+                  mostrarSintaxis={mostrarSintaxis}
+                  elementos={actual.elementos_sintaxis}
+                  mapaTonos={mapaTonosSintaxis}
+                  claveEnfocada={mostrarSintaxis ? focoSintaxis.claveActiva : null}
+                />
+                <p className="text-xs text-ink-subtle">Haz clic en el texto para editarlo antes de decidir.</p>
+                {!esSeleccionable(actual) && (
+                  <p className="text-xs text-warning">Escribe el enunciado para poder seleccionarlo.</p>
+                )}
+                <div className="space-y-1">{detallesPropuesta(actual)}</div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-line">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setIndiceActual(Math.max(0, indiceSeguro - 1))}
+                    disabled={indiceSeguro === 0}
+                    aria-label="Propuesta anterior"
+                    title="Anterior"
+                    className={btnSecundarioCompacto}
+                  >
+                    <ChevronLeft size={16} aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIndiceActual(Math.min(visibles.length - 1, indiceSeguro + 1))}
+                    disabled={indiceSeguro >= visibles.length - 1}
+                    aria-label="Propuesta siguiente"
+                    title="Siguiente"
+                    className={btnSecundarioCompacto}
+                  >
+                    <ChevronRight size={16} aria-hidden />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => decidir(actual, false)}
+                    disabled={bloqueado}
+                    className={btnSecundario}
+                  >
+                    <X size={16} aria-hidden />
+                    Descartar
+                    <kbd className="hidden pointer-fine:inline ml-1 px-1 rounded border border-current/30 text-xs font-sans opacity-70">X</kbd>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => decidir(actual, true)}
+                    disabled={bloqueado || !esSeleccionable(actual)}
+                    className={btnPrimario}
+                  >
+                    <Check size={16} aria-hidden />
+                    Seleccionar
+                    <kbd className="hidden pointer-fine:inline ml-1 px-1 rounded border border-current/30 text-xs font-sans opacity-70">S</kbd>
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="sm:max-h-112 sm:overflow-y-auto rounded-ui border border-line custom-scrollbar">
               {grupos.map(([area, lista]) => {
@@ -1253,13 +1645,13 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                         title={totalArea === 0 ? `No hay propuestas con texto en ${area}` : `${todasArea ? 'Desmarcar' : 'Seleccionar'} todo el área ${area}: ${detalleArea}`}
                         className="size-4 accent-brand-text shrink-0 cursor-pointer disabled:cursor-not-allowed"
                       />
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted truncate">{area}</span>
+                      <span className="text-sm font-semibold text-ink truncate">{area}</span>
                       {ocultas > 0 && (
-                        <span className="text-[10px] text-ink-subtle" title={`Los filtros ocultan ${ocultas} propuestas de esta área`}>
+                        <span className="text-xs text-ink-subtle" title={`Los filtros ocultan ${ocultas} propuestas de esta área`}>
                           {ocultas} ocultas
                         </span>
                       )}
-                      <span className="ml-auto text-[11px] text-ink-subtle tabular-nums" title={detalleArea}>
+                      <span className="ml-auto text-xs text-ink-subtle tabular-nums" title={detalleArea}>
                         {seleccionadasArea}/{totalArea}
                       </span>
                     </div>
@@ -1267,7 +1659,11 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                       {lista.map(p => {
                         const disponible = esSeleccionable(p);
                         return (
-                          <li key={p.clave} className={`flex items-start gap-3 px-3 py-2.5 ${p.elegida ? 'bg-brand-subtle/20' : disponible ? 'opacity-70' : ''}`}>
+                          <li
+                            key={p.clave}
+                            id={`propuesta-${p.clave}`}
+                            className={`flex items-start gap-3 px-3 py-2.5 scroll-mt-12 transition-colors duration-500 ${resaltada === p.clave ? 'bg-warning-subtle' : p.elegida ? 'bg-brand-subtle/20' : disponible ? 'opacity-70' : ''}`}
+                          >
                             <input
                               type="checkbox"
                               checked={p.elegida}
@@ -1288,59 +1684,11 @@ export default function PanelGeneracionIterativa({ gen, nombreTipo, existentes, 
                                 claveEnfocada={mostrarSintaxis ? focoSintaxis.claveActiva : null}
                               />
                               {!disponible && (
-                                <p className="text-[11px] text-warning">
+                                <p className="text-xs text-warning">
                                   Escribe el enunciado para poder seleccionarlo.
                                 </p>
                               )}
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className={`${etiquetaChip} bg-sunken text-ink-muted border-line`}>{nombreTipo(p)}</span>
-                                {p.prioridad && (
-                                  <span className={`${etiquetaChip} bg-surface text-ink-muted border-line`} title="Prioridad MoSCoW propuesta">
-                                    {p.prioridad === 'Wont' ? "Won't" : p.prioridad}
-                                  </span>
-                                )}
-                                {p.origen === 'inferido' && (
-                                  <span className={`${etiquetaChip} bg-brand-subtle text-brand-text border-brand-line`} title="La IA lo dedujo: el pedido y el contexto no lo dicen">
-                                    Inferido
-                                  </span>
-                                )}
-                                {p.posibleDuplicado && (
-                                  <span className={`${etiquetaChip} bg-warning-subtle text-warning border-warning-line`}>
-                                    <Copy size={10} aria-hidden />
-                                    Posible duplicado de {p.posibleDuplicado.etiqueta}
-                                    <span className="font-normal opacity-80">
-                                      ({p.posibleDuplicado.semantico ? 'mismo significado' : 'texto parecido'}, {Math.round(p.posibleDuplicado.similitud * 100)} %)
-                                    </span>
-                                  </span>
-                                )}
-                                {p.cifras_sin_respaldo?.length ? (
-                                  <span className={`${etiquetaChip} bg-danger-subtle text-danger border-danger-line`} title="Estas cifras no aparecen en el pedido ni en el contexto">
-                                    <AlertTriangle size={10} aria-hidden />
-                                    Revisa: {p.cifras_sin_respaldo.join(', ')}
-                                  </span>
-                                ) : null}
-                                {p.elementos_sintaxis?.length ? (
-                                  <BotonDesgloseSintaxis
-                                    abierto={desglosesAbiertos.has(p.clave)}
-                                    onAlternar={() => alternarDesglose(p.clave)}
-                                    cantidad={p.elementos_sintaxis.length}
-                                  />
-                                ) : null}
-                              </div>
-                              {desglosesAbiertos.has(p.clave) && p.elementos_sintaxis?.length ? (
-                                <DesgloseSintaxis
-                                  texto={p.texto}
-                                  elementos={p.elementos_sintaxis}
-                                  patron={patronUsado}
-                                  mapaTonos={mapaTonosSintaxis}
-                                />
-                              ) : null}
-                              {p.posibleDuplicado?.texto && (
-                                <p className="text-xs text-ink-muted leading-snug border-l-2 border-warning-line pl-2">
-                                  <span className="font-semibold">{p.posibleDuplicado.etiqueta}:</span> {p.posibleDuplicado.texto}
-                                </p>
-                              )}
-                              {p.justificacion && <p className="text-[11px] text-ink-subtle leading-snug">{p.justificacion}</p>}
+                              {detallesPropuesta(p)}
                             </div>
                           </li>
                         );

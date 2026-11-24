@@ -122,7 +122,7 @@ export default function BuscadorPersonas({
               key={u.id}
               className="inline-flex items-center gap-1.5 pl-1 pr-1 py-0.5 rounded-full bg-brand-subtle border border-brand-line text-sm text-brand-text max-w-full"
             >
-              <span className="size-5 shrink-0 rounded-full bg-surface text-[10px] font-bold flex items-center justify-center">
+              <span className="size-5 shrink-0 rounded-full bg-surface text-xs font-bold flex items-center justify-center">
                 {iniciales(u)}
               </span>
               <span className="truncate" title={u.correo}>{nombreDe(u)}</span>
@@ -186,7 +186,7 @@ export default function BuscadorPersonas({
                   onMouseEnter={() => setActivo(i)}
                   className={`flex items-center gap-3 px-3 min-h-11 cursor-pointer ${i === activo ? 'bg-sunken' : ''}`}
                 >
-                  <span className="size-7 shrink-0 rounded-full bg-brand-subtle text-brand-text text-[11px] font-bold flex items-center justify-center">
+                  <span className="size-7 shrink-0 rounded-full bg-brand-subtle text-brand-text text-xs font-bold flex items-center justify-center">
                     {iniciales(u)}
                   </span>
                   <span className="min-w-0">

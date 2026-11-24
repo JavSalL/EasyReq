@@ -123,7 +123,11 @@ export default function InvitacionesBell() {
     try {
       if (aceptar) {
         await aceptarInvitacionEquipo(invitacion.id, uid);
-        toast.success('Te uniste al equipo');
+        toast.success(
+          invitacion.id_proyecto
+            ? 'Te uniste al equipo en el proyecto'
+            : 'Te uniste al equipo'
+        );
         // Las pantallas con equipos abiertas se actualizan solas
         window.dispatchEvent(new Event(EVENTO_EQUIPOS_CAMBIARON));
       } else {
@@ -208,27 +212,34 @@ export default function InvitacionesBell() {
                 {invitaciones.map((invitacion) => {
                   const equipo = datos?.equipos.find((e) => e.equipo_id === invitacion.id_equipo);
                   const invitador = datos?.usuarios.find((u) => u.id === invitacion.id_invitador);
-                  const proyecto = equipo?.id_proyecto
-                    ? datos?.proyectos.find((p) => p.proyecto_id === equipo.id_proyecto)
+                  const esInvitacionLocal = Boolean(invitacion.id_proyecto);
+                  const proyectoIdInv = invitacion.id_proyecto || equipo?.id_proyecto || null;
+                  const proyecto = proyectoIdInv
+                    ? datos?.proyectos.find((p) => p.proyecto_id === proyectoIdInv)
                     : undefined;
                   const idsRoles = invitacion.id_roles ?? (invitacion.id_rol ? [invitacion.id_rol] : []);
                   const roles = datos?.roles.filter((r) => idsRoles.includes(r.id)) ?? [];
                   const ocupada = enProceso === invitacion.id;
                   return (
                     <li key={`inv-${invitacion.id}`} className="p-4">
-                      <span className="inline-block px-2 py-0.5 mb-1.5 rounded-full text-[11px] font-semibold bg-brand-subtle text-brand-text border border-brand-line">
-                        Invitación a equipo
+                      <span className="inline-block px-2 py-0.5 mb-1.5 rounded-full text-xs font-semibold bg-brand-subtle text-brand-text border border-brand-line">
+                        {esInvitacionLocal ? 'Invitación local a proyecto' : 'Invitación a equipo'}
                       </span>
                       <p className="text-sm text-ink-muted">
                         <span className="font-semibold text-ink">{invitador ? nombreDe(invitador) : 'Un usuario'}</span>
                         {' te invita a unirte al equipo '}
                         <span className="font-semibold text-ink">{equipo?.nombre || 'un equipo'}</span>
-                        {proyecto && (
+                        {esInvitacionLocal ? (
+                          <>
+                            {' únicamente en el proyecto '}
+                            <span className="font-semibold text-ink">{proyecto?.nombre || 'un proyecto'}</span>
+                          </>
+                        ) : proyecto ? (
                           <>
                             {' del proyecto '}
                             <span className="font-semibold text-ink">{proyecto.nombre}</span>
                           </>
-                        )}
+                        ) : null}
                         .
                       </p>
                       {roles.length > 0 && (
@@ -249,7 +260,7 @@ export default function InvitacionesBell() {
                   const ocupada = enProceso === solicitud.id;
                   return (
                     <li key={`sol-${solicitud.id}`} className="p-4">
-                      <span className="inline-block px-2 py-0.5 mb-1.5 rounded-full text-[11px] font-semibold bg-warning-subtle text-warning border border-warning-line">
+                      <span className="inline-block px-2 py-0.5 mb-1.5 rounded-full text-xs font-semibold bg-warning-subtle text-warning border border-warning-line">
                         {solicitud.tipo === 'vincular' ? 'Solicitud de vinculación' : 'Solicitud de desvinculación'}
                       </span>
                       <p className="text-sm text-ink-muted">

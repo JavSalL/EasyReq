@@ -1193,7 +1193,7 @@ export async function esMiembroDeEquipoVinculadoAProyecto(
 }
 
 // ==========================================
-// INVITACIONES DE EQUIPO GLOBAL
+// INVITACIONES DE EQUIPO (GLOBALES Y LOCALES DE PROYECTO)
 // ==========================================
 export async function getInvitacionesRecibidas(userId: string): Promise<InvitacionEquipo[]> {
   if (!userId) return [];
@@ -1205,6 +1205,30 @@ export async function getInvitacionesRecibidas(userId: string): Promise<Invitaci
   return snap.docs
     .map(d => ({ id: d.id, ...d.data() }) as InvitacionEquipo)
     .filter(invitation => invitation.estado === 'pendiente');
+}
+
+export async function getInvitacionesLocalesEnviadas(
+  userId: string,
+  id_proyecto: string,
+  id_equipo?: string
+): Promise<InvitacionEquipo[]> {
+  if (!userId || !id_proyecto) return [];
+  try {
+    const snap = await getDocs(
+      query(collection(db, 'invitaciones_equipo'), where('id_invitador', '==', userId))
+    );
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() }) as InvitacionEquipo)
+      .filter(
+        inv =>
+          inv.estado === 'pendiente' &&
+          inv.id_proyecto === id_proyecto &&
+          (!id_equipo || inv.id_equipo === id_equipo)
+      );
+  } catch (e) {
+    console.error('Error fetching invitaciones locales enviadas:', e);
+    return [];
+  }
 }
 
 export async function crearInvitacionEquipo(
@@ -1265,12 +1289,105 @@ export async function crearInvitacionEquipo(
   });
 }
 
+/**
+ * Envía una invitación para que un usuario se incorpore al equipo únicamente dentro de un proyecto
+ * específico (ajuste local, sin modificar la plantilla global del equipo).
+ * El usuario recibirá la notificación en su campanita y solo se unirá cuando la acepte.
+ */
+export async function crearInvitacionLocalProyectoEquipo(data: {
+  id_proyecto: string;
+  id_equipo: string;
+  id_invitador: string;
+  id_invitado: string;
+  id_roles: string[];
+}): Promise<void> {
+  const { id_proyecto, id_equipo, id_invitador, id_invitado, id_roles } = data;
+  if (!id_proyecto || !id_equipo || !id_invitador || !id_invitado) {
+    throw new Error('Faltan datos para enviar la invitación local');
+  }
+  if (id_invitador === id_invitado) {
+    throw new Error('No puedes enviarte una invitación a ti mismo');
+  }
+
+  const [proyectoSnap, equiposLiderados, invitadoSnap] = await Promise.all([
+    getDoc(doc(db, 'proyecto', id_proyecto)),
+    getEquiposLideradosPor(id_invitador, id_proyecto),
+    getDoc(doc(db, 'perfil_usuario', id_invitado)),
+  ]);
+
+  if (!proyectoSnap.exists()) {
+    throw new Error('El proyecto ya no existe');
+  }
+  const esCreadorProyecto = proyectoSnap.data().id_creador === id_invitador;
+  const esLider = equiposLiderados.includes(id_equipo);
+  if (!esCreadorProyecto && !esLider) {
+    throw new Error('Solo el líder del equipo o el creador del proyecto pueden invitar integrantes locales');
+  }
+  if (!invitadoSnap.exists()) {
+    throw new Error('El usuario seleccionado no está registrado');
+  }
+
+  // Asegurar que la plantilla global del equipo ya esté clonada en `miembros_proyecto_equipo`
+  // antes de que el invitado acepte y cree su propia ficha local.
+  await sincronizarPlantillaEquipoEnProyecto(id_proyecto, id_equipo, id_invitador, true);
+
+  const rolesOrdenados = await ordenarRolesLiderPrimero(id_roles);
+  const invitationId = getMiembroProyectoEquipoDocId(id_proyecto, id_equipo, id_invitado);
+  const invitationRef = doc(db, 'invitaciones_equipo', invitationId);
+  const localMemberRef = doc(db, 'miembros_proyecto_equipo', invitationId);
+  const teamRef = doc(db, 'equipo', id_equipo);
+  const vinculoRef = doc(db, 'proyecto_equipos', getProyectoEquipoDocId(id_proyecto, id_equipo));
+
+  await runTransaction(db, async transaction => {
+    const [teamSnap, vinculoSnap, localMemberSnap, invitationSnap] = await Promise.all([
+      transaction.get(teamRef),
+      transaction.get(vinculoRef),
+      transaction.get(localMemberRef),
+      transaction.get(invitationRef),
+    ]);
+
+    if (!teamSnap.exists()) {
+      throw new Error('El equipo ya no existe');
+    }
+    const vinculoActivo =
+      (vinculoSnap.exists() && (vinculoSnap.data().estado ?? 'activo') === 'activo') ||
+      (!vinculoSnap.exists() && teamSnap.data().id_proyecto === id_proyecto);
+    if (!vinculoActivo) {
+      throw new Error('El equipo no está activo en este proyecto');
+    }
+    if (localMemberSnap.exists() && (localMemberSnap.data().estado ?? 'activo') === 'activo') {
+      throw new Error('Este usuario ya forma parte activa del equipo en este proyecto');
+    }
+    if (invitationSnap.exists() && invitationSnap.data().estado === 'pendiente') {
+      throw new Error('Ya existe una invitación local pendiente para este usuario en este proyecto');
+    }
+
+    transaction.set(invitationRef, {
+      id_proyecto,
+      id_equipo,
+      id_invitador,
+      id_invitado,
+      id_roles: rolesOrdenados,
+      id_rol: rolesOrdenados[0] ?? null,
+      estado: 'pendiente',
+      created_at: new Date().toISOString(),
+    });
+  });
+}
+
+export async function cancelarInvitacionEquipo(invitationId: string): Promise<void> {
+  if (!invitationId) return;
+  await deleteDoc(doc(db, 'invitaciones_equipo', invitationId));
+}
+
 export async function aceptarInvitacionEquipo(invitationId: string, userId: string): Promise<void> {
   const invitationRef = doc(db, 'invitaciones_equipo', invitationId);
 
   let idEquipoAceptado: string | null = null;
+  let idProyectoAceptado: string | null = null;
   let idInvitador: string | null = null;
   let rolesAsignados: string[] = [];
+  let esLocalAceptado = false;
 
   await runTransaction(db, async transaction => {
     const invitationSnap = await transaction.get(invitationRef);
@@ -1284,16 +1401,23 @@ export async function aceptarInvitacionEquipo(invitationId: string, userId: stri
     }
 
     const teamRef = doc(db, 'equipo', invitation.id_equipo);
-    const memberRef = doc(db, 'miembros_equipo', getMiembroEquipoDocId(invitation.id_equipo, userId));
-    const [teamSnap, memberSnap] = await Promise.all([
+    const globalMemberRef = doc(
+      db,
+      'miembros_equipo',
+      getMiembroEquipoDocId(invitation.id_equipo, userId)
+    );
+    const idProyecto = invitation.id_proyecto ?? null;
+
+    const [teamSnap, globalMemberSnap] = await Promise.all([
       transaction.get(teamRef),
-      transaction.get(memberRef),
+      transaction.get(globalMemberRef),
     ]);
     if (!teamSnap.exists()) {
       throw new Error('El equipo de esta invitación ya no existe');
     }
 
     idEquipoAceptado = invitation.id_equipo;
+    idProyectoAceptado = idProyecto;
     idInvitador = invitation.id_invitador;
     rolesAsignados = Array.isArray(invitation.id_roles)
       ? invitation.id_roles
@@ -1301,8 +1425,28 @@ export async function aceptarInvitacionEquipo(invitationId: string, userId: stri
         ? [invitation.id_rol]
         : [];
 
-    if (!memberSnap.exists()) {
-      transaction.set(memberRef, {
+    if (idProyecto) {
+      // Invitación local de proyecto: se incorpora únicamente a `miembros_proyecto_equipo`
+      const localMemberRef = doc(
+        db,
+        'miembros_proyecto_equipo',
+        getMiembroProyectoEquipoDocId(idProyecto, invitation.id_equipo, userId)
+      );
+      esLocalAceptado = !globalMemberSnap.exists();
+      transaction.set(localMemberRef, {
+        id_proyecto: idProyecto,
+        id_equipo: invitation.id_equipo,
+        id_usuario: userId,
+        // `id_rol` debe coincidir con el de la invitación (lo validan las reglas)
+        id_rol: invitation.id_rol || null,
+        id_roles: rolesAsignados,
+        estado: 'activo' satisfies EstadoMiembroProyecto,
+        es_local: esLocalAceptado,
+        updated_at: new Date().toISOString(),
+      });
+    } else if (!globalMemberSnap.exists()) {
+      // Invitación a la plantilla global del equipo
+      transaction.set(globalMemberRef, {
         id_equipo: invitation.id_equipo,
         id_usuario: userId,
         // `id_rol` debe coincidir con el de la invitación (lo validan las reglas)
@@ -1317,14 +1461,17 @@ export async function aceptarInvitacionEquipo(invitationId: string, userId: stri
   if (idEquipoAceptado) {
     await registrarLogIntegrante({
       id_equipo: idEquipoAceptado,
-      id_proyecto: null,
+      id_proyecto: idProyectoAceptado,
       id_usuario_afectado: userId,
       accion: 'alta',
       id_autor: userId,
       id_lider_en_momento: idInvitador,
       detalles: {
         roles_nuevos: rolesAsignados,
-        nota: 'Ingreso por invitación aceptada',
+        ...(idProyectoAceptado ? { estado_nuevo: 'activo', es_local: esLocalAceptado } : {}),
+        nota: idProyectoAceptado
+          ? 'Ingreso local al proyecto por invitación aceptada'
+          : 'Ingreso por invitación aceptada',
       },
     });
   }

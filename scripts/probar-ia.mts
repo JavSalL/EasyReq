@@ -38,6 +38,8 @@ const prompts = await import('../workers/ai-proxy/src/prompts.ts');
 const { buildSinglePrompt, entradaSinSentido, interpretarGeneracion } = prompts;
 const { CASOS_PRUEBA_IA, CASOS_GENERACION_IA } = await import('../lib/ai-casos-prueba.ts');
 const { similitud, UMBRAL_DUPLICADO, UMBRAL_POSIBLE_DUPLICADO } = await import('../lib/dedup-requerimientos.ts');
+const contextoIA = await import('../lib/contexto-ia.ts');
+const globalIA = await import('../workers/ai-proxy/src/global.ts');
 
 // El plan gratuito permite 15 peticiones por minuto: se espera entre casos para no toparse con el límite
 const PAUSA_MS = 5000;
@@ -48,7 +50,7 @@ const modo = process.argv.includes('--offline') ? 'offline' : process.argv.inclu
 // ---------------------------------------------------------------------------
 // Comprobaciones sin IA: interpretación del plan, cifras, estrictez máxima y dedup léxico
 // ---------------------------------------------------------------------------
-function probarOffline(): number {
+async function probarOffline(): Promise<number> {
   let fallos = 0;
   const comprobar = (ok: boolean, nombre: string, detalle = '') => {
     if (!ok) fallos++;
@@ -117,6 +119,36 @@ function probarOffline(): number {
   comprobar(parecido >= UMBRAL_POSIBLE_DUPLICADO, 'dedup: una reformulación cercana se marca como posible duplicado', `similitud ${parecido.toFixed(2)}`);
   const distinto = similitud(base, 'El sistema debe generar un reporte mensual de ventas en PDF.');
   comprobar(distinto < UMBRAL_POSIBLE_DUPLICADO, 'dedup: un requerimiento distinto no se marca', `similitud ${distinto.toFixed(2)}`);
+
+  // KAN-43: resumen del contexto, fragmentos por área y topes globales
+  const planConResumen = prompts.interpretarPlanGeneracion(JSON.stringify({ valido: true, alcance: 'modulo', areas: [{ nombre: 'Pagos', enfoque: 'cobros' }], resumen_contexto: '  Tienda en línea con pagos en 30 días.  ' }), 'auto', 3, 20);
+  comprobar(planConResumen.resumen_contexto === 'Tienda en línea con pagos en 30 días.', 'plan: devuelve el resumen del contexto recortado', String(planConResumen.resumen_contexto));
+  comprobar(prompts.interpretarPlanGeneracion(planSinCalidad, 'auto', 2, 20).resumen_contexto === undefined, 'plan: sin resumen si no lo trae');
+  comprobar(!prompts.buildGenPlanPrompt('Una tienda', 'auto', undefined, { estrictez: 3, ejemplos: [], contexto: 'algo' }, 20).includes('resumen_contexto'), 'plan: no pide resumen si no se solicita');
+  comprobar(prompts.buildGenPlanPrompt('Una tienda', 'auto', undefined, { estrictez: 3, ejemplos: [], contexto: 'algo' }, 20, true).includes('resumen_contexto'), 'plan: pide resumen cuando se solicita');
+  const loteResumido = prompts.buildGenAreaPrompt({ userPrompt: 'x', alcance: 'sistema', area: { nombre: 'Pagos', enfoque: '' }, otrasAreas: [], existentesArea: [], generados: [], pendiente: [], lote: 20, resumenContexto: 'RESUMEN-X' }, { estrictez: 3, ejemplos: [], contexto: 'FRAGMENTO-Y' });
+  comprobar(loteResumido.includes('RESUMEN-X') && loteResumido.includes('FRAGMENTO-Y'), 'lote: lleva resumen y fragmentos');
+  const relleno = (tema: string, n: number) => Array.from({ length: n }, (_, i) => `Párrafo ${i} sobre ${tema}: ${'texto de relleno '.repeat(60)}`).join('\n\n');
+  const contextoLargo = `Proyecto: Tienda
+Descripción del proyecto: venta de libros.
+
+${relleno('inventario de almacenes', 30)}
+
+Los pagos con tarjeta se confirman en 5 segundos y se emite factura electrónica.
+
+${relleno('envíos y paquetería', 30)}`;
+  const frag = contextoIA.fragmentosRelevantes(contextoLargo, { nombre: 'Pagos y facturación', enfoque: 'cobros con tarjeta y facturas' }, 6000);
+  comprobar(frag.length <= 6000 && frag.startsWith('Proyecto: Tienda') && frag.includes('factura electrónica'), 'contexto: fragmentos del área con el encabezado del proyecto', `${frag.length} caracteres`);
+  comprobar(contextoIA.fragmentosRelevantes('corto', { nombre: 'Pagos' }) === 'corto', 'contexto: uno corto se manda entero');
+  const huella = contextoIA.huellaContexto(contextoLargo);
+  comprobar(huella === contextoIA.huellaContexto(contextoLargo) && huella !== contextoIA.huellaContexto(contextoLargo + '.'), 'contexto: la huella es estable y cambia si cambia el contexto');
+  const topes = globalIA.topesDe({ GLOBAL_RPM: '10', GLOBAL_TPM: '', GLOBAL_RPD: '100' });
+  comprobar(globalIA.topeEfectivo(topes.rpm, 'individual', topes.reservaIndividual) === 10 && globalIA.topeEfectivo(topes.rpm, 'lote', topes.reservaIndividual) === 8, 'global: los lotes dejan el 20 % a las individuales');
+  comprobar(globalIA.topeEfectivo(topes.tpm, 'lote', topes.reservaIndividual) === Number.MAX_SAFE_INTEGER, 'global: tope vacío = sin tope');
+  comprobar(globalIA.segundosHastaSiguienteMinuto(new Date('2026-11-17T10:00:45Z')) === 16, 'global: Retry-After hasta el siguiente minuto');
+  // KAN-47: el 429 de embeddings del nivel gratuito trae cuánto esperar
+  const geminiMod = await import('../workers/ai-proxy/src/gemini.ts');
+  comprobar(geminiMod.segundosDeEspera('{"error":{"details":[{"retryDelay": "23s"}]}}') === 24 && geminiMod.segundosDeEspera('sin datos') === null, 'embeddings: lee retryDelay del 429');
   return fallos;
 }
 
@@ -250,7 +282,7 @@ async function probarGeneracion(clave: string, modelo: string): Promise<number> 
 
 const fallos =
   modo === 'offline'
-    ? probarOffline()
+    ? await probarOffline()
     : modo === 'generacion'
       ? await probarGeneracion(leerClave(), leerModelo())
       : await probarSingle(leerClave(), leerModelo());

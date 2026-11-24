@@ -32,7 +32,7 @@ export default function ModalFormEquipo({
       open={open}
       onClose={onClose}
       cerrarConFondo={cerrarConFondo}
-      title={editingEquipo ? 'Editar Equipo' : 'Nuevo Equipo'}
+      title={editingEquipo ? 'Editar equipo' : 'Nuevo equipo'}
       description={editingEquipo ? undefined : 'Quedarás como líder del equipo.'}
     >
       <form onSubmit={onSave} noValidate className="flex flex-col flex-1 min-h-0">
@@ -79,7 +79,7 @@ export default function ModalFormEquipo({
             ) : (
               <Save size={14} />
             )}
-            {saving ? 'Guardando...' : editingEquipo ? 'Guardar cambios' : 'Crear Equipo'}
+            {saving ? 'Guardando...' : editingEquipo ? 'Guardar cambios' : 'Crear equipo'}
           </button>
         </ModalFooter>
       </form>

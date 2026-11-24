@@ -21,6 +21,8 @@ import {
   btnPrimario, btnSecundario, btnIcono, btnIconoPeligro, buscador, campo, etiqueta, tarjeta
 } from '@/components/ui/estilos';
 import PageHeader from '@/components/ui/PageHeader';
+import ListaEsqueleto from '@/components/ui/Esqueleto';
+import { BotonPista, Pista, usePista } from '@/components/ui/Pista';
 import { useCierreSeguro } from '@/lib/use-cierre-seguro';
 import { useEstadoSesion } from '@/lib/use-estado-sesion';
 
@@ -35,6 +37,7 @@ export default function PatronesPage() {
   const [modelos, setModelos] = useState<Array<Modelo>>([]);
   const [patrones, setPatrones] = useState<Array<Patron>>([]);
   const [loading, setLoading] = useState(true);
+  const pista = usePista('patrones');
   const [selectedModeloFilter, setSelectedModeloFilter] = useEstadoSesion<string>("easyreq:patrones:modelo", "todos");
   const [searchTerm, setSearchTerm] = useEstadoSesion("easyreq:patrones:buscar", "");
   const [copiadoId, setCopiadoId] = useState<string | null>(null);
@@ -193,7 +196,12 @@ export default function PatronesPage() {
   return (
     <div className="space-y-6 animate-in fade-in">
       <PageHeader
-        title="Patrones y Modelos"
+        title={
+          <span className="inline-flex items-center gap-1.5">
+            Patrones y modelos
+            <BotonPista activo={pista.visible} onClick={pista.alternar} />
+          </span>
+        }
         description="Catálogo de sintaxis estructuradas para redactar requerimientos (EARS, Sistemas Embebidos, Lenguaje Natural)."
         actions={
           puedeEditar && (
@@ -204,6 +212,12 @@ export default function PatronesPage() {
           )
         }
       />
+
+      <Pista visible={pista.visible} onOcultar={pista.ocultar} titulo="Para qué sirven los patrones">
+        Un patrón es una plantilla con la estructura que debe seguir un requerimiento. Filtra por modelo
+        (EARS, Sistemas Embebidos o Lenguaje Natural), busca por nombre o palabra clave y copia la sintaxis
+        con un clic. Al crear un requerimiento puedes elegir el patrón y la IA lo respetará.
+      </Pista>
 
       {/* Filtros por Modelo */}
       <div className="space-y-2">
@@ -248,11 +262,7 @@ export default function PatronesPage() {
 
       {/* Grid de Patrones */}
       {loading ? (
-        <div role="status" aria-label="Cargando" className="bg-surface border border-line rounded-ui divide-y divide-line overflow-hidden">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-32 bg-sunken animate-pulse" />
-          ))}
-        </div>
+        <ListaEsqueleto forma="tarjeta" filas={4} etiqueta="Cargando patrones" />
       ) : filteredPatrones.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-lg font-semibold text-ink">
@@ -268,7 +278,7 @@ export default function PatronesPage() {
             {!termino && puedeEditar && (
               <button onClick={() => openModal()} className={btnPrimario}>
                 <Plus size={15} />
-                Nuevo Patrón
+                Nuevo patrón
               </button>
             )}
           </div>
@@ -291,7 +301,11 @@ export default function PatronesPage() {
 
               <ul className="space-y-4">
                 {grupo.patrones.map((pat) => (
-                  <li key={pat.patron_id} className={`${tarjeta} p-5`}>
+                  <li
+                    key={pat.patron_id}
+                   
+                    className={`${tarjeta} p-5`}
+                  >
                     <div className="flex items-start justify-between gap-3 mb-4">
                       <h3 className="text-base font-semibold text-ink min-w-0">{pat.nombre}</h3>
 
@@ -339,12 +353,12 @@ export default function PatronesPage() {
         </div>
       )}
 
-      {/* Modal Crear / Editar Patrón */}
+      {/* Modal Crear / Editar patrón */}
       <Modal
         open={isModalOpen}
         onClose={intentarCerrar}
         cerrarConFondo={!hayCambios}
-        title={editingPattern ? 'Editar Patrón' : 'Nuevo Patrón'}
+        title={editingPattern ? 'Editar patrón' : 'Nuevo patrón'}
         size="lg"
       >
         <form onSubmit={handleSave} noValidate className="flex flex-col flex-1 min-h-0">
@@ -401,7 +415,7 @@ export default function PatronesPage() {
             </button>
             <button type="submit" disabled={saving} className={btnPrimario}>
               <Save size={14} />
-              {saving ? 'Guardando...' : editingPattern ? 'Guardar cambios' : 'Crear Patrón'}
+              {saving ? 'Guardando...' : editingPattern ? 'Guardar cambios' : 'Crear patrón'}
             </button>
           </ModalFooter>
         </form>

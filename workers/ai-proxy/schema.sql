@@ -20,3 +20,21 @@ CREATE TABLE IF NOT EXISTS ai_jobs (
   con_resultado INTEGER NOT NULL DEFAULT 0   -- 1 cuando un lote de área terminó bien; solo esas cuentan para DAILY_JOB_LIMIT
 );
 CREATE INDEX IF NOT EXISTS idx_ai_jobs_uid_created ON ai_jobs (uid, created_at);
+
+-- Límite global de la plataforma y registro de tokens (KAN-43).
+CREATE TABLE IF NOT EXISTS ai_global (
+  ventana  TEXT    PRIMARY KEY,         -- 'm:YYYY-MM-DDTHH:MM' (minuto) o 'd:YYYY-MM-DD' (día), en UTC
+  llamadas INTEGER NOT NULL DEFAULT 0,  -- llamadas a Gemini de toda la plataforma en esa ventana
+  tokens   INTEGER NOT NULL DEFAULT 0   -- tokens (entrada + salida) según usageMetadata
+);
+
+-- Registro diario de tokens y llamadas por usuario y tipo de llamada (ruta del Worker).
+CREATE TABLE IF NOT EXISTS ai_uso_tokens (
+  day            TEXT    NOT NULL,      -- 'YYYY-MM-DD' (UTC)
+  uid            TEXT    NOT NULL,
+  tipo           TEXT    NOT NULL,      -- p. ej. 'generate-single', 'generation/area'
+  llamadas       INTEGER NOT NULL DEFAULT 0,
+  tokens_entrada INTEGER NOT NULL DEFAULT 0,
+  tokens_salida  INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, uid, tipo)
+);

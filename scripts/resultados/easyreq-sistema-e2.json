@@ -1,0 +1,3280 @@
+{
+  "id": "easyreq-sistema-e2",
+  "fecha": "2026-11-18T00:25:48.009Z",
+  "modelo": "gemini-3.5-flash-lite",
+  "pedido": "La plataforma EasyReq completa para gestionar los requerimientos de proyectos de software",
+  "estrictez": 2,
+  "contextoCaracteres": 12329,
+  "resumenContexto": "Plataforma web EasyReq para la gestión colaborativa de requerimientos de proyectos de software en equipos universitarios, con soporte de IA, control de estados, patrones sintácticos y gestión de permisos y equipos.",
+  "areas": [
+    {
+      "nombre": "Proyectos y Colaboraciones",
+      "enfoque": "Creación, gestión y visualización de proyectos, estados, naturalezas y campañas de colaboración",
+      "transversal": false,
+      "lotes": 1,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 12
+    },
+    {
+      "nombre": "Gestión de Requerimientos",
+      "enfoque": "Redacción, modelos, patrones, numeración, inserción, aprobación por líderes y control de estados",
+      "transversal": false,
+      "lotes": 2,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 26
+    },
+    {
+      "nombre": "Generación con IA",
+      "enfoque": "Asistencia de inteligencia artificial para redactar enunciados y registro masivo de propuestas",
+      "transversal": false,
+      "lotes": 1,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 20
+    },
+    {
+      "nombre": "Equipos y Miembros",
+      "enfoque": "Administración de equipos globales, estados locales, roles e historial de altas y bajas",
+      "transversal": false,
+      "lotes": 1,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 14
+    },
+    {
+      "nombre": "Patrones y Modelos",
+      "enfoque": "Catálogo de estructuras sintácticas, plantillas y creación de nuevos patrones",
+      "transversal": false,
+      "lotes": 2,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 30
+    },
+    {
+      "nombre": "Seguridad",
+      "enfoque": "Control de permisos por rol, autenticación y restricciones de acceso a las funciones del sistema",
+      "transversal": true,
+      "lotes": 1,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 19
+    },
+    {
+      "nombre": "Rendimiento",
+      "enfoque": "Tiempos de respuesta y fluidez en la interfaz al consultar y actualizar requerimientos y comentarios",
+      "transversal": true,
+      "lotes": 2,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 22
+    },
+    {
+      "nombre": "Disponibilidad y confiabilidad",
+      "enfoque": "Estabilidad de la plataforma y persistencia de datos en Firestore",
+      "transversal": true,
+      "lotes": 2,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 40
+    },
+    {
+      "nombre": "Usabilidad",
+      "enfoque": "Experiencia de usuario intuitiva, atajos de teclado y navegación clara en la plataforma",
+      "transversal": true,
+      "lotes": 2,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 37
+    },
+    {
+      "nombre": "Accesibilidad",
+      "enfoque": "Cumplimiento de estándares para que la interfaz sea accesible a todos los usuarios universitarios",
+      "transversal": true,
+      "lotes": 2,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 30
+    },
+    {
+      "nombre": "Mantenibilidad y soporte",
+      "enfoque": "Facilidad para mantener el código, catálogos iniciales (seed) y secciones de ayuda",
+      "transversal": true,
+      "lotes": 2,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 12
+    },
+    {
+      "nombre": "Legal y privacidad",
+      "enfoque": "Protección de la información de los proyectos universitarios y gestión adecuada de los datos",
+      "transversal": true,
+      "lotes": 2,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 30
+    },
+    {
+      "nombre": "Integraciones",
+      "enfoque": "Conexión con servicios externos como la base de datos Firestore y modelos de IA",
+      "transversal": true,
+      "lotes": 2,
+      "motivoFin": "la IA la dio por completa",
+      "propuestas": 15
+    }
+  ],
+  "llamadasDelJob": 25,
+  "topeAlcanzado": false,
+  "duracionSegundos": 146,
+  "tokens": {
+    "total": {
+      "llamadas": 24,
+      "entrada": 121809,
+      "salida": 45524
+    },
+    "plan": {
+      "llamadas": 1,
+      "entrada": 3889,
+      "salida": 865
+    },
+    "lotes": {
+      "llamadas": 22,
+      "entrada": 104135,
+      "salida": 44648
+    },
+    "cobertura": {
+      "llamadas": 1,
+      "entrada": 13785,
+      "salida": 11
+    }
+  },
+  "propuestas": 307,
+  "inferidas": 126,
+  "conCifrasSinRespaldo": 0,
+  "posiblesDuplicadosLexicos": [
+    {
+      "umbral": 0.5,
+      "marcadas": 41
+    },
+    {
+      "umbral": 0.6,
+      "marcadas": 41
+    },
+    {
+      "umbral": 0.7,
+      "marcadas": 23
+    },
+    {
+      "umbral": 0.85,
+      "marcadas": 0
+    }
+  ],
+  "duplicadosSemanticosPorUmbral": [
+    {
+      "umbral": 0.8,
+      "marcadas": 306
+    },
+    {
+      "umbral": 0.85,
+      "marcadas": 284
+    },
+    {
+      "umbral": 0.88,
+      "marcadas": 202
+    },
+    {
+      "umbral": 0.9,
+      "marcadas": 130
+    },
+    {
+      "umbral": 0.92,
+      "marcadas": 69
+    },
+    {
+      "umbral": 0.95,
+      "marcadas": 28
+    }
+  ],
+  "porNumeroDeLote": [
+    {
+      "lote": 1,
+      "nuevas": 194,
+      "descartadas": 5,
+      "pasos": 13
+    },
+    {
+      "lote": 2,
+      "nuevas": 113,
+      "descartadas": 0,
+      "pasos": 9
+    }
+  ],
+  "pasos": [
+    {
+      "tipo": "plan",
+      "ms": 3438,
+      "llamadasGemini": 1,
+      "entrada": 3889,
+      "salida": 865
+    },
+    {
+      "tipo": "area",
+      "area": "Proyectos y Colaboraciones",
+      "lote": 1,
+      "ms": 6217,
+      "llamadasGemini": 1,
+      "entrada": 4536,
+      "salida": 1604,
+      "titulosQuitados": 0,
+      "recibidas": 12,
+      "nuevas": 12,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Gestión de Requerimientos",
+      "lote": 1,
+      "ms": 7985,
+      "llamadasGemini": 1,
+      "entrada": 4539,
+      "salida": 2745,
+      "titulosQuitados": 0,
+      "recibidas": 20,
+      "nuevas": 20,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Generación con IA",
+      "lote": 1,
+      "ms": 6388,
+      "llamadasGemini": 1,
+      "entrada": 4534,
+      "salida": 2749,
+      "titulosQuitados": 0,
+      "recibidas": 20,
+      "nuevas": 20,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Equipos y Miembros",
+      "lote": 1,
+      "ms": 4368,
+      "llamadasGemini": 1,
+      "entrada": 4533,
+      "salida": 2018,
+      "titulosQuitados": 0,
+      "recibidas": 15,
+      "nuevas": 14,
+      "descartadas": 1
+    },
+    {
+      "tipo": "area",
+      "area": "Patrones y Modelos",
+      "lote": 1,
+      "ms": 5511,
+      "llamadasGemini": 1,
+      "entrada": 4533,
+      "salida": 1498,
+      "titulosQuitados": 0,
+      "recibidas": 10,
+      "nuevas": 10,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Seguridad",
+      "lote": 1,
+      "ms": 7963,
+      "llamadasGemini": 1,
+      "entrada": 4536,
+      "salida": 2692,
+      "titulosQuitados": 0,
+      "recibidas": 20,
+      "nuevas": 19,
+      "descartadas": 1
+    },
+    {
+      "tipo": "area",
+      "area": "Rendimiento",
+      "lote": 1,
+      "ms": 7075,
+      "llamadasGemini": 1,
+      "entrada": 4538,
+      "salida": 2997,
+      "titulosQuitados": 0,
+      "recibidas": 20,
+      "nuevas": 20,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Disponibilidad y confiabilidad",
+      "lote": 1,
+      "ms": 6805,
+      "llamadasGemini": 1,
+      "entrada": 4531,
+      "salida": 2932,
+      "titulosQuitados": 0,
+      "recibidas": 20,
+      "nuevas": 20,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Usabilidad",
+      "lote": 1,
+      "ms": 6245,
+      "llamadasGemini": 1,
+      "entrada": 4535,
+      "salida": 2873,
+      "titulosQuitados": 0,
+      "recibidas": 20,
+      "nuevas": 17,
+      "descartadas": 3
+    },
+    {
+      "tipo": "area",
+      "area": "Accesibilidad",
+      "lote": 1,
+      "ms": 4168,
+      "llamadasGemini": 1,
+      "entrada": 4535,
+      "salida": 1537,
+      "titulosQuitados": 0,
+      "recibidas": 10,
+      "nuevas": 10,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Mantenibilidad y soporte",
+      "lote": 1,
+      "ms": 5116,
+      "llamadasGemini": 1,
+      "entrada": 4537,
+      "salida": 1085,
+      "titulosQuitados": 0,
+      "recibidas": 7,
+      "nuevas": 7,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Legal y privacidad",
+      "lote": 1,
+      "ms": 9328,
+      "llamadasGemini": 1,
+      "entrada": 4533,
+      "salida": 2853,
+      "titulosQuitados": 0,
+      "recibidas": 20,
+      "nuevas": 20,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Integraciones",
+      "lote": 1,
+      "ms": 2512,
+      "llamadasGemini": 1,
+      "entrada": 4534,
+      "salida": 808,
+      "titulosQuitados": 0,
+      "recibidas": 5,
+      "nuevas": 5,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Gestión de Requerimientos",
+      "lote": 2,
+      "ms": 5869,
+      "llamadasGemini": 1,
+      "entrada": 5065,
+      "salida": 840,
+      "titulosQuitados": 0,
+      "recibidas": 6,
+      "nuevas": 6,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Patrones y Modelos",
+      "lote": 2,
+      "ms": 10588,
+      "llamadasGemini": 1,
+      "entrada": 4903,
+      "salida": 2839,
+      "titulosQuitados": 0,
+      "recibidas": 20,
+      "nuevas": 20,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Rendimiento",
+      "lote": 2,
+      "ms": 1512,
+      "llamadasGemini": 1,
+      "entrada": 5221,
+      "salida": 312,
+      "titulosQuitados": 0,
+      "recibidas": 2,
+      "nuevas": 2,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Disponibilidad y confiabilidad",
+      "lote": 2,
+      "ms": 11345,
+      "llamadasGemini": 1,
+      "entrada": 5202,
+      "salida": 2908,
+      "titulosQuitados": 0,
+      "recibidas": 20,
+      "nuevas": 20,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Usabilidad",
+      "lote": 2,
+      "ms": 6410,
+      "llamadasGemini": 1,
+      "entrada": 5088,
+      "salida": 2802,
+      "titulosQuitados": 0,
+      "recibidas": 20,
+      "nuevas": 20,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Accesibilidad",
+      "lote": 2,
+      "ms": 6642,
+      "llamadasGemini": 1,
+      "entrada": 4947,
+      "salida": 2857,
+      "titulosQuitados": 0,
+      "recibidas": 20,
+      "nuevas": 20,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Mantenibilidad y soporte",
+      "lote": 2,
+      "ms": 2124,
+      "llamadasGemini": 1,
+      "entrada": 4845,
+      "salida": 772,
+      "titulosQuitados": 0,
+      "recibidas": 5,
+      "nuevas": 5,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Legal y privacidad",
+      "lote": 2,
+      "ms": 7592,
+      "llamadasGemini": 1,
+      "entrada": 5129,
+      "salida": 1473,
+      "titulosQuitados": 0,
+      "recibidas": 10,
+      "nuevas": 10,
+      "descartadas": 0
+    },
+    {
+      "tipo": "area",
+      "area": "Integraciones",
+      "lote": 2,
+      "ms": 6043,
+      "llamadasGemini": 1,
+      "entrada": 4781,
+      "salida": 1454,
+      "titulosQuitados": 0,
+      "recibidas": 10,
+      "nuevas": 10,
+      "descartadas": 0
+    },
+    {
+      "tipo": "cobertura",
+      "lote": 1,
+      "ms": 3144,
+      "llamadasGemini": 1,
+      "entrada": 13785,
+      "salida": 11,
+      "recibidas": 0,
+      "nuevas": 0
+    },
+    {
+      "tipo": "embed",
+      "ms": 1531,
+      "llamadasGemini": 0,
+      "entrada": 0,
+      "salida": 0,
+      "error": "Gemini (embeddings) respondió 429: {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head"
+    }
+  ],
+  "paresMasParecidos": [
+    {
+      "c": 0.993,
+      "a": "El creador y los miembros del proyecto deben poder editar o eliminar un proyecto.",
+      "b": "El creador del proyecto y los miembros autorizados deben poder editar o eliminar un proyecto."
+    },
+    {
+      "c": 0.989,
+      "a": "El creador del proyecto debe poder cambiar quién crea equipos o gestiona miembros dentro del proyecto.",
+      "b": "El creador del proyecto debe poder cambiar quién tiene la autoridad para crear equipos o gestionar miembros."
+    },
+    {
+      "c": 0.981,
+      "a": "El sistema debe actualizar la lista de comentarios de forma automática si un usuario comenta mientras se tiene el hilo de conversación abierto.",
+      "b": "El sistema debe actualizar automáticamente la lista de comentarios en tiempo real si otro usuario comenta mientras el hilo está abierto."
+    },
+    {
+      "c": 0.98,
+      "a": "El sistema debe permitir al creador del proyecto definir quién puede crear equipos dentro del proyecto.",
+      "b": "El creador del proyecto debe poder definir quién tiene permiso para crear equipos dentro del mismo."
+    },
+    {
+      "c": 0.974,
+      "a": "El sistema debe registrar un Historial de miembros para cada equipo que muestre cronológicamente los cambios de rol o estado.",
+      "b": "El sistema debe registrar un Historial de miembros para cada equipo que muestre cronológicamente las altas de miembros."
+    },
+    {
+      "c": 0.972,
+      "a": "Cualquier miembro del proyecto debe poder editar un requerimiento que ya ha sido aprobado.",
+      "b": "El sistema debe permitir editar requerimientos aprobados a cualquier miembro del proyecto."
+    },
+    {
+      "c": 0.972,
+      "a": "El sistema debe permitir al usuario buscar un requerimiento escribiendo su número directamente en el campo correspondiente.",
+      "b": "El usuario podrá buscar un requerimiento escribiendo su número en el campo de búsqueda."
+    },
+    {
+      "c": 0.969,
+      "a": "El sistema debe mostrar los botones de aprobación y rechazo en la fila de cada requerimiento exclusivamente cuando se encuentra pendiente de aprobación y pertenece a un equipo liderado por el usuario.",
+      "b": "El sistema debe restringir los botones de aprobación y rechazo exclusivamente a los requerimientos pendientes de aprobación que pertenezcan a un equipo liderado por el usuario actual."
+    },
+    {
+      "c": 0.969,
+      "a": "El sistema debe mostrar un aviso visual cuando se copia la sintaxis de un patrón al portapapeles.",
+      "b": "El sistema debe mostrar un aviso de sintaxis copiada al portapapeles cuando el usuario pulse el icono de copiar en un patrón."
+    },
+    {
+      "c": 0.968,
+      "a": "El sistema debe denegar la edición o eliminación de patrones y modelos a cualquier usuario por ahora.",
+      "b": "El sistema debe restringir la edición o eliminación de patrones y modelos existentes a ningún usuario por ahora según la política de permisos."
+    },
+    {
+      "c": 0.968,
+      "a": "El sistema debe mostrar un icono de burbuja de diálogo con el número de comentarios visibles en cada tarjeta de la lista.",
+      "b": "El sistema debe mostrar un icono de burbuja de diálogo con el conteo de comentarios visibles en la tarjeta del requerimiento."
+    },
+    {
+      "c": 0.967,
+      "a": "El creador del proyecto debe poder definir quién puede crear equipos en un proyecto, eligiendo entre solo él, miembros que elija o cualquier miembro.",
+      "b": "El creador del proyecto debe poder definir quién tiene permiso para crear equipos dentro del mismo."
+    },
+    {
+      "c": 0.966,
+      "a": "El sistema debe actualizar automáticamente la lista de comentarios en tiempo real si otro usuario comenta mientras el hilo está abierto.",
+      "b": "El sistema debe actualizar automáticamente la lista de comentarios en tiempo real si otro usuario agrega una entrada."
+    },
+    {
+      "c": 0.966,
+      "a": "El sistema debe permitir al usuario hacer clic en el identificador de un requerimiento para copiarlo al portapapeles.",
+      "b": "El usuario podrá copiar el identificador del requerimiento al hacer clic sobre él."
+    },
+    {
+      "c": 0.965,
+      "a": "El creador del proyecto y los miembros autorizados deben poder editar o eliminar un proyecto.",
+      "b": "El creador del proyecto y sus miembros autorizados deben poder agregar o quitar miembros de un proyecto."
+    },
+    {
+      "c": 0.965,
+      "a": "El sistema debe garantizar que al restaurar una versión desde el historial se reemplace el enunciado actual registrándolo como un cambio nuevo.",
+      "b": "El sistema debe registrar la restauración de una versión anterior como un cambio nuevo que reemplaza el enunciado actual."
+    },
+    {
+      "c": 0.965,
+      "a": "El sistema debe consultar al usuario si desea descartar los cambios si presiona la tecla de escape teniendo modificaciones sin guardar.",
+      "b": "El sistema debe solicitar confirmación al usuario mediante un mensaje de alerta antes de descartar cambios sin guardar al presionar la tecla Escape."
+    },
+    {
+      "c": 0.962,
+      "a": "El creador del proyecto debe poder borrar comentarios de cualquier usuario dentro de su proyecto, sin poder corregir los ajenos.",
+      "b": "El autor podrá corregir su propio comentario y borrarlo, mientras que el creador del proyecto podrá borrar cualquier comentario."
+    },
+    {
+      "c": 0.961,
+      "a": "El sistema debe reintentar la conexión con la base de datos Firestore de manera automática un número determinado (por definir) de veces si ocurre una interrupción temporal de red.",
+      "b": "El sistema debe reintentar de forma automática la conexión con la base de datos de Firestore ante interrupciones temporales de red antes de mostrar un error al usuario."
+    },
+    {
+      "c": 0.959,
+      "a": "El sistema debe mostrar un aviso de confirmación al intentar cerrar una ventana con cambios sin guardar mediante el uso de la tecla de escape.",
+      "b": "El sistema debe solicitar confirmación al usuario mediante un mensaje de alerta antes de descartar cambios sin guardar al presionar la tecla Escape."
+    },
+    {
+      "c": 0.958,
+      "a": "El sistema debe registrar cronológicamente en el historial de miembros las altas, bajas y cambios de rol o estado para mantener la trazabilidad.",
+      "b": "El sistema debe registrar un Historial de miembros para cada equipo que muestre cronológicamente los cambios de rol o estado."
+    },
+    {
+      "c": 0.958,
+      "a": "El sistema debe mantener la integridad de los identificadores de requerimientos asegurando que, al borrar uno, su número no se reutilice en el proyecto.",
+      "b": "El sistema debe mantener el orden de los identificadores y no reutilizar el número de un requerimiento si este es borrado."
+    },
+    {
+      "c": 0.955,
+      "a": "El creador del proyecto debe poder cambiar quién tiene la autoridad para crear equipos o gestionar miembros.",
+      "b": "El creador del proyecto debe poder definir quién tiene permiso para crear equipos dentro del mismo."
+    },
+    {
+      "c": 0.955,
+      "a": "Cualquier usuario con sesión debe poder crear proyectos en el sistema.",
+      "b": "Cualquier usuario con sesión debe poder crear un proyecto registrando los datos obligatorios en el sistema."
+    },
+    {
+      "c": 0.955,
+      "a": "El sistema debe registrar las ediciones de texto en el historial mostrando el enunciado anterior y el nuevo cuando se realicen modificaciones.",
+      "b": "El sistema debe registrar en el historial los cambios realizados, indicando el autor, la fecha y los enunciados anterior y nuevo."
+    },
+    {
+      "c": 0.954,
+      "a": "El sistema debe registrar la modalidad 'Generado con IA' de manera independiente en los requerimientos creados mediante inteligencia artificial.",
+      "b": "El sistema debe asignar la modalidad Generado con IA de manera exclusiva a los requerimientos creados mediante inteligencia artificial."
+    },
+    {
+      "c": 0.95,
+      "a": "El sistema debe registrar al autor original de un requerimiento de forma inalterable sin permitir cambios desde el formulario ni en la base de datos.",
+      "b": "El sistema debe asignar automáticamente como autor del requerimiento al usuario que lo registró, impidiendo su modificación posterior."
+    },
+    {
+      "c": 0.95,
+      "a": "El sistema debe respaldar de forma automática la configuración local de integrantes de equipos dentro de cada proyecto.",
+      "b": "El sistema debe mantener una configuración local de integrantes para cada equipo dentro de cada proyecto."
+    },
+    {
+      "c": 0.949,
+      "a": "El sistema debe solicitar confirmación al usuario si intenta cerrar el formulario de un patrón nuevo con cambios sin guardar tras pulsar la tecla de escape.",
+      "b": "El sistema debe solicitar confirmación al usuario mediante un mensaje de alerta antes de descartar cambios sin guardar al presionar la tecla Escape."
+    },
+    {
+      "c": 0.947,
+      "a": "El sistema debe permitir activar o desactivar a un integrante exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo.",
+      "b": "El sistema debe permitir modificar los roles de un integrante exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo."
+    },
+    {
+      "c": 0.946,
+      "a": "El sistema debe asegurar que las invitaciones a equipos pendientes aparezcan reflejadas en la campana de la barra superior de forma persistente.",
+      "b": "El sistema debe mostrar las invitaciones recibidas para unirse a un equipo en la campana de la barra superior."
+    },
+    {
+      "c": 0.946,
+      "a": "El sistema debe registrar en los historiales de los proyectos y requerimientos quién realizó cada modificación y en qué fecha.",
+      "b": "El sistema debe registrar en el historial los cambios realizados, indicando el autor, la fecha y los enunciados anterior y nuevo."
+    },
+    {
+      "c": 0.945,
+      "a": "El sistema debe permitir al usuario limpiar el campo de búsqueda mediante un botón dedicado en la interfaz.",
+      "b": "El sistema debe permitir al usuario limpiar todos los filtros avanzados activos con una sola acción en la interfaz de búsqueda."
+    },
+    {
+      "c": 0.944,
+      "a": "Los miembros del proyecto, incluidos los vinculados por equipo, deben poder leer y escribir comentarios en un requerimiento sin importar su estado.",
+      "b": "Cualquier miembro del proyecto podrá leer y escribir comentarios en el hilo de un requerimiento en cualquier estado."
+    },
+    {
+      "c": 0.944,
+      "a": "El sistema debe mantener el estado 'Pendiente de aprobación' en los requerimientos nuevos hasta que el líder del equipo realice la acción correspondiente.",
+      "b": "El sistema debe registrar unicamente los requerimientos seleccionados dejandolos pendientes de la aprobación de su lider."
+    },
+    {
+      "c": 0.943,
+      "a": "El sistema debe asegurar que todos los textos de la interfaz cumplan con un contraste de color adecuado para garantizar la legibilidad visual.",
+      "b": "El sistema debe mantener una relación de contraste de color mínima adecuada (por definir) entre el texto y el fondo en todas las pantallas para facilitar la lectura."
+    },
+    {
+      "c": 0.942,
+      "a": "Los líderes de un equipo deben poder editar un equipo, invitar miembros y cambiar sus roles.",
+      "b": "El sistema debe permitir a los líderes del equipo editar un equipo existente."
+    },
+    {
+      "c": 0.941,
+      "a": "El autor debe poder reenviar un requerimiento que fue previamente rechazado.",
+      "b": "El autor podrá corregir el texto de un requerimiento rechazado y reenviarlo a la cola de revisión del líder."
+    },
+    {
+      "c": 0.939,
+      "a": "El sistema debe actualizar la lista de comentarios de forma automática en un tiempo máximo (por definir) cuando otro miembro escriba un nuevo comentario en el hilo.",
+      "b": "El sistema debe actualizar automáticamente la lista de comentarios en tiempo real si otro usuario agrega una entrada."
+    },
+    {
+      "c": 0.937,
+      "a": "El sistema debe permitir asignar equipos globales independientes a múltiples proyectos según la configuración establecida.",
+      "b": "El sistema debe permitir a cualquier usuario con sesión crear equipos globales independientes que se pueden asignar a múltiples proyectos."
+    }
+  ],
+  "posiblesLexicos": [
+    {
+      "similitud": 0.76,
+      "a": "El creador del proyecto y los miembros autorizados deben poder editar o eliminar un proyecto.",
+      "b": "El creador del proyecto y sus miembros autorizados deben poder agregar o quitar miembros de un proyecto."
+    },
+    {
+      "similitud": 0.625,
+      "a": "El sistema debe permitir editar requerimientos aprobados a cualquier miembro del proyecto.",
+      "b": "Cualquier miembro del proyecto podrá leer y escribir comentarios en el hilo de un requerimiento en cualquier estado."
+    },
+    {
+      "similitud": 0.667,
+      "a": "El sistema debe marcar todas las propuestas al presionar el botón Aprobar todos en la sección de varios requerimientos.",
+      "b": "El usuario debe marcar las propuestas que desea registrar dentro de la sección Varios requerimientos."
+    },
+    {
+      "similitud": 0.844,
+      "a": "El sistema debe desmarcar las propuestas al presionar el botón Quitar selección en la sección de varios requerimientos.",
+      "b": "El sistema debe marcar todas las propuestas al presionar el botón Aprobar todos en la sección de varios requerimientos."
+    },
+    {
+      "similitud": 0.655,
+      "a": "El sistema debe permitir asignar equipos globales independientes a múltiples proyectos según la configuración establecida.",
+      "b": "El sistema debe permitir a cualquier usuario con sesión crear equipos globales independientes que se pueden asignar a múltiples proyectos."
+    },
+    {
+      "similitud": 0.845,
+      "a": "El sistema debe permitir activar o desactivar a un integrante exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo.",
+      "b": "El sistema debe permitir modificar los roles de un integrante exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo."
+    },
+    {
+      "similitud": 0.75,
+      "a": "El sistema debe permitir agregar miembros locales exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo.",
+      "b": "El sistema debe permitir modificar los roles de un integrante exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo."
+    },
+    {
+      "similitud": 0.841,
+      "a": "El sistema debe registrar un Historial de miembros para cada equipo que muestre cronológicamente los cambios de rol o estado.",
+      "b": "El sistema debe registrar un Historial de miembros para cada equipo que muestre cronológicamente las altas de miembros."
+    },
+    {
+      "similitud": 0.687,
+      "a": "El sistema debe permitir a los líderes del equipo cambiar roles de los miembros.",
+      "b": "El sistema debe permitir a los líderes del equipo invitar miembros al equipo."
+    },
+    {
+      "similitud": 0.769,
+      "a": "El sistema debe permitir al creador del proyecto definir quién puede crear equipos dentro del proyecto.",
+      "b": "El creador del proyecto debe poder definir quién tiene permiso para crear equipos dentro del mismo."
+    },
+    {
+      "similitud": 0.652,
+      "a": "El sistema debe mostrar un aviso de sintaxis copiada al portapapeles cuando el usuario pulse el icono de copiar en un patrón.",
+      "b": "El usuario debe poder hacer clic en el icono de copiar en la tarjeta de un patrón para copiar su sintaxis al portapapeles."
+    },
+    {
+      "similitud": 0.748,
+      "a": "Cualquier usuario con sesión debe poder crear proyectos en el sistema.",
+      "b": "Cualquier usuario con sesión debe poder crear un proyecto registrando los datos obligatorios en el sistema."
+    },
+    {
+      "similitud": 0.691,
+      "a": "El creador del proyecto debe poder definir quién puede crear equipos en un proyecto, eligiendo entre solo él, miembros que elija o cualquier miembro.",
+      "b": "El sistema debe permitir al creador del proyecto definir quién puede crear equipos dentro del proyecto."
+    },
+    {
+      "similitud": 0.756,
+      "a": "El creador del proyecto debe poder cambiar quién crea equipos o gestiona miembros dentro del proyecto.",
+      "b": "El creador del proyecto debe poder cambiar quién tiene la autoridad para crear equipos o gestionar miembros."
+    },
+    {
+      "similitud": 0.835,
+      "a": "El creador y los miembros del proyecto deben poder editar o eliminar un proyecto.",
+      "b": "El creador del proyecto y los miembros autorizados deben poder editar o eliminar un proyecto."
+    },
+    {
+      "similitud": 0.619,
+      "a": "El autor del requerimiento debe poder corregir un requerimiento que se encuentra en revisión.",
+      "b": "El autor podrá corregir el texto de un requerimiento rechazado y reenviarlo a la cola de revisión del líder."
+    },
+    {
+      "similitud": 0.847,
+      "a": "Cualquier miembro del proyecto debe poder editar un requerimiento que ya ha sido aprobado.",
+      "b": "El sistema debe permitir editar requerimientos aprobados a cualquier miembro del proyecto."
+    },
+    {
+      "similitud": 0.7,
+      "a": "Los miembros del proyecto, incluidos los vinculados por equipo, deben poder leer y escribir comentarios en un requerimiento sin importar su estado.",
+      "b": "Cualquier miembro del proyecto podrá leer y escribir comentarios en el hilo de un requerimiento en cualquier estado."
+    },
+    {
+      "similitud": 0.667,
+      "a": "El autor de un comentario debe poder corregir o borrar su propio comentario.",
+      "b": "El autor podrá corregir su propio comentario y borrarlo, mientras que el creador del proyecto podrá borrar cualquier comentario."
+    },
+    {
+      "similitud": 0.743,
+      "a": "El creador del proyecto debe poder borrar comentarios de cualquier usuario dentro de su proyecto, sin poder corregir los ajenos.",
+      "b": "El autor podrá corregir su propio comentario y borrarlo, mientras que el creador del proyecto podrá borrar cualquier comentario."
+    },
+    {
+      "similitud": 0.81,
+      "a": "Los líderes de un equipo deben poder editar un equipo, invitar miembros y cambiar sus roles.",
+      "b": "El sistema debe permitir a los líderes del equipo cambiar roles de los miembros."
+    },
+    {
+      "similitud": 0.715,
+      "a": "El sistema debe registrar cronológicamente en el historial de miembros las altas, bajas y cambios de rol o estado para mantener la trazabilidad.",
+      "b": "El sistema debe registrar un Historial de miembros para cada equipo que muestre cronológicamente los cambios de rol o estado."
+    },
+    {
+      "similitud": 0.819,
+      "a": "El sistema debe actualizar automáticamente la lista de comentarios en tiempo real si otro usuario comenta mientras el hilo está abierto.",
+      "b": "El sistema debe actualizar automáticamente la lista de comentarios en tiempo real si otro usuario agrega una entrada."
+    },
+    {
+      "similitud": 0.683,
+      "a": "El sistema debe mantener la integridad de los identificadores de requerimientos asegurando que, al borrar uno, su número no se reutilice en el proyecto.",
+      "b": "El sistema debe mantener el orden de los identificadores y no reutilizar el número de un requerimiento si este es borrado."
+    },
+    {
+      "similitud": 0.819,
+      "a": "El sistema debe registrar la modalidad 'Generado con IA' de manera independiente en los requerimientos creados mediante inteligencia artificial.",
+      "b": "El sistema debe asignar la modalidad Generado con IA de manera exclusiva a los requerimientos creados mediante inteligencia artificial."
+    },
+    {
+      "similitud": 0.723,
+      "a": "El sistema debe respaldar de forma automática la configuración local de integrantes de equipos dentro de cada proyecto.",
+      "b": "El sistema debe mantener una configuración local de integrantes para cada equipo dentro de cada proyecto."
+    },
+    {
+      "similitud": 0.687,
+      "a": "El sistema debe garantizar que al restaurar una versión desde el historial se reemplace el enunciado actual registrándolo como un cambio nuevo.",
+      "b": "El sistema debe registrar la restauración de una versión anterior como un cambio nuevo que reemplaza el enunciado actual."
+    },
+    {
+      "similitud": 0.62,
+      "a": "El sistema debe asegurar la disponibilidad de los datos de los proyectos en los diferentes estados (En progreso, Pausado, Finalizado, Cancelado).",
+      "b": "El sistema debe permitir asignar a cada proyecto un estado que puede ser En progreso, Pausado, Finalizado o Cancelado."
+    },
+    {
+      "similitud": 0.636,
+      "a": "El sistema debe mantener la ventana abierta con el mismo modelo y tipo al registrar varios requerimientos utilizando la opción de guardar y añadir otro.",
+      "b": "El sistema debe mantener la capacidad de respuesta de la interfaz al registrar multiples requerimientos seguidos utilizando la opción de guardar y anadir otro."
+    },
+    {
+      "similitud": 0.84,
+      "a": "El sistema debe permitir al usuario hacer clic en el identificador de un requerimiento para copiarlo al portapapeles.",
+      "b": "El usuario podrá copiar el identificador del requerimiento al hacer clic sobre él."
+    },
+    {
+      "similitud": 0.782,
+      "a": "El sistema debe permitir al usuario buscar un requerimiento escribiendo su número directamente en el campo correspondiente.",
+      "b": "El usuario podrá buscar un requerimiento escribiendo su número en el campo de búsqueda."
+    },
+    {
+      "similitud": 0.727,
+      "a": "El sistema debe actualizar la lista de comentarios de forma automática si un usuario comenta mientras se tiene el hilo de conversación abierto.",
+      "b": "El sistema debe actualizar automáticamente la lista de comentarios en tiempo real si otro usuario comenta mientras el hilo está abierto."
+    },
+    {
+      "similitud": 0.797,
+      "a": "El sistema debe mostrar un icono de burbuja de diálogo con el número de comentarios visibles en cada tarjeta de la lista.",
+      "b": "El sistema debe mostrar un icono de burbuja de diálogo con el conteo de comentarios visibles en la tarjeta del requerimiento."
+    },
+    {
+      "similitud": 0.768,
+      "a": "El sistema debe mostrar los botones de aprobación y rechazo en la fila de cada requerimiento exclusivamente cuando se encuentra pendiente de aprobación y pertenece a un equipo liderado por el usuario.",
+      "b": "El sistema debe restringir los botones de aprobación y rechazo exclusivamente a los requerimientos pendientes de aprobación que pertenezcan a un equipo liderado por el usuario actual."
+    },
+    {
+      "similitud": 0.826,
+      "a": "El sistema debe permitir al usuario desmarcar todos los elementos seleccionados mediante la opción quitar selección en la interfaz de propuestas de inteligencia artificial.",
+      "b": "El sistema debe permitir al usuario marcar todos los elementos mediante la opción aprobar todos en la interfaz de propuestas de inteligencia artificial."
+    },
+    {
+      "similitud": 0.689,
+      "a": "El usuario podrá filtrar los requerimientos del proyecto seleccionando niveles de prioridad específicos desde la interfaz.",
+      "b": "El usuario podrá filtrar los requerimientos del proyecto seleccionando uno o varios estados específicos en el panel de control."
+    },
+    {
+      "similitud": 0.632,
+      "a": "El usuario podrá utilizar la tecla de acceso rápido global para enfocar el buscador de la sección de patrones y modelos directamente.",
+      "b": "El usuario debe poder utilizar el buscador en la sección de patrones y modelos para localizar patrones por su nombre o contenido."
+    },
+    {
+      "similitud": 0.605,
+      "a": "El sistema debe mostrar un aviso de confirmación al intentar cerrar una ventana con cambios sin guardar mediante el uso de la tecla de escape.",
+      "b": "El sistema debe solicitar confirmación al usuario si intenta cerrar el formulario de un patrón nuevo con cambios sin guardar tras pulsar la tecla de escape."
+    },
+    {
+      "similitud": 0.698,
+      "a": "El sistema debe mostrar un aviso visual cuando se copia la sintaxis de un patrón al portapapeles.",
+      "b": "El sistema debe mostrar un aviso de sintaxis copiada al portapapeles cuando el usuario pulse el icono de copiar en un patrón."
+    },
+    {
+      "similitud": 0.601,
+      "a": "El sistema debe mostrar indicadores visuales claros cuando un requerimiento se encuentre en estado pendiente de aprobación.",
+      "b": "El sistema debe registrar cada nuevo requerimiento con el estado inicial de pendiente de aprobación."
+    },
+    {
+      "similitud": 0.622,
+      "a": "El sistema debe reintentar la conexión con la base de datos Firestore de manera automática un número determinado (por definir) de veces si ocurre una interrupción temporal de red.",
+      "b": "El sistema debe reintentar de forma automática la conexión con la base de datos de Firestore ante interrupciones temporales de red antes de mostrar un error al usuario."
+    }
+  ],
+  "listado": [
+    {
+      "name": "Cualquier usuario con sesión debe poder crear un proyecto registrando los datos obligatorios en el sistema.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El creador del proyecto o un miembro del equipo vinculado debe poder editar la información del proyecto.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir asignar a cada proyecto un estado que puede ser En progreso, Pausado, Finalizado o Cancelado.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir configurar la naturaleza de un proyecto como Materia, Ayudantía, Beca o Independiente.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir asociar uno o varios proyectos a una o varias campañas de colaboración.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El usuario debe poder hacer clic en la tarjeta de un proyecto para ver sus requerimientos, equipos asignados y archivos de contexto.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe restringir la participación en un proyecto exclusivamente a través de los equipos asignados al mismo.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El creador del proyecto y sus miembros autorizados deben poder agregar o quitar miembros de un proyecto.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El creador del proyecto debe poder definir quién tiene permiso para crear equipos dentro del mismo.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El creador del proyecto debe poder cambiar quién tiene la autoridad para crear equipos o gestionar miembros.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El creador del proyecto y los miembros autorizados deben poder editar o eliminar un proyecto.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Proyectos y Colaboraciones)",
+        "texto": "El creador del proyecto y sus miembros autorizados deben poder agregar o quitar miembros de un proyecto.",
+        "similitud": 0.76
+      }
+    },
+    {
+      "name": "Cualquier usuario con sesión debe poder ver la lista general de proyectos disponibles en la plataforma.",
+      "area": "Proyectos y Colaboraciones",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El usuario podrá elegir un modelo y un patrón desde el formulario del requerimiento para copiar su estructura al enunciado.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asignar un identificador único con formato de correlativo dentro de su proyecto a cada requerimiento registrado.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mantener el orden de los identificadores y no reutilizar el número de un requerimiento si este es borrado.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El usuario podrá copiar el identificador del requerimiento al hacer clic sobre él.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El usuario podrá buscar un requerimiento escribiendo su número en el campo de búsqueda.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El usuario podrá añadir un requerimiento entre dos existentes utilizando la acción de insertar después.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asignar automáticamente el número siguiente al requerimiento insertado y desplazar la numeración de los posteriores.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El autor deberá seleccionar un equipo al redactar el requerimiento, el cual no podrá ser cambiado posteriormente.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar cada nuevo requerimiento con el estado inicial de pendiente de aprobación.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El líder del equipo asignado podrá aprobar o rechazar el requerimiento utilizando los botones de decisión ubicados en la fila.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El autor podrá corregir el texto de un requerimiento rechazado y reenviarlo a la cola de revisión del líder.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar en el historial los cambios realizados, indicando el autor, la fecha y los enunciados anterior y nuevo.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El usuario con permisos de edición podrá restaurar una versión anterior del requerimiento desde el historial.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar la restauración de una versión anterior como un cambio nuevo que reemplaza el enunciado actual.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "Cualquier miembro del proyecto podrá leer y escribir comentarios en el hilo de un requerimiento en cualquier estado.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe actualizar automáticamente la lista de comentarios en tiempo real si otro usuario agrega una entrada.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El autor podrá corregir su propio comentario y borrarlo, mientras que el creador del proyecto podrá borrar cualquier comentario.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mostrar un icono de burbuja de diálogo con el conteo de comentarios visibles en la tarjeta del requerimiento.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asignar automáticamente como autor del requerimiento al usuario que lo registró, impidiendo su modificación posterior.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir editar requerimientos aprobados a cualquier miembro del proyecto.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "Cualquier miembro del proyecto podrá leer y escribir comentarios en el hilo de un requerimiento en cualquier estado.",
+        "similitud": 0.625
+      }
+    },
+    {
+      "name": "El usuario debe describir la funcionalidad y presionar el botón Generar dentro del formulario de un requerimiento para invocar a la inteligencia artificial.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe redactar un enunciado siguiendo el patron seleccionado mediante inteligencia artificial para que el usuario lo revise antes de guardar.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El usuario debe marcar las propuestas que desea registrar dentro de la sección Varios requerimientos.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe marcar todas las propuestas al presionar el botón Aprobar todos en la sección de varios requerimientos.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Generación con IA)",
+        "texto": "El usuario debe marcar las propuestas que desea registrar dentro de la sección Varios requerimientos.",
+        "similitud": 0.6666666666666666
+      }
+    },
+    {
+      "name": "El sistema debe desmarcar las propuestas al presionar el botón Quitar selección en la sección de varios requerimientos.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Generación con IA)",
+        "texto": "El sistema debe marcar todas las propuestas al presionar el botón Aprobar todos en la sección de varios requerimientos.",
+        "similitud": 0.8444444444444444
+      }
+    },
+    {
+      "name": "El sistema debe marcar un modulo completo, incluidas las propuestas ocultas por filtros, al activar la casilla de un área.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe cambiar unicamente lo visible sin borrar lo marcado previamente al aplicar filtros por prioridad, tipo y posibles duplicados.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe marcar unicamente lo visible al presionar Seleccionar filtrados cuando hay filtros activos.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mostrar un contador que indique cuantos elementos van seleccionados sobre el total durante el filtrado.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El usuario debe indicar la acción de registro para que el sistema muestre cuantos requerimientos se procesaran y pida confirmación.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar unicamente los requerimientos seleccionados dejandolos pendientes de la aprobación de su lider.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asignar la modalidad Generado con IA de manera exclusiva a los requerimientos creados mediante inteligencia artificial.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe someter un requerimiento generado con IA al mismo flujo de espera para la aprobación de su lider.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mantener en la revisión y sin enviar al flujo de aprobación aquellos requerimientos que el usuario deje sin marcar.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir combinar la selección individual de propuestas con los botones Aprobar todos y Quitar selección.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mostrar el estado actual de las propuestas generadas en la lista de revisión mientras el usuario interactua con las opciones de selección.",
+      "area": "Generación con IA",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe validar que exista una descripción previa de la funcionalidad antes de ejecutar la generación mediante inteligencia artificial.",
+      "area": "Generación con IA",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mostrar mensajes de confirmación claros antes de procesar el registro masivo de las propuestas seleccionadas.",
+      "area": "Generación con IA",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe conservar las propuestas no seleccionadas en la interfaz de generación para permitir su analisis posterior por el usuario.",
+      "area": "Generación con IA",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asegurar que la modalidad de creación por IA se almacene de forma persistente como metadato del requerimiento.",
+      "area": "Generación con IA",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir a cualquier usuario con sesión crear equipos globales independientes que se pueden asignar a múltiples proyectos.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir asignar equipos globales independientes a múltiples proyectos según la configuración establecida.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Equipos y Miembros)",
+        "texto": "El sistema debe permitir a cualquier usuario con sesión crear equipos globales independientes que se pueden asignar a múltiples proyectos.",
+        "similitud": 0.655367231638418
+      }
+    },
+    {
+      "name": "El sistema debe asignar un estado Activo o Desvinculado a cada equipo dentro de cada proyecto específico.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mantener una configuración local de integrantes para cada equipo dentro de cada proyecto.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir modificar los roles de un integrante exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir activar o desactivar a un integrante exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Equipos y Miembros)",
+        "texto": "El sistema debe permitir modificar los roles de un integrante exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo.",
+        "similitud": 0.84472049689441
+      }
+    },
+    {
+      "name": "El sistema debe permitir agregar miembros locales exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Equipos y Miembros)",
+        "texto": "El sistema debe permitir modificar los roles de un integrante exclusivamente dentro de un proyecto sin alterar la plantilla global del equipo.",
+        "similitud": 0.75
+      }
+    },
+    {
+      "name": "El sistema debe registrar un Historial de miembros para cada equipo que muestre cronológicamente las altas de miembros.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar un Historial de miembros para cada equipo que muestre cronológicamente los cambios de rol o estado.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Equipos y Miembros)",
+        "texto": "El sistema debe registrar un Historial de miembros para cada equipo que muestre cronológicamente las altas de miembros.",
+        "similitud": 0.8405797101449275
+      }
+    },
+    {
+      "name": "El sistema debe permitir a los líderes del equipo editar un equipo existente.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir a los líderes del equipo invitar miembros al equipo.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir a los líderes del equipo cambiar roles de los miembros.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Equipos y Miembros)",
+        "texto": "El sistema debe permitir a los líderes del equipo invitar miembros al equipo.",
+        "similitud": 0.6865671641791045
+      }
+    },
+    {
+      "name": "El sistema debe mostrar las invitaciones recibidas para unirse a un equipo en la campana de la barra superior.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir al creador del proyecto definir quién puede crear equipos dentro del proyecto.",
+      "area": "Equipos y Miembros",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Proyectos y Colaboraciones)",
+        "texto": "El creador del proyecto debe poder definir quién tiene permiso para crear equipos dentro del mismo.",
+        "similitud": 0.7692307692307693
+      }
+    },
+    {
+      "name": "El sistema debe mostrar el catálogo de estructuras sintácticas en la sección de patrones y modelos con una lista de tarjetas de patrones agrupados por modelo.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El usuario debe poder hacer clic en el icono de copiar en la tarjeta de un patrón para copiar su sintaxis al portapapeles.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mostrar un aviso de sintaxis copiada al portapapeles cuando el usuario pulse el icono de copiar en un patrón.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Patrones y Modelos)",
+        "texto": "El usuario debe poder hacer clic en el icono de copiar en la tarjeta de un patrón para copiar su sintaxis al portapapeles.",
+        "similitud": 0.6524822695035462
+      }
+    },
+    {
+      "name": "El usuario debe poder pulsar el botón de nuevo patrón en la sección de patrones y modelos para iniciar la creación de una nueva estructura sintáctica.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe requerir que el usuario elija el modelo al que pertenece, escriba un nombre descriptivo y la sintaxis o prompt con placeholders al crear un patrón nuevo.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe guardar el nuevo patrón y mostrarlo en el catálogo cuando el usuario complete los datos obligatorios y guarde.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El usuario debe poder utilizar el filtro de pestaña en el catálogo de patrones y modelos para ver únicamente los patrones correspondientes a un modelo específico.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El usuario debe poder utilizar el buscador en la sección de patrones y modelos para localizar patrones por su nombre o contenido.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mostrar el catálogo de patrones con acceso para crear nuevos patrones para cualquier modelo existente.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe restringir la edición o eliminación de patrones y modelos existentes a ningún usuario por ahora según la política de permisos.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "Cualquier usuario con sesión debe poder ver los proyectos, requerimientos, equipos y patrones del sistema.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "Cualquier usuario con sesión debe poder crear proyectos en el sistema.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Proyectos y Colaboraciones)",
+        "texto": "Cualquier usuario con sesión debe poder crear un proyecto registrando los datos obligatorios en el sistema.",
+        "similitud": 0.7476635514018691
+      }
+    },
+    {
+      "name": "El creador del proyecto debe poder definir quién puede crear equipos en un proyecto, eligiendo entre solo él, miembros que elija o cualquier miembro.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Equipos y Miembros)",
+        "texto": "El sistema debe permitir al creador del proyecto definir quién puede crear equipos dentro del proyecto.",
+        "similitud": 0.6911764705882353
+      }
+    },
+    {
+      "name": "El creador del proyecto debe poder cambiar quién crea equipos o gestiona miembros dentro del proyecto.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Proyectos y Colaboraciones)",
+        "texto": "El creador del proyecto debe poder cambiar quién tiene la autoridad para crear equipos o gestionar miembros.",
+        "similitud": 0.7555555555555555
+      }
+    },
+    {
+      "name": "El creador y los miembros del proyecto deben poder editar o eliminar un proyecto.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Proyectos y Colaboraciones)",
+        "texto": "El creador del proyecto y los miembros autorizados deben poder editar o eliminar un proyecto.",
+        "similitud": 0.8351648351648352
+      }
+    },
+    {
+      "name": "Los miembros del proyecto deben poder crear requerimientos dentro del mismo.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El autor del requerimiento debe poder corregir un requerimiento que se encuentra en revisión.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El autor podrá corregir el texto de un requerimiento rechazado y reenviarlo a la cola de revisión del líder.",
+        "similitud": 0.6194690265486725
+      }
+    },
+    {
+      "name": "El líder del equipo al que pertenece el requerimiento debe poder aprobar o rechazar dicho requerimiento.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El autor debe poder reenviar un requerimiento que fue previamente rechazado.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "Cualquier miembro del proyecto debe poder editar un requerimiento que ya ha sido aprobado.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El sistema debe permitir editar requerimientos aprobados a cualquier miembro del proyecto.",
+        "similitud": 0.847457627118644
+      }
+    },
+    {
+      "name": "Los miembros del proyecto deben poder consultar y restaurar versiones del historial de un requerimiento si poseen permiso para editarlo.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "Los miembros del proyecto, incluidos los vinculados por equipo, deben poder leer y escribir comentarios en un requerimiento sin importar su estado.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "Cualquier miembro del proyecto podrá leer y escribir comentarios en el hilo de un requerimiento en cualquier estado.",
+        "similitud": 0.7
+      }
+    },
+    {
+      "name": "El autor de un comentario debe poder corregir o borrar su propio comentario.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El autor podrá corregir su propio comentario y borrarlo, mientras que el creador del proyecto podrá borrar cualquier comentario.",
+        "similitud": 0.6666666666666666
+      }
+    },
+    {
+      "name": "El creador del proyecto debe poder borrar comentarios de cualquier usuario dentro de su proyecto, sin poder corregir los ajenos.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El autor podrá corregir su propio comentario y borrarlo, mientras que el creador del proyecto podrá borrar cualquier comentario.",
+        "similitud": 0.7428571428571429
+      }
+    },
+    {
+      "name": "Los líderes de un equipo deben poder editar un equipo, invitar miembros y cambiar sus roles.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Equipos y Miembros)",
+        "texto": "El sistema debe permitir a los líderes del equipo cambiar roles de los miembros.",
+        "similitud": 0.8095238095238095
+      }
+    },
+    {
+      "name": "El sistema debe denegar la edición o eliminación de patrones y modelos a cualquier usuario por ahora.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe impedir que el autor de un requerimiento sea modificado por el usuario mediante formularios o acceso directo a la base de datos.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe restringir los botones de aprobación y rechazo exclusivamente a los requerimientos pendientes de aprobación que pertenezcan a un equipo liderado por el usuario actual.",
+      "area": "Seguridad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe requerir que los usuarios que ingresen a la plataforma dispongan de una sesión activa válida para visualizar cualquier recurso protegido.",
+      "area": "Seguridad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe actualizar la lista de comentarios de forma automática en un tiempo máximo (por definir) cuando otro miembro escriba un nuevo comentario en el hilo.",
+      "area": "Rendimiento",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mantener la fluidez de la interfaz durante la consulta y actualización de requerimientos y comentarios bajo una concurrencia máxima (por definir).",
+      "area": "Rendimiento",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe responder a las solicitudes de consulta de la lista de requerimientos en un tiempo menor o igual a un umbral (por definir).",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe procesar las ediciones de texto registradas en el historial de un requerimiento en un tiempo menor o igual a un limite (por definir).",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe renderizar la interfaz de usuario sin retrasos perceptibles al alternar entre las distintas secciones de proyectos y requerimientos.",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe completar la operación de guardado de un requerimiento con un tiempo de respuesta optimo especificado en un parametro (por definir).",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mostrar los resultados de la búsqueda de un requerimiento por su número identificador en un tiempo no mayor a un intervalo (por definir).",
+      "area": "Rendimiento",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe procesar la aprobación o rechazo de un requerimiento por parte del lider de equipo reflejando el cambio de estado en un plazo máximo (por definir).",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe aplicar los filtros por prioridad y tipo sobre la lista de propuestas de IA de forma casi instantanea con un tiempo inferior a un limite (por definir).",
+      "area": "Rendimiento",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe cargar el hilo completo de comentarios de un requerimiento en orden cronologico en un tiempo menor a un valor (por definir).",
+      "area": "Rendimiento",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe responder con fluidez grafica al interactuar con los botones de inserción de requerimientos entre filas sin bloquear la interfaz.",
+      "area": "Rendimiento",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe garantizar tiempos de respuesta estables al consultar el historial de cambios y versiones de un requerimiento.",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe procesar la restauración de una versión anterior de un requerimiento reflejando el nuevo enunciado en un tiempo limite (por definir).",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mantener la capacidad de respuesta de la interfaz al registrar multiples requerimientos seguidos utilizando la opción de guardar y anadir otro.",
+      "area": "Rendimiento",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe ejecutar las operaciones de corrección o borrado de comentarios manteniendo la latencia por debajo de un umbral (por definir).",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe procesar la selección masiva de propuestas generadas por IA mediante las opciones de aprobar todos o quitar selección en un tiempo optimo (por definir).",
+      "area": "Rendimiento",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mantener tiempos de carga minimos al acceder al catálogo de patrones y modelos para copiar sintaxis.",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe optimizar la consulta del estado y configuración local de los equipos vinculados a un proyecto para evitar retrasos en la interfaz.",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe responder rápidamente al utilizar los atajos de teclado configurados como la tecla barra espaciadora o escape para cerrar ventanas.",
+      "area": "Rendimiento",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asegurar que las transiciones entre las vistas de los proyectos y las tarjetas de requerimientos ocurran sin interrupciones visuales.",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe persistir los proyectos y requerimientos en la base de datos de Firestore garantizando la disponibilidad de la información para los equipos universitarios.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar cronológicamente en el historial de miembros las altas, bajas y cambios de rol o estado para mantener la trazabilidad.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Equipos y Miembros)",
+        "texto": "El sistema debe registrar un Historial de miembros para cada equipo que muestre cronológicamente los cambios de rol o estado.",
+        "similitud": 0.7151515151515152
+      }
+    },
+    {
+      "name": "El sistema debe registrar las ediciones de texto en el historial mostrando el enunciado anterior y el nuevo cuando se realicen modificaciones.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe actualizar automáticamente la lista de comentarios en tiempo real si otro usuario comenta mientras el hilo está abierto.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El sistema debe actualizar automáticamente la lista de comentarios en tiempo real si otro usuario agrega una entrada.",
+        "similitud": 0.8192771084337349
+      }
+    },
+    {
+      "name": "El sistema debe solicitar confirmación al usuario mediante un mensaje de alerta antes de descartar cambios sin guardar al presionar la tecla Escape.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mantener la integridad de los identificadores de requerimientos asegurando que, al borrar uno, su número no se reutilice en el proyecto.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El sistema debe mantener el orden de los identificadores y no reutilizar el número de un requerimiento si este es borrado.",
+        "similitud": 0.6829268292682927
+      }
+    },
+    {
+      "name": "El sistema debe asegurar la persistencia de la siembra inicial (seed) de catálogos en Firestore para evitar catálogos vacíos de patrones y modelos.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar al autor original de un requerimiento de forma inalterable sin permitir cambios desde el formulario ni en la base de datos.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe conservar las entradas anteriores del historial aunque no guardaran los textos completos, informando que no pueden reconstruirse.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mantener la estabilidad de la sesión del usuario (por definir) ante fallos de conectividad temporal con la base de datos.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asegurar que las invitaciones a equipos pendientes aparezcan reflejadas en la campana de la barra superior de forma persistente.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe garantizar la persistencia de los comentarios eliminados o corregidos mostrando los cambios según los permisos del autor o creador.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar la modalidad 'Generado con IA' de manera independiente en los requerimientos creados mediante inteligencia artificial.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Generación con IA)",
+        "texto": "El sistema debe asignar la modalidad Generado con IA de manera exclusiva a los requerimientos creados mediante inteligencia artificial.",
+        "similitud": 0.8191489361702128
+      }
+    },
+    {
+      "name": "El sistema debe respaldar de forma automática la configuración local de integrantes de equipos dentro de cada proyecto.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Equipos y Miembros)",
+        "texto": "El sistema debe mantener una configuración local de integrantes para cada equipo dentro de cada proyecto.",
+        "similitud": 0.723404255319149
+      }
+    },
+    {
+      "name": "El sistema debe garantizar que al restaurar una versión desde el historial se reemplace el enunciado actual registrándolo como un cambio nuevo.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El sistema debe registrar la restauración de una versión anterior como un cambio nuevo que reemplaza el enunciado actual.",
+        "similitud": 0.6867469879518072
+      }
+    },
+    {
+      "name": "El sistema debe mantener el estado 'Pendiente de aprobación' en los requerimientos nuevos hasta que el líder del equipo realice la acción correspondiente.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asegurar la disponibilidad de los datos de los proyectos en los diferentes estados (En progreso, Pausado, Finalizado, Cancelado).",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Proyectos y Colaboraciones)",
+        "texto": "El sistema debe permitir asignar a cada proyecto un estado que puede ser En progreso, Pausado, Finalizado o Cancelado.",
+        "similitud": 0.6197183098591549
+      }
+    },
+    {
+      "name": "El sistema debe preservar los requerimientos creados antes de la existencia de la aprobación por líder bajo el estado 'Sin equipo' sin pérdida de datos.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asegurar el almacenamiento persistente de las sintaxis copiadas al portapapeles y de los patrones creados por los usuarios.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar con precisión la fecha y hora exacta de cada entrada en el hilo de comentarios de un requerimiento.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir al usuario presionar la tecla diagonal para mover el cursor directamente al buscador de la pantalla.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir al usuario presionar la tecla de escape para cerrar cualquier ventana abierta en la interfaz.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe consultar al usuario si desea descartar los cambios si presiona la tecla de escape teniendo modificaciones sin guardar.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir al usuario presionar las teclas de control y enter simultáneamente para guardar el formulario que se encuentre abierto.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mantener la ventana abierta con el mismo modelo y tipo al registrar varios requerimientos utilizando la opción de guardar y añadir otro.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Rendimiento)",
+        "texto": "El sistema debe mantener la capacidad de respuesta de la interfaz al registrar multiples requerimientos seguidos utilizando la opción de guardar y anadir otro.",
+        "similitud": 0.6363636363636364
+      }
+    },
+    {
+      "name": "El sistema debe mostrar un icono de lista con un signo más en cada fila para permitir insertar un requerimiento entre dos existentes.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir al usuario hacer clic en el identificador de un requerimiento para copiarlo al portapapeles.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El usuario podrá copiar el identificador del requerimiento al hacer clic sobre él.",
+        "similitud": 0.8403361344537815
+      }
+    },
+    {
+      "name": "El sistema debe permitir al usuario buscar un requerimiento escribiendo su número directamente en el campo correspondiente.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El usuario podrá buscar un requerimiento escribiendo su número en el campo de búsqueda.",
+        "similitud": 0.7819548872180451
+      }
+    },
+    {
+      "name": "El sistema debe actualizar la lista de comentarios de forma automática si un usuario comenta mientras se tiene el hilo de conversación abierto.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Disponibilidad y confiabilidad)",
+        "texto": "El sistema debe actualizar automáticamente la lista de comentarios en tiempo real si otro usuario comenta mientras el hilo está abierto.",
+        "similitud": 0.7272727272727273
+      }
+    },
+    {
+      "name": "El sistema debe mostrar un icono de burbuja de diálogo con el número de comentarios visibles en cada tarjeta de la lista.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El sistema debe mostrar un icono de burbuja de diálogo con el conteo de comentarios visibles en la tarjeta del requerimiento.",
+        "similitud": 0.7972027972027972
+      }
+    },
+    {
+      "name": "El sistema debe mostrar los botones de aprobación y rechazo en la fila de cada requerimiento exclusivamente cuando se encuentra pendiente de aprobación y pertenece a un equipo liderado por el usuario.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Seguridad)",
+        "texto": "El sistema debe restringir los botones de aprobación y rechazo exclusivamente a los requerimientos pendientes de aprobación que pertenezcan a un equipo liderado por el usuario actual.",
+        "similitud": 0.7678571428571429
+      }
+    },
+    {
+      "name": "El sistema debe permitir al usuario utilizar filtros por prioridad, tipo y posibles duplicados en la interfaz de generación con inteligencia artificial sin alterar los elementos previamente marcados.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mostrar un contador que indique cuántas propuestas van seleccionadas sobre el total en la interfaz de generación con inteligencia artificial.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir al usuario marcar todos los elementos mediante la opción aprobar todos en la interfaz de propuestas de inteligencia artificial.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir al usuario desmarcar todos los elementos seleccionados mediante la opción quitar selección en la interfaz de propuestas de inteligencia artificial.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1,
+      "posible": {
+        "etiqueta": "otra propuesta (Usabilidad)",
+        "texto": "El sistema debe permitir al usuario marcar todos los elementos mediante la opción aprobar todos en la interfaz de propuestas de inteligencia artificial.",
+        "similitud": 0.8260869565217391
+      }
+    },
+    {
+      "name": "El sistema debe mostrar un mensaje de confirmación que indique el número de elementos que se van a procesar al pulsar el botón de registrar propuestas de inteligencia artificial.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir al usuario visualizar el historial de cambios de un requerimiento mediante un icono de reloj para consultar quién hizo cada modificación y cuándo ocurrió.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir a cualquier usuario navegar por la plataforma web utilizando un lector de pantalla compatible con los estándares de accesibilidad web (por definir).",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asegurar que todos los elementos interactivos y controles de la interfaz sean accesibles y operables mediante el uso exclusivo del teclado.",
+      "area": "Accesibilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe proporcionar un indicador visual de enfoque claro y distinguible en cada elemento interactivo cuando el usuario navegue mediante el teclado.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mantener una relación de contraste de color mínima adecuada (por definir) entre el texto y el fondo en todas las pantallas para facilitar la lectura.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir a los usuarios ampliar el tamaño del texto hasta un porcentaje determinado (por definir) sin pérdida de contenido ni funcionalidad en la interfaz.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe incluir etiquetas descriptivas alternativas (texto alternativo) en todas las imágenes y elementos gráficos informativos para los lectores de pantalla.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe estructurar la jerarquía de encabezados de las páginas de manera lógica y secuencial para facilitar la comprensión mediante tecnologías de asistencia.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe proporcionar mensajes de error claros y asociados explícitamente a los campos correspondientes en los formularios para los usuarios de lectores de pantalla.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asegurar que los elementos multimedia interactivos cuenten con transcripciones o mecanismos alternativos accesibles cuando estén disponibles.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe evitar el uso exclusivo de colores para transmitir información de estado o advertencias, incorporando siempre iconos o textos complementarios.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe desplegar la sección de ayuda con un catálogo de preguntas frecuentes y secciones informativas para que cualquier usuario con sesión pueda consultar el funcionamiento de la plataforma.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir a un administrador inicializar o sembrar los catálogos en la base de datos de Firestore cuando estos se encuentren vacíos.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar los catálogos iniciales de patrones y modelos de requerimientos para asegurar la disponibilidad de estructuras sintácticas predeterminadas.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir a los usuarios consultar los atajos de teclado disponibles mediante la sección de ayuda para facilitar la navegación rápida.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe proveer una guía de permisos detallada en formato de texto dentro de la sección de soporte para que los usuarios consulten las acciones permitidas según su rol.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir a los usuarios reportar problemas técnicos incluyendo mensajes de error exactos y pasos para reproducir la falla.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar la trazabilidad de los cambios en el código y configuraciones para facilitar el mantenimiento correctivo y evolutivo.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe almacenar la información de los proyectos universitarios y de sus requerimientos cumpliendo con las políticas de protección de datos de la institución.",
+      "area": "Legal y privacidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir que solo los usuarios autorizados de la plataforma accedan a los datos de los proyectos y equipos.",
+      "area": "Legal y privacidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar en los historiales de los proyectos y requerimientos quién realizó cada modificación y en qué fecha.",
+      "area": "Legal y privacidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe aplicar controles de acceso basados en los roles asignados a cada integrante dentro del proyecto.",
+      "area": "Legal y privacidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe garantizar la confidencialidad de los datos de los proyectos universitarios impidiendo el acceso a usuarios externos no vinculados.",
+      "area": "Legal y privacidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir a los administradores gestionar las copias de seguridad de la base de datos de los proyectos (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe cifrar las credenciales y la información sensible de los usuarios almacenadas en la base de datos.",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar un aviso legal de privacidad accesible para los usuarios antes de su registro en la plataforma (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir la eliminación de los datos de un proyecto universitario cuando su creador lo solicite formalmente.",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe restringir la visualización de los historiales de cambios exclusivamente a los miembros autorizados del proyecto.",
+      "area": "Legal y privacidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe bloquear las sesiones de usuario tras un periodo de inactividad (por definir) para proteger la información.",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe garantizar que los comentarios y las discusiones en los requerimientos solo sean legibles por los miembros del proyecto.",
+      "area": "Legal y privacidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe mantener registros de auditoría de los accesos e intentos fallidos de inicio de sesión (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe impedir que usuarios sin el rol de creador o líder modifiquen las configuraciones globales de los equipos en los proyectos.",
+      "area": "Legal y privacidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asegurar la anonimización de los datos estadísticos de uso si se comparten con fines académicos o de investigación (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe validar que las invitaciones a equipos se envíen únicamente a usuarios registrados en la plataforma.",
+      "area": "Legal y privacidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe permitir que los usuarios exporten sus propios datos de proyectos en un formato estándar (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe asegurar que la eliminación de un comentario sea registrada en los metadatos del hilo del requerimiento.",
+      "area": "Legal y privacidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe proteger las comunicaciones entre el cliente y el servidor mediante protocolos de cifrado en tránsito (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe cumplir con los lineamientos de retención de datos establecidos por la administración de la plataforma (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe conectar con la base de datos Firestore para almacenar y recuperar la información de proyectos, requerimientos, equipos y patrones.",
+      "area": "Integraciones",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe conectar con los servicios de modelos de inteligencia artificial para redactar los enunciados de los requerimientos a partir de la descripción proporcionada.",
+      "area": "Integraciones",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe registrar un error técnico en la interfaz si la conexión con la base de datos Firestore falla durante el almacenamiento de datos.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe validar que los catálogos y patrones iniciales estén disponibles en la base de datos Firestore tras la ejecución de la siembra inicial.",
+      "area": "Integraciones",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe enviar los datos de entrada del formulario de generación a la API del modelo de inteligencia artificial y recibir las propuestas redactadas.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 1
+    },
+    {
+      "name": "El sistema debe validar que los campos obligatorios del formulario de requerimiento no se encuentren vacíos al intentar registrar la información.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar un mensaje de error claro en el formulario cuando falten datos obligatorios al intentar guardar el requerimiento.",
+      "area": "Gestión de Requerimientos",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El usuario podrá filtrar los requerimientos del proyecto seleccionando uno o varios estados específicos en el panel de control.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El usuario podrá filtrar los requerimientos del proyecto seleccionando niveles de prioridad específicos desde la interfaz.",
+      "area": "Gestión de Requerimientos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El usuario podrá filtrar los requerimientos del proyecto seleccionando uno o varios estados específicos en el panel de control.",
+        "similitud": 0.6885245901639344
+      }
+    },
+    {
+      "name": "El sistema debe actualizar la lista de requerimientos mostrados de forma inmediata al aplicar o modificar los filtros de estado y prioridad.",
+      "area": "Gestión de Requerimientos",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir al usuario limpiar todos los filtros avanzados activos con una sola acción en la interfaz de búsqueda.",
+      "area": "Gestión de Requerimientos",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar un mensaje de error detallado cuando el catálogo de Firestore no posea siembra inicial y el usuario intente cargar la sección de patrones y modelos.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe rechazar la creación de un nuevo patrón y mostrar un mensaje de error si el campo del modelo o la sintaxis quedan vacíos al enviar el formulario.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El usuario podrá visualizar los placeholders encerrados entre corchetes dentro de la sintaxis o prompt al consultar el detalle de un patrón existente.",
+      "area": "Patrones y Modelos",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe validar que el nombre descriptivo del nuevo patrón no esté vacío antes de permitir completar el registro.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar una notificación visual temporal de confirmación cuando el usuario guarde exitosamente un patrón nuevo.",
+      "area": "Patrones y Modelos",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mantener la vista filtrada del catálogo de patrones incluso si el usuario recarga la página o cambia temporalmente de pestaña.",
+      "area": "Patrones y Modelos",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El usuario podrá limpiar el campo del buscador mediante un botón dedicado para restaurar la visualización completa del catálogo de patrones.",
+      "area": "Patrones y Modelos",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe registrar la fecha y hora de creación de cada estructura sintáctica nueva dentro de la base de datos.",
+      "area": "Patrones y Modelos",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe restringir el acceso al formulario de creación de patrones a cualquier usuario que no disponga de una sesión activa.",
+      "area": "Patrones y Modelos",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar una ayuda contextual o descripción en línea sobre cómo utilizar los placeholders al rellenar el formulario de un patrón nuevo.",
+      "area": "Patrones y Modelos",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe actualizar de forma automática el catálogo de patrones en pantalla una vez que el usuario guarde satisfactoriamente una nueva estructura.",
+      "area": "Patrones y Modelos",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir que los patrones creados manualmente incluyan múltiples líneas en el campo del prompt o sintaxis.",
+      "area": "Patrones y Modelos",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El usuario podrá utilizar la tecla de acceso rápido global para enfocar el buscador de la sección de patrones y modelos directamente.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2,
+      "posible": {
+        "etiqueta": "otra propuesta (Patrones y Modelos)",
+        "texto": "El usuario debe poder utilizar el buscador en la sección de patrones y modelos para localizar patrones por su nombre o contenido.",
+        "similitud": 0.631578947368421
+      }
+    },
+    {
+      "name": "El usuario podrá presionar la tecla de escape para cerrar el modal o formulario activo de creación de patrones.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe solicitar confirmación al usuario si intenta cerrar el formulario de un patrón nuevo con cambios sin guardar tras pulsar la tecla de escape.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir guardar el formulario abierto de un patrón nuevo utilizando la combinación de teclas correspondiente.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe asegurar que los nombres de los patrones creados por los usuarios no superen una longitud máxima (por definir) para evitar desbordamientos visuales en las tarjetas.",
+      "area": "Patrones y Modelos",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar un estado vacío informativo dentro de una pestaña de modelo cuando no existan patrones registrados ni inicializados.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe registrar una traza de auditoría interna (por definir) cada vez que un usuario cree exitosamente un nuevo patrón en el catálogo.",
+      "area": "Patrones y Modelos",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir copiar la sintaxis de un patrón al portapapeles mediante un mecanismo compatible con múltiples navegadores web modernos.",
+      "area": "Patrones y Modelos",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe procesar la optimización adicional de consultas masivas de proyectos para evitar latencias altas en la interfaz.",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe soportar pruebas de estres detalladas para la generación concurrente de IA midiendo los tiempos de respuesta bajo carga.",
+      "area": "Rendimiento",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe bloquear temporalmente las operaciones de edición simultánea en un requerimiento cuando un usuario ya se encuentra modificándolo para evitar conflictos de concurrencia.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar un aviso de advertencia al usuario que intente editar un requerimiento que actualmente está bloqueado por otro miembro en sesión activa.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe liberar el bloqueo de edición de un requerimiento de manera automática transcurrido un tiempo de inactividad (por definir).",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El administrador debe poder configurar la frecuencia de las políticas de respaldo automático de la base de datos de Firestore en un intervalo (por definir).",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe ejecutar respaldos automáticos periódicos de todos los proyectos y requerimientos para garantizar la recuperación ante fallos catastróficos.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El administrador debe poder restaurar el estado completo de la plataforma desde un punto de respaldo previo ante una pérdida crítica de información.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe generar un informe detallado con el resultado de cada proceso de respaldo automático para su verificación técnica.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe registrar automáticamente en un archivo de logs de errores todos los fallos técnicos de conectividad y excepciones ocurridas en la plataforma.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El administrador debe poder consultar el catálogo de logs de errores del sistema filtrando por fecha, nivel de gravedad y módulo afectado.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe almacenar la información de los logs de errores con una marca de tiempo exacta y el identificador del usuario afectado si aplica.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El administrador debe poder exportar los registros de logs de errores en un formato estándar (por definir) para su análisis externo.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe purgar automáticamente los registros de logs de errores antiguos que superen un período de retención (por definir) para optimizar el almacenamiento.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Wont",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe notificar al administrador mediante un mensaje de alerta crítico cuando ocurra un fallo en la persistencia de datos con Firestore.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe reintentar de forma automática la conexión con la base de datos de Firestore ante interrupciones temporales de red antes de mostrar un error al usuario.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe guardar una copia temporal local en el navegador de los cambios en formularios de requerimientos cuando se pierda la conexión con Firestore.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El administrador debe poder verificar el estado actual de salud y conectividad de los servicios de base de datos desde un panel de control técnico.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe cifrar los datos sensibles de los proyectos almacenados en Firestore para garantizar la confiabilidad y seguridad de la información.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe registrar un código de seguimiento único para cada transacción de guardado fallida en la base de datos para facilitar su rastreo en los logs.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe validar la integridad estructural de los documentos JSON almacenados en Firestore al recuperar los proyectos para prevenir corrupciones de datos.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El administrador debe poder establecer reglas de seguridad y validación de esquemas directamente sobre la base de datos para proteger la integridad de los requerimientos.",
+      "area": "Disponibilidad y confiabilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe asegurar que todos los textos de la interfaz cumplan con un contraste de color adecuado para garantizar la legibilidad visual.",
+      "area": "Usabilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El usuario debe poder navegar de forma completa por los modales complejos utilizando exclusivamente el teclado.",
+      "area": "Usabilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe optimizar la retroalimentación visual en dispositivos móviles para las acciones del usuario.",
+      "area": "Usabilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar un aviso de confirmación al intentar cerrar una ventana con cambios sin guardar mediante el uso de la tecla de escape.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2,
+      "posible": {
+        "etiqueta": "otra propuesta (Patrones y Modelos)",
+        "texto": "El sistema debe solicitar confirmación al usuario si intenta cerrar el formulario de un patrón nuevo con cambios sin guardar tras pulsar la tecla de escape.",
+        "similitud": 0.6054054054054054
+      }
+    },
+    {
+      "name": "El sistema debe mostrar un aviso visual cuando se copia la sintaxis de un patrón al portapapeles.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2,
+      "posible": {
+        "etiqueta": "otra propuesta (Patrones y Modelos)",
+        "texto": "El sistema debe mostrar un aviso de sintaxis copiada al portapapeles cuando el usuario pulse el icono de copiar en un patrón.",
+        "similitud": 0.6984126984126984
+      }
+    },
+    {
+      "name": "El sistema debe actualizar de forma automática la lista de requerimientos cuando se detecte un cambio en tiempo real.",
+      "area": "Usabilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir al usuario limpiar el campo de búsqueda mediante un botón dedicado en la interfaz.",
+      "area": "Usabilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar notificaciones visuales emergentes para informar el éxito o error al guardar formularios.",
+      "area": "Usabilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir al usuario navegar entre las pestañas de los catálogos mediante comandos o clics directos.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar indicadores visuales claros cuando un requerimiento se encuentre en estado pendiente de aprobación.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 2,
+      "posible": {
+        "etiqueta": "otra propuesta (Gestión de Requerimientos)",
+        "texto": "El sistema debe registrar cada nuevo requerimiento con el estado inicial de pendiente de aprobación.",
+        "similitud": 0.6013986013986014
+      }
+    },
+    {
+      "name": "El usuario debe poder utilizar la combinación de teclas (por definir) para alternar rápidamente entre la vista de proyectos y la de requerimientos.",
+      "area": "Usabilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe resaltar visualmente el campo activo donde se encuentra el cursor al utilizar atajos de teclado.",
+      "area": "Usabilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar mensajes informativos claros cuando el catálogo de patrones se encuentre vacío por falta de inicialización.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir al usuario expandir o contraer las secciones de ayuda y preguntas frecuentes con un clic.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar iconos descriptivos en cada sección principal de la plataforma para facilitar la identificación visual del usuario.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El usuario debe poder visualizar el nombre del modelo y patrón seleccionado de forma clara en la interfaz de edición de requerimientos.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe ofrecer una interfaz clara para que el usuario gestione las invitaciones recibidas a través de la campana de notificaciones.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar un icono distintivo en las tarjetas de proyecto para reflejar su estado actual de forma visual.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir al usuario identificar claramente el rol de cada miembro dentro de un equipo mediante etiquetas visuales en la interfaz.",
+      "area": "Usabilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe proporcionar una guía visual en la pantalla de inicio para orientar a los nuevos usuarios en la creación de su primer proyecto.",
+      "area": "Usabilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe asegurar la compatibilidad de los componentes personalizados de la interfaz con lectores de pantalla avanzados mediante el uso de atributos ARIA específicos.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir la gestión de tiempos de sesión extendidos para usuarios con requerimientos de accesibilidad motriz en la configuración de la cuenta.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir la adaptación de la interfaz para dispositivos de asistencia por voz (por definir) facilitando la navegación sin periféricos tradicionales.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe proporcionar opciones de personalización de temas de alto contraste en la configuración del usuario para mejorar la visualización.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir a los usuarios universitarios seleccionar opciones de accesibilidad visual desde su perfil para adaptar la visualización general de la plataforma.",
+      "area": "Accesibilidad",
+      "origen": "explicito",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe asegurar que los formularios de registro de requerimientos presenten un orden de tabulación lógico y secuencial para los usuarios de teclado.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir a los usuarios navegar por los menús desplegables y modales utilizando las teclas de dirección del teclado.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe garantizar que todas las alertas flotantes y notificaciones del sistema reciban el foco del teclado al aparecer en pantalla.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe proporcionar descripciones textuales detalladas para los gráficos estadísticos y métricas de los proyectos dirigidas a lectores de pantalla.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe evitar la reproducción automática de contenido de audio o video al cargar las páginas para no interferir con los lectores de pantalla.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir al usuario pausar, detener o ajustar la velocidad de cualquier elemento con movimiento automático en la interfaz.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe garantizar que los mensajes de estado y confirmaciones de acciones sean anunciados automáticamente por los lectores de pantalla mediante regiones live.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe asegurar que las tablas de datos complejas incluyan encabezados asociados explícitamente a sus celdas para su correcta lectura por voz.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir a los usuarios omitir bloques de contenido repetitivos mediante enlaces de salto al contenido principal al inicio de cada página.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El system debe proporcionar un tamaño mínimo de área de toque (por definir) para todos los elementos interactivos en interfaces táctiles.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe asegurar que el cambio de orientación de la pantalla (vertical u horizontal) no afecte la visibilidad ni la funcionalidad de los componentes de accesibilidad.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir al usuario desactivar las animaciones decorativas de la interfaz en la configuración de accesibilidad personal.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe garantizar que el idioma principal de cada página esté especificado en el código fuente para una correcta pronunciación del lector de pantalla.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe asegurar que los campos obligatorios en los formularios de creación de proyectos estén marcados tanto visualmente como mediante atributos accesibles.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir a los administradores universitarios consultar reportes de uso de las herramientas de accesibilidad integradas en la plataforma.",
+      "area": "Accesibilidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe registrar los archivos de código fuente de la plataforma en un repositorio de control de versiones centralizado para asegurar la disponibilidad de la estructura del proyecto.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir a los desarrolladores realizar respaldos periódicos de la base de datos (por definir) para prevenir la pérdida de información ante fallos del sistema.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe proveer un mecanismo de recuperación de la base de datos a partir del último respaldo disponible (por definir) cuando ocurra un fallo crítico en el servidor.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir actualizar los componentes de la interfaz de usuario de manera modular (por definir) para facilitar la incorporación de mejoras visuales y funcionales.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe registrar el número de versión actual de cada componente de la interfaz de usuario en el registro de configuración (por definir) para mantener la trazabilidad de los cambios visuales.",
+      "area": "Mantenibilidad y soporte",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe aplicar políticas avanzadas de retención para conservar los datos de los proyectos universitarios durante el periodo establecido (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe ejecutar una purga automática de proyectos inactivos tras transcurrir el tiempo límite estipulado (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe incorporar mecanismos de cumplimiento para aplicar las normativas específicas de protección de datos personales universitarios exigidas por la institución (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe notificar al creador de un proyecto universitario antes de ejecutar la purga automática de sus datos por inactividad prolongada (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe registrar en una bitácora de auditoría cada proceso de retención o purga automática ejecutado sobre los proyectos (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe permitir que la administración configure los parámetros temporales de la política de retención de datos universitarios (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe validar que los datos personales recolectados de los usuarios cumplan con los campos obligatorios exigidos por las normativas de privacidad (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe asegurar que la purga automática de un proyecto elimine por completo tanto sus requerimientos como sus equipos vinculados de la base de datos.",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe generar un reporte detallado para los administradores con el resumen de los proyectos purgados y su fecha de eliminación (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe suspender temporalmente la aplicación de la política de retención en aquellos proyectos que se encuentren en estado pausado o bajo revisión especial (por definir).",
+      "area": "Legal y privacidad",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe manejar los tiempos de espera o timeout configurados (por definir) durante la llamada a la API del modelo de inteligencia artificial para evitar bloqueos prolongados en la interfaz.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe mostrar un mensaje de error claro en la interfaz cuando se agote el tiempo de espera (timeout) al comunicarse con el servicio de inteligencia artificial.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe gestionar las credenciales de acceso y las variables de entorno necesarias para establecer una conexión segura con la base de datos Firestore.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe registrar en los logs del servidor las fallas técnicas ocurridas al interactuar con los modelos de lenguaje externos durante la generación de requerimientos.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe reintentar la conexión con la base de datos Firestore de manera automática un número determinado (por definir) de veces si ocurre una interrupción temporal de red.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2,
+      "posible": {
+        "etiqueta": "otra propuesta (Disponibilidad y confiabilidad)",
+        "texto": "El sistema debe reintentar de forma automática la conexión con la base de datos de Firestore ante interrupciones temporales de red antes de mostrar un error al usuario.",
+        "similitud": 0.6216216216216216
+      }
+    },
+    {
+      "name": "El sistema debe validar el formato de la respuesta JSON recibida desde la API del modelo de inteligencia artificial antes de mostrar las propuestas al usuario.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe cifrar las credenciales de conexión almacenadas en las variables de entorno utilizadas para acceder a los servicios externos.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Must",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe notificar al administrador del proyecto mediante un registro de auditoría cuando las credenciales de Firestore presenten problemas de autenticación.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Could",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe limitar el tamaño máximo de los datos de entrada enviados al servicio de inteligencia artificial según los parámetros permitidos por la API.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    },
+    {
+      "name": "El sistema debe almacenar los registros de logs de errores de integración en un archivo o servicio centralizado accesible para el mantenimiento.",
+      "area": "Integraciones",
+      "origen": "inferido",
+      "prioridad": "Should",
+      "lote": 2
+    }
+  ],
+  "embeddingsNota": "Calculados aparte (scripts de medición), en tandas de 100 con 65 s de espera ante 429: tanda 1 intento 1: 429 EmbedContentRequestsPerMinutePerUserPerProjectPerModel-FreeTier retry 23s; tanda 1: ok; tanda 2 intento 1: 429 EmbedContentRequestsPerMinutePerUserPerProjectPerModel-FreeTier retry 17s; tanda 2: ok; tanda 3 intento 1: 429 EmbedContentRequestsPerMinutePerUserPerProjectPerModel-FreeTier retry 10s; tanda 3: ok; tanda 4 intento 1: 429 EmbedContentRequestsPerMinutePerUserPerProjectPerModel-FreeTier retry 4s; tanda 4: ok"
+}

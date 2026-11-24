@@ -68,7 +68,7 @@ export default function ModalHistorialLogs({
       title={
         requerimiento && codigoDe(requerimiento)
           ? `Historial de ${codigoDe(requerimiento)}`
-          : 'Historial de Cambios'
+          : 'Historial de cambios'
       }
       description="Quién modificó el requerimiento y cuándo."
       size="lg"
