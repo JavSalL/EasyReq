@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:reglas": "firebase emulators:exec --only firestore --config firebase.emuladores.json --project demo-easyreq \"node tests/reglas/ind03.mjs\"",
-    "test:unidad": "node --test tests/unidad/",
+    "test:unidad": "node --test tests/unidad/*.test.mjs",
     "test:nf": "node tests/nf/cp-nf-dedup.mjs",
     "test:plan": "firebase emulators:exec --only firestore --config firebase.emuladores.json --project demo-easyreq \"node tests/integracion/cp-reglas.mjs\""
   },
