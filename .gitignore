@@ -53,4 +53,5 @@ next-env.d.ts
 
 # resultados de pruebas de reglas (registros, no EC)
 /tests/reglas/resultados/
+/tests/resultados/
 firestore-debug.log
