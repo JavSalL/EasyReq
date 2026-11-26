@@ -15,8 +15,10 @@ Guía rápida para todo el equipo sobre cómo organizamos el trabajo y cómo se 
 
 - No se trabaja directo sobre `main`. Crea una rama a partir de `main` para tu ticket, y el nombre **debe incluir el ID del ticket de Jira**, por ejemplo:
   ```
-  <tipo>/<ID>-<descripcion-corta>        tipo: feature, fix, docs, chore, test
-  docs/SC-004-convenciones-versiones     ID: KAN-nn (Jira) o SC-nnn (solicitud de cambio)
+  <tipo>/<ID>-<descripcion-corta>             tipo: feature, fix, docs, chore, test
+  feature/KAN-123-nombre-corto-de-la-funcion  ID: KAN-nn (Jira) o SC-nnn (solicitud de cambio)
+  fix/KAN-124-nombre-corto-del-bug
+  docs/SC-004-convenciones-versiones
   ```
   Esto permite identificar rápido a qué ticket corresponde cada rama (y Jira puede enlazarlas automáticamente si está integrado con GitHub).
 - Los mensajes siguen Conventional Commits: `tipo(ID): descripción en presente`, y el cuerpo cita el issue con `Refs #n`.
