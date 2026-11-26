@@ -32,6 +32,7 @@ Guía rápida para todo el equipo sobre cómo organizamos el trabajo y cómo se 
 - Antes de abrir el PR, asegúrate de que:
   - El proyecto compila (`npm run build`) sin errores.
   - Probaste la funcionalidad manualmente en el navegador.
+  - Si el cambio toca `firestore.rules`, agregaste su caso en `tests/reglas/ind03.mjs` y `npm run test:reglas` termina sin errores.
 - Al abrir el PR, describe brevemente qué hace el cambio y, si aplica, enlaza el ticket de Jira correspondiente.
 - **Ningún PR se mergea sin al menos una review aprobada de otra persona del equipo.** Aunque el cambio parezca simple o urgente, espera la revisión.
 - Si el revisor deja comentarios, atiéndelos (o discútelos) antes de mergear.

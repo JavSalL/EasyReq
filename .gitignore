@@ -50,3 +50,8 @@ next-env.d.ts
 .dev.vars
 .wrangler/
 /workers/**/node_modules
+
+# resultados de pruebas de reglas (registros, no EC)
+/tests/reglas/resultados/
+/tests/resultados/
+firestore-debug.log
