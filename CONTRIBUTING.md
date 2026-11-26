@@ -15,8 +15,8 @@ Guía rápida para todo el equipo sobre cómo organizamos el trabajo y cómo se 
 
 - No se trabaja directo sobre `main`. Crea una rama a partir de `main` para tu ticket, y el nombre **debe incluir el ID del ticket de Jira**, por ejemplo:
   ```
-  feature/EASY-123-nombre-corto-de-la-funcion
-  fix/EASY-124-nombre-corto-del-bug
+  feature/KAN-123-nombre-corto-de-la-funcion
+  fix/KAN-124-nombre-corto-del-bug
   ```
   Esto permite identificar rápido a qué ticket corresponde cada rama (y Jira puede enlazarlas automáticamente si está integrado con GitHub).
 - Haz commits pequeños y descriptivos según avances. No hace falta esperar a terminar todo para hacer commit.
