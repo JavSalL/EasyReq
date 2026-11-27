@@ -142,7 +142,7 @@ export type Estrictez = 1 | 2 | 3 | 4;
 export const NIVELES_ESTRICTEZ: Record<Estrictez, { nombre: string; descripcion: string }> = {
   1: { nombre: 'Baja', descripcion: 'Completa con detalles habituales del dominio cuando el texto no los da.' },
   2: { nombre: 'Media', descripcion: 'Deduce lo implícito del texto y del contexto, sin inventar cifras.' },
-  3: { nombre: 'Alta', descripcion: 'Solo usa lo que escribiste; lo que falte queda «(por definir)».' },
+  3: { nombre: 'Alta', descripcion: 'Solo usa lo que escribiste; lo que falte queda marcado como pendiente.' },
   4: { nombre: 'Máxima', descripcion: 'Literal: si falta actor, acción u objeto, no lo redacta.' }
 };
 

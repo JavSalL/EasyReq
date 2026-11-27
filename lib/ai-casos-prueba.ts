@@ -16,6 +16,8 @@ export interface CasoPruebaIA {
 
 export const PATRON_ACTOR_ACCION_OBJETO = '[Actor] + [Acción] + [Objeto]';
 export const PATRON_EARS = 'Cuando <condición>, el <sistema> deberá <respuesta>';
+export const PATRON_EARS_ENGLISH = 'When <trigger>, the <system> shall <response>';
+export const PATRON_EARS_STATE_ENGLISH = 'While <state>, the <system> shall <response>';
 
 export const CASOS_PRUEBA_IA: CasoPruebaIA[] = [
   { id: 'ruido-teclado', descripcion: 'Teclazos sin sentido', entrada: 'asdfghjk', esperado: 'rechazar' },
@@ -72,6 +74,30 @@ export const CASOS_PRUEBA_IA: CasoPruebaIA[] = [
     patron: PATRON_EARS,
     esperado: 'aceptar',
     noDebeContener: [/<|>/]
+  },
+  {
+    id: 'patron-ears-ingles-pedido-espanol',
+    descripcion: 'Patrón EARS en inglés con pedido en español',
+    entrada: 'si falla el pago con tarjeta, avisar al usuario y conservar su carrito',
+    patron: PATRON_EARS_ENGLISH,
+    esperado: 'aceptar',
+    noDebeContener: [/<|>/, /\b(When|shall)\b/i]
+  },
+  {
+    id: 'patron-ears-ingles-marcador-ingles',
+    descripcion: 'El marcador de componente faltante sigue el idioma inglés',
+    entrada: 'users can rename files',
+    patron: PATRON_EARS_STATE_ENGLISH,
+    esperado: 'aceptar',
+    noDebeContener: [/<|>/, /\bpor definir\b/i]
+  },
+  {
+    id: 'patron-ears-ingles-entrada-japones',
+    descripcion: 'Un patrón EARS en inglés no contamina una salida en japonés',
+    entrada: 'メインメニューが表示されている間、プレイヤーは設定を変更できる',
+    patron: PATRON_EARS_STATE_ENGLISH,
+    esperado: 'aceptar',
+    noDebeContener: [/<|>/, /\b(While|the|system|shall|allow)\b/i, /\b(el|la|los|debe|deberá)\b/i]
   }
 ];
 
