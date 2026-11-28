@@ -104,7 +104,3 @@ export function clasificarDuplicado(indice: IndiceDuplicados, texto: string): Ve
   if (!mejor || mejor.similitud < UMBRAL_POSIBLE_DUPLICADO) return { tipo: 'nuevo' };
   return mejor.similitud >= UMBRAL_DUPLICADO ? { tipo: 'duplicado', de: mejor } : { tipo: 'posible', de: mejor };
 }
-
-/** Quita acentos y mayúsculas para comparar nombres de módulos o áreas. */
-export const normalizarNombre = (texto: string) =>
-  texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();

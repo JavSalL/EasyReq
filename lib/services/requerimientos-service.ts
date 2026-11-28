@@ -489,10 +489,6 @@ export async function asignarNumerosRequerimientos(
   }
 }
 
-export async function updateRequerimiento(id: string, data: Partial<Requerimiento>): Promise<void> {
-  await updateDoc(doc(db, 'requerimiento', id), data);
-}
-
 /**
  * Guarda una edición y su auditoría juntas. Así una modificación del enunciado
  * nunca queda sin los textos anterior y nuevo en el historial.

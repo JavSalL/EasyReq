@@ -109,12 +109,6 @@ export interface ColaboracionProyecto {
   proyecto?: Proyecto | null;
 }
 
-/** @deprecated Legacy KAN-24. */
-export type QuienCreaEquipos = 'creador' | 'seleccionados' | 'miembros';
-
-/** @deprecated Legacy KAN-24. */
-export type QuienAgregaMiembros = 'creador' | 'seleccionados';
-
 export interface Proyecto {
   proyecto_id: UUID;
   nombre: string;
@@ -134,16 +128,8 @@ export interface Proyecto {
   // en documentos legacy creados antes de este campo): esos se tratan como
   // hoy, solo miembros de equipos vinculados pueden editarlos.
   id_creador?: UUID | null;
-  /** @deprecated Legacy KAN-24: se eliminan los miembros sin equipo dentro del proyecto. */
+  /** @deprecated Legacy KAN-24: se mantiene solo para lectura de documentos antiguos. */
   ids_miembros?: UUID[];
-  /** @deprecated Legacy KAN-24. */
-  quien_crea_equipos?: QuienCreaEquipos;
-  /** @deprecated Legacy KAN-24. */
-  ids_creadores_equipos?: UUID[];
-  /** @deprecated Legacy KAN-24. */
-  quien_agrega_miembros?: QuienAgregaMiembros;
-  /** @deprecated Legacy KAN-24. */
-  ids_gestores_miembros?: UUID[];
   created_at?: string;
 }
 
@@ -391,22 +377,7 @@ export interface SolicitudProyectoEquipo {
   created_at: string;
 }
 
-export interface UsuarioProfesion {
-  id_usuario: UUID;
-  id_profesion: UUID;
-}
-
 // 4. Logs e Historial
-export interface HistorialLider {
-  id: UUID;
-  id_equipo: UUID;
-  id_usuario: UUID;
-  es_actual: boolean;
-  fecha_inicio: string;
-  fecha_fin?: string | null;
-  usuario?: PerfilUsuario;
-}
-
 export interface LogRequerimiento {
   id: UUID;
   id_requerimiento: UUID;
