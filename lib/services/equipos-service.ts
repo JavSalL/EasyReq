@@ -1503,11 +1503,7 @@ export async function isLiderDeEquipo(userId: string, equipoId: string): Promise
   return (propio?.roles ?? []).some(r => esRolLider(r.nombre_rol));
 }
 
-/**
- * Indica si el usuario tiene rol de líder activo del equipo dentro de un proyecto específico
- * (evaluando primero `miembros_proyecto_equipo` y luego `miembros_equipo`).
- */
-export async function isLiderDeEquipoEnProyecto(
+async function isLiderDeEquipoEnProyecto(
   userId: string,
   proyectoId: string,
   equipoId: string

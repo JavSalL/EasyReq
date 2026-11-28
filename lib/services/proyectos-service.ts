@@ -15,8 +15,6 @@ import {
   Proyecto,
   UUID,
   MiembroEquipo,
-  QuienCreaEquipos,
-  QuienAgregaMiembros,
 } from '../database.types';
 import {
   getTiposSistema,
@@ -75,15 +73,6 @@ export async function getProyectos(): Promise<Proyecto[]> {
         en_colaboracion: Boolean(data.en_colaboracion),
         id_creador: (data.id_creador as string | null | undefined) ?? null,
         ids_miembros: Array.isArray(data.ids_miembros) ? data.ids_miembros : [],
-        quien_crea_equipos: (data.quien_crea_equipos as QuienCreaEquipos | undefined) ?? 'creador',
-        ids_creadores_equipos: Array.isArray(data.ids_creadores_equipos)
-          ? data.ids_creadores_equipos
-          : [],
-        quien_agrega_miembros:
-          (data.quien_agrega_miembros as QuienAgregaMiembros | undefined) ?? 'creador',
-        ids_gestores_miembros: Array.isArray(data.ids_gestores_miembros)
-          ? data.ids_gestores_miembros
-          : [],
         created_at: data.created_at || new Date().toISOString(),
       });
     }
@@ -127,15 +116,6 @@ export async function getProyectoById(id: string): Promise<Proyecto | null> {
       en_colaboracion: Boolean(data.en_colaboracion),
       id_creador: (data.id_creador as string | null | undefined) ?? null,
       ids_miembros: Array.isArray(data.ids_miembros) ? data.ids_miembros : [],
-      quien_crea_equipos: (data.quien_crea_equipos as QuienCreaEquipos | undefined) ?? 'creador',
-      ids_creadores_equipos: Array.isArray(data.ids_creadores_equipos)
-        ? data.ids_creadores_equipos
-        : [],
-      quien_agrega_miembros:
-        (data.quien_agrega_miembros as QuienAgregaMiembros | undefined) ?? 'creador',
-      ids_gestores_miembros: Array.isArray(data.ids_gestores_miembros)
-        ? data.ids_gestores_miembros
-        : [],
       created_at: data.created_at || new Date().toISOString(),
     };
   } catch (e) {
@@ -153,16 +133,6 @@ export async function createProyecto(data: {
   en_colaboracion?: boolean;
   ids_colaboraciones?: UUID[];
   id_creador?: UUID | null;
-  /** @deprecated Legacy KAN-24 */
-  quien_crea_equipos?: QuienCreaEquipos;
-  /** @deprecated Legacy KAN-24 */
-  ids_creadores_equipos?: UUID[];
-  /** @deprecated Legacy KAN-24 */
-  quien_agrega_miembros?: QuienAgregaMiembros;
-  /** @deprecated Legacy KAN-24 */
-  ids_gestores_miembros?: UUID[];
-  /** @deprecated Legacy KAN-24 */
-  ids_miembros?: UUID[];
 }): Promise<Proyecto> {
   const created_at = new Date().toISOString();
   const idEstado =
@@ -220,14 +190,6 @@ export async function updateProyecto(
     id_estado_proyecto?: UUID | null;
     id_naturaleza_proyecto?: UUID | null;
     en_colaboracion?: boolean;
-    /** @deprecated Legacy KAN-24 */
-    quien_crea_equipos?: QuienCreaEquipos;
-    /** @deprecated Legacy KAN-24 */
-    ids_creadores_equipos?: UUID[];
-    /** @deprecated Legacy KAN-24 */
-    quien_agrega_miembros?: QuienAgregaMiembros;
-    /** @deprecated Legacy KAN-24 */
-    ids_gestores_miembros?: UUID[];
   }
 ): Promise<void> {
   const docRef = doc(db, 'proyecto', id);
@@ -243,36 +205,6 @@ export async function updateProyecto(
   if (data.en_colaboracion !== undefined) cambios.en_colaboracion = data.en_colaboracion;
 
   await updateDoc(docRef, cambios);
-}
-
-/**
- * @deprecated Los proyectos ya no admiten miembros sueltos sin equipo.
- * Usa `agregarMiembroLocalProyectoEquipo` o vincula un equipo global mediante `asignarEquipoAProyecto`.
- */
-export async function agregarMiembrosProyecto(
-  id_proyecto: string,
-  ids_usuarios: UUID[]
-): Promise<void> {
-  void id_proyecto;
-  void ids_usuarios;
-  throw new Error(
-    'Los miembros deben pertenecer a un equipo asignado al proyecto. Vincula un equipo o agrega al integrante dentro de un equipo del proyecto.'
-  );
-}
-
-/**
- * @deprecated Los proyectos ya no admiten miembros sueltos sin equipo.
- * Usa `cambiarEstadoMiembroLocal` para desactivar a un integrante dentro de un equipo del proyecto.
- */
-export async function quitarMiembroProyecto(
-  id_proyecto: string,
-  id_usuario: UUID
-): Promise<void> {
-  void id_proyecto;
-  void id_usuario;
-  throw new Error(
-    'Para dar de baja a un integrante en este proyecto, desactívalo dentro de su equipo en el proyecto.'
-  );
 }
 
 export async function deleteProyecto(id: string): Promise<void> {
@@ -382,23 +314,4 @@ export async function getProyectosRelacionados(userId: string): Promise<UUID[]> 
     }
   }
   return [...proyectos];
-}
-
-/**
- * Indica si el usuario puede editar/operar en el proyecto: true si es su
- * creador (`id_creador == userId`) o miembro activo de un equipo activo vinculado.
- */
-export async function isUsuarioRelacionadoAProyecto(
-  userId: string,
-  proyectoId: string
-): Promise<boolean> {
-  if (!userId || !proyectoId) return false;
-  try {
-    const snap = await getDoc(doc(db, 'proyecto', proyectoId));
-    if (snap.exists() && snap.data().id_creador === userId) return true;
-  } catch (e) {
-    console.error('Error verificando creador del proyecto:', e);
-  }
-  const relacionados = await getProyectosRelacionados(userId);
-  return relacionados.includes(proyectoId);
 }

@@ -7,14 +7,11 @@ import {
   deleteDoc,
   query,
   where,
-  documentId,
   writeBatch,
   runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Colaboracion, ColaboracionProyecto, UUID } from '../database.types';
-
-const MAX_EN_UNA_IN = 30;
 
 export function getColaboracionProyectoId(id_colaboracion: string, id_proyecto: string): string {
   return `${id_colaboracion}_${id_proyecto}`;
@@ -38,18 +35,6 @@ export async function getColaboraciones(): Promise<Colaboracion[]> {
   } catch (e) {
     console.error('Error fetching colaboraciones:', e);
     return [];
-  }
-}
-
-export async function getColaboracionById(id: string): Promise<Colaboracion | null> {
-  if (!id) return null;
-  try {
-    const snap = await getDoc(doc(db, 'colaboracion', id));
-    if (!snap.exists()) return null;
-    return mapearColaboracion(snap.id, snap.data());
-  } catch (e) {
-    console.error('Error fetching colaboracion by id:', e);
-    return null;
   }
 }
 
@@ -179,36 +164,6 @@ export async function getColaboracionProyectos(id_colaboracion?: string): Promis
     }));
   } catch (e) {
     console.error('Error fetching colaboracion_proyecto:', e);
-    return [];
-  }
-}
-
-export async function getColaboracionesDeProyecto(id_proyecto: string): Promise<Colaboracion[]> {
-  if (!id_proyecto) return [];
-  try {
-    const relSnap = await getDocs(
-      query(collection(db, 'colaboracion_proyecto'), where('id_proyecto', '==', id_proyecto))
-    );
-    const ids = [
-      ...new Set(
-        relSnap.docs
-          .map(d => d.data().id_colaboracion as string | undefined)
-          .filter((id): id is string => Boolean(id))
-      ),
-    ];
-    if (ids.length === 0) return [];
-
-    const resultado: Colaboracion[] = [];
-    for (let i = 0; i < ids.length; i += MAX_EN_UNA_IN) {
-      const lote = ids.slice(i, i + MAX_EN_UNA_IN);
-      const snap = await getDocs(
-        query(collection(db, 'colaboracion'), where(documentId(), 'in', lote))
-      );
-      resultado.push(...snap.docs.map(d => mapearColaboracion(d.id, d.data())));
-    }
-    return resultado;
-  } catch (e) {
-    console.error('Error fetching colaboraciones del proyecto:', e);
     return [];
   }
 }

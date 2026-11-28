@@ -204,14 +204,6 @@ export async function extraerTextoPdf(base64: string, onEspera?: AvisoEspera): P
   return result?.texto ?? '';
 }
 
-/**
- * Evalúa un requerimiento existente de forma inteligente.
- */
-export async function evaluateRequirement(requirementText: string, pattern?: string, onEspera?: AvisoEspera): Promise<Partial<AIRequirement>> {
-  const result = await callAI<Partial<AIRequirement>>('/evaluate', { requirementText, pattern }, undefined, onEspera);
-  return result ?? {};
-}
-
 // ==========================================
 // GENERACIÓN ITERATIVA (KAN-40)
 // ==========================================
